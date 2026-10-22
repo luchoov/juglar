@@ -17,13 +17,18 @@
 //! on the synthetic song. Changing the scene means changing them, or the
 //! shapes in `tide.wgsl`.
 //!
-//! Every kick moves things (the flow speeds up, the ring grows) rather than
-//! brightening them. The flash limiter that checks the final picture comes
-//! in Milestone 5.
+//! Every kick moves things (the flow speeds up) rather than brightening
+//! them. The ring's sharp line follows the music slowly: a bright line one
+//! or two pixels wide that trembles, even by a fraction of a pixel, makes the
+//! pixels along it blink, and the flash limiter (`limiter.rs`) counts that as
+//! flashing and holds those spots back. So the waveform the line draws is
+//! smoothed in three stages, which all but removes the frame-to-frame tremble
+//! (one stage only shrinks it), and its size, height and thickness follow
+//! smoothed levels.
 
 use std::f32::consts::TAU;
 
-use juglar_signals::Signals;
+use juglar_signals::{Signals, WAVEFORM_POINTS};
 
 use super::{Look, Palette};
 
@@ -41,6 +46,11 @@ const PALETTE: Palette = Palette {
 
 /// Seconds over which `mood` follows the energy.
 const MOOD_SECONDS: f32 = 3.0;
+/// Seconds each of the waveform's three smoothing stages takes to follow.
+/// One stage would leave a random step every frame, only smaller.
+const WAVE_SECONDS: f32 = 0.25;
+/// Seconds over which the ring's size, height and thickness follow the music.
+const RING_SECONDS: f32 = 0.3;
 
 pub(crate) struct Tide {
     /// Time that passes only while motion is allowed; the slow wandering and
@@ -48,11 +58,15 @@ pub(crate) struct Tide {
     clock: f32,
     /// Energy smoothed over seconds: a section's character, not a beat's.
     mood: f32,
+    /// The waveform, smoothed over time in three stages.
+    waveform: [[f32; WAVEFORM_POINTS]; 3],
+    /// Bass, energy and treble as the ring follows them, smoothed.
+    ring: [f32; 3],
 }
 
 impl Tide {
     pub fn new() -> Self {
-        Self { clock: 0.0, mood: 0.0 }
+        Self { clock: 0.0, mood: 0.0, waveform: [[0.0; WAVEFORM_POINTS]; 3], ring: [0.0; 3] }
     }
 
     /// The sources this scene paints, in WGSL.
@@ -66,6 +80,20 @@ impl Tide {
         let follow = 1.0 - (-dt / MOOD_SECONDS).exp();
         self.mood += (s.energy - self.mood) * follow;
         self.clock += dt * motion;
+        // With reduced motion the line keeps its shape: nothing follows.
+        let follow_wave = 1.0 - (-dt * motion / WAVE_SECONDS).exp();
+        let mut input = s.waveform;
+        for stage in &mut self.waveform {
+            for (smooth, &raw) in stage.iter_mut().zip(&input) {
+                *smooth += (raw - *smooth) * follow_wave;
+            }
+            input = *stage;
+        }
+        let follow_ring = 1.0 - (-dt * motion / RING_SECONDS).exp();
+        for (smooth, raw) in self.ring.iter_mut().zip([s.bass, s.energy, s.treble]) {
+            *smooth += (raw - *smooth) * follow_ring;
+        }
+        let [ring_bass, ring_energy, ring_treble] = self.ring;
 
         // Intensity scales every movement: 0 is calm, 1 is strong.
         let live = motion * (0.4 + 1.2 * s.intensity.clamp(0.0, 1.0));
@@ -93,9 +121,9 @@ impl Tide {
             // Trails cool toward blue as they age.
             palette_drift: 0.3 * dt * motion,
             knobs: [
-                0.16 + 0.04 * s.bass,      // ring radius
-                0.05 + 0.07 * s.energy,    // wave height on the ring
-                0.002 + 0.001 * s.treble,  // line half-width
+                0.16 + 0.04 * ring_bass,       // ring radius
+                0.05 + 0.07 * ring_energy,     // wave height on the ring
+                0.002 + 0.001 * ring_treble,   // line half-width
                 0.05 + 0.06 * s.bass,      // how much of the line the trails keep
                 0.0,                       // line palette position
                 1.8,                       // line ink on top
@@ -107,6 +135,7 @@ impl Tide {
             // keeps the color alive in between.
             palette_shift: 0.85 - 0.8 * self.mood + 0.06 * (self.clock * TAU / 120.0).sin(),
             exposure: 1.3,
+            waveform: input,
         }
     }
 }

@@ -5,17 +5,22 @@
 //! or a windowing library: the app hands over anything that has a window
 //! handle, then each frame's `Signals`, a few hundred plain numbers.
 //!
-//! A frame is two steps on the GPU (see `docs/theory/05-feedback.md`):
+//! A frame is three steps on the GPU (see `docs/theory/05-feedback.md`):
 //!
 //! 1. **Feedback** (`feedback.wgsl`), on a half-size image: copy the last
 //!    picture, warped and faded, and let the scene paint on top.
-//! 2. **Composite** (`composite.wgsl`), on the screen: turn that picture's
-//!    ink into colors, tone-map and dither them.
+//! 2. **Composite** (`composite.wgsl`), at full size: turn that picture's
+//!    ink into colors and tone-map them.
+//! 3. **Limiter** (`limiter.rs`): hold back any flashing beyond two flashes
+//!    a second and any saturated red, then dither onto the screen (see
+//!    `docs/theory/09-photosensitivity.md`).
 //!
-//! The analysis view (`analysis.wgsl`) replaces both with Milestone 3's
-//! waveform and bars, to see what Juglar hears.
+//! The analysis view (`analysis.wgsl`) replaces the first two with
+//! Milestone 3's waveform and bars, to see what Juglar hears. It goes
+//! through the limiter too: nothing reaches the screen without it.
 
 mod feedback;
+pub mod limiter;
 mod scene;
 mod timer;
 
@@ -24,6 +29,7 @@ use std::num::NonZeroU64;
 
 use bytemuck::{Pod, Zeroable};
 use feedback::Feedback;
+use limiter::Limiter;
 use scene::{Look, Tide};
 use timer::GpuTimer;
 
@@ -50,8 +56,7 @@ struct Uniforms {
     feedback_size: [f32; 2],
     time: f32,
     dt: f32,
-    /// 1.0 when the shader must encode its output to sRGB itself (see `new`).
-    encode_srgb: f32,
+    _pad1: f32,
     seed: f32,
     center: [f32; 2],
     zoom: f32,
@@ -136,6 +141,9 @@ pub struct Renderer {
     analysis_pipeline: wgpu::RenderPipeline,
     analysis_bind_group: wgpu::BindGroup,
     feedback: Feedback,
+    limiter: Limiter,
+    /// The share of the limiter's cells held back, last time it was counted.
+    held: Option<f32>,
     scene: Tide,
     view: View,
     reduced_motion: bool,
@@ -318,12 +326,19 @@ impl Renderer {
             &image_layout,
             [COMMON, Tide::SHADER, include_str!("composite.wgsl")].concat(),
             "fs_composite",
-            format,
+            limiter::CANDIDATE_FORMAT,
         );
         let analysis_pipeline =
-            pipeline("analysis", &analysis_layout, [COMMON, include_str!("analysis.wgsl")].concat(), "fs_analysis", format);
+            pipeline(
+            "analysis",
+            &analysis_layout,
+            [COMMON, include_str!("analysis.wgsl")].concat(),
+            "fs_analysis",
+            limiter::CANDIDATE_FORMAT,
+        );
 
         let feedback = Feedback::new(&device, &image_layout, &uniform_buffer, &sampler, config.width, config.height);
+        let limiter = Limiter::new(&device, config.width, config.height, format);
         let timer = timestamps.then(|| GpuTimer::new(&device, queue.get_timestamp_period()));
 
         Ok(Self {
@@ -339,6 +354,8 @@ impl Renderer {
             analysis_pipeline,
             analysis_bind_group,
             feedback,
+            limiter,
+            held: None,
             scene: Tide::new(),
             view: View::Scene,
             reduced_motion: false,
@@ -367,6 +384,7 @@ impl Renderer {
         self.surface.configure(&self.device, &self.config);
         self.feedback =
             Feedback::new(&self.device, &self.image_layout, &self.uniform_buffer, &self.sampler, width, height);
+        self.limiter.resize(&self.device, width, height);
     }
 
     pub fn view(&self) -> View {
@@ -390,6 +408,9 @@ impl Renderer {
     pub fn render(&mut self, signals: &Signals) -> bool {
         if let Some(timer) = &mut self.timer {
             timer.collect(&self.device);
+        }
+        if let Some(held) = self.limiter.take_held(&self.device) {
+            self.held = Some(held);
         }
 
         let frame = match self.surface.get_current_texture() {
@@ -438,18 +459,20 @@ impl Renderer {
                 }
                 // The image just written is now the latest picture.
                 self.feedback.swap();
-                let mut composite = begin_pass(&mut encoder, "composite", &screen, timestamps(false, true));
+                let mut composite = begin_pass(&mut encoder, "composite", self.limiter.candidate(), None);
                 composite.set_pipeline(&self.composite_pipeline);
                 composite.set_bind_group(0, self.feedback.latest(), &[]);
                 composite.draw(0..3, 0..1);
             }
             View::Analysis => {
-                let mut analysis = begin_pass(&mut encoder, "analysis", &screen, timestamps(true, true));
+                let mut analysis = begin_pass(&mut encoder, "analysis", self.limiter.candidate(), timestamps(true, false));
                 analysis.set_pipeline(&self.analysis_pipeline);
                 analysis.set_bind_group(0, &self.analysis_bind_group, &[]);
                 analysis.draw(0..3, 0..1);
             }
         }
+        let seed = (self.frames % (1 << 24)) as f32;
+        self.limiter.encode(&self.queue, &mut encoder, &screen, signals.dt, seed, self.encode_srgb, timestamps(false, true));
         if timed && let Some(timer) = &self.timer {
             timer.resolve(&mut encoder);
         }
@@ -457,6 +480,7 @@ impl Renderer {
         if timed && let Some(timer) = &mut self.timer {
             timer.after_submit();
         }
+        self.limiter.after_submit();
         self.queue.present(frame);
         true
     }
@@ -469,7 +493,7 @@ impl Renderer {
             feedback_size: [feedback_width as f32, feedback_height as f32],
             time: s.time,
             dt: s.dt,
-            encode_srgb: if self.encode_srgb { 1.0 } else { 0.0 },
+            _pad1: 0.0,
             // Exact as a float up to 2^24 frames, then wraps (~60 hours).
             seed: (self.frames % (1 << 24)) as f32,
             center: look.center,
@@ -490,7 +514,9 @@ impl Renderer {
             novelty: s.novelty,
             bands: [s.bass, s.mid, s.treble, s.energy],
             spectrum: bytemuck::cast(s.spectrum),
-            waveform: bytemuck::cast(s.waveform),
+            // The analysis view shows the waveform as heard; a scene may
+            // draw a calmer one.
+            waveform: bytemuck::cast(if self.view == View::Scene { look.waveform } else { s.waveform }),
             beat_history: bytemuck::cast(self.history_of(0)),
             novelty_history: bytemuck::cast(self.history_of(1)),
         }
@@ -506,6 +532,12 @@ impl Renderer {
     /// arrived since the last call. Always `None` without timestamp support.
     pub fn take_gpu_ms(&mut self) -> Option<f32> {
         self.timer.as_mut().and_then(GpuTimer::take)
+    }
+
+    /// The share of the screen the flash limiter was holding back when it
+    /// last counted (twice a second at 60 Hz), if a new count arrived.
+    pub fn take_held(&mut self) -> Option<f32> {
+        self.held.take()
     }
 }
 

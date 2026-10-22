@@ -7,9 +7,8 @@ struct Frame {
     feedback_size: vec2f,
     time: f32,
     dt: f32,
-    // 1.0 when the screen format doesn't encode to sRGB by itself.
-    encode_srgb: f32,
-    // Changes every frame, so the dithering noise does too.
+    _pad1: f32,
+    // Changes every frame, for noise that should too.
     seed: f32,
 
     // The warp, as this frame's step: where the old picture moves to.

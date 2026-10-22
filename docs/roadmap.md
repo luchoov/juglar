@@ -51,7 +51,7 @@ Open: memory went from 12 MB to 100–115 MB, mostly GPU driver allocations. Rep
 
 **Status: done, pending a human verdict on "hypnotic".** Two half-size 16-bit float images take turns; each frame warps (zoom, rotation, swirl, wandering center) and fades the last picture by per-second rates, and the scene paints faintly into it and sharply on top. The composite applies a cosine palette, tone mapping, a contrast curve, dithering and a vignette. First scene: *Tide*, a ring drawn by the waveform whose trails flow outward. `Tab` shows the analysis view, keys 1–3 set the intensity, Windows' reduced-motion setting freezes the picture. GPU 0.095 ms per frame at 960×540 and 0.32 ms at 1920×1009 (GTX 1060); CPU unchanged from M3 (5.6–5.8% of one core, measured with the monitors on). Decisions D20–D25.
 
-Open: the flash and pattern limits hold by design but nothing measures the final picture yet (the limiter is M5). Audio `beat` and `novelty` are still 0. The scene was tuned on one evening of music; it needs judging on more genres.
+Open: the stripe limit holds by design only (the flash limit is measured since M5b). Audio `beat` and `novelty` came in M5a. The scene was tuned on one evening of music; it needs judging on more genres.
 
 ## M5 — Beats and bloom
 
@@ -63,6 +63,7 @@ Open: the flash and pattern limits hold by design but nothing measures the final
 **Status: in progress.**
 
 - **5a, onsets and beats: done.** Spectral flux in three regions with adaptive thresholds fills `beat` (kicks and snares) and `novelty` (a change of character). The analysis view (`Tab`) shows both as meters and a two-second timeline. Analysis cost 0.075 ms per frame (from 0.050). Decisions D27–D28, note `07-beats.md`. Checked on synthetic signals by tests and on three real recordings by statistics, not yet by ear across genres.
+- **5b, flash limiter: done.** Every frame passes through a GPU limiter before the screen: 8×8-pixel cells (at 1080 rows), at most four transitions of 0.1 in any second per cell, holding back only the cells that would break it, plus a guard against saturated red. Checked by unit tests and by GPU tests with adversarial strobes read back from the screen. Its first finding made Tide's ring calmer (D30). GPU 0.163 ms per frame at 960×540 (from 0.096), 0.529 ms maximized; CPU 6.75–6.79% of a core (from 6.05%). Decisions D29–D30, note `09-photosensitivity.md`. Not checked by an independent flash analyzer.
 
 ## M5.5 — Listening like a musician
 

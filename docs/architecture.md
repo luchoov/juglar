@@ -24,7 +24,10 @@ NowPlaying ──track info─────────────────�
                                                                              warp + fade the last picture, paint sources faintly
                                                                            2 bloom (downsample/upsample chain, M5)
                                                                            3 composite (sources sharp on top, palette,
-                                                                             tonemap, dither) ─► swapchain
+                                                                             tonemap) ─► candidate (rgba16f, linear)
+                                                                           4 flash limiter (per cell: count flashes,
+                                                                             hold back; per pixel: red guard,
+                                                                             dither) ─► swapchain
 ```
 
 ### Threads
@@ -95,7 +98,7 @@ Planned levels: random parameters per block (1), procedural composition (2), mus
 
 A single `intensity` value in `0..1` bounds the generator: motion speed, amplitude, reactivity, scene length, transition style (long crossfades vs. cuts on beats), symmetry complexity and saturation. Presets map to fixed points (`gentle ≈ 0.2`, `medium ≈ 0.5`, `strong ≈ 0.9`); `auto` derives it from energy, onset density, bass weight and novelty, smoothed over several seconds.
 
-A global flash limiter applies in every mode (see `docs/research/` for the numbers once the safety research lands).
+A global flash limiter applies in every mode and every view: at most two flashes in any second, in any 8×8-pixel cell, and no saturated red (`docs/research/focus-and-relaxation.md` section 9 for the numbers, `docs/theory/09-photosensitivity.md` for how).
 
 ## Platform traits
 

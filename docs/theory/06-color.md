@@ -51,13 +51,14 @@ Before that, a gentle **contrast curve** (ink² / (ink + 0.2)) lowers faint ink 
 
 A screen shows 256 levels per channel. In a slow gradient across a dark area (exactly what fading trails make) the color might change by one level every 30 pixels. The eye sees those steps as **bands**.
 
-The fix is counterintuitive: add noise. Before the final color is rounded to the screen's levels, the composite adds a random amount between −1 and +1 level, different for every pixel and every frame. A pixel whose true value is 3.3 now rounds to 3 most of the time and to 4 some of the time. On average, the screen shows 3.3, and the hard edge between 3 and 4 dissolves into a grain far too fine to notice.
+The fix is counterintuitive: add noise. Before the final color is rounded to the screen's levels, Juglar adds a random amount between −1 and +1 level, different for every pixel and every frame. A pixel whose true value is 3.3 now rounds to 3 most of the time and to 4 some of the time. On average, the screen shows 3.3, and the hard edge between 3 and 4 dissolves into a grain far too fine to notice.
 
 Details that matter:
 
 - The noise is the sum of two random numbers (**triangular** noise). A single random number would make the grain stronger at some brightness levels than at others, and a smooth gradient would show faint stripes of grain.
 - It is added in the screen's encoding (sRGB), where the 256 levels are, not in linear light.
 - It changes every frame, so the grain never forms a fixed pattern.
+- Since Milestone 5 it is the very last step, after the flash limiter (note 09), which needs the colors before rounding.
 
 ## 5. The background
 

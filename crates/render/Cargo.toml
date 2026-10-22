@@ -26,3 +26,7 @@ wgpu = { version = "30.0", default-features = false, features = ["metal"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wgpu = { version = "30.0", default-features = false, features = ["webgpu"] }
+
+[dev-dependencies]
+# Waits for the GPU in the limiter's tests.
+pollster = "1.0"

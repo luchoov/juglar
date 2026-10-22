@@ -8,6 +8,8 @@
 
 mod tide;
 
+use juglar_signals::WAVEFORM_POINTS;
+
 pub(crate) use tide::Tide;
 
 /// A cosine palette: `color(t) = a + b·cos(2π(c·t + d))`, per channel, in
@@ -56,4 +58,6 @@ pub(crate) struct Look {
     pub palette_shift: f32,
     /// How bright a given amount of ink looks.
     pub exposure: f32,
+    /// The waveform the scene draws, which may be calmer than the one heard.
+    pub waveform: [f32; WAVEFORM_POINTS],
 }

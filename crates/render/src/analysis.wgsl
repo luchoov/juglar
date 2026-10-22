@@ -131,8 +131,6 @@ fn fs_analysis(@builtin(position) position: vec4f) -> @location(0) vec4f {
         }
     }
 
-    if frame.encode_srgb > 0.5 {
-        c = linear_to_srgb(c);
-    }
-    return vec4f(c, 1.0);
+    // Linear light for the flash limiter, which encodes it for the screen.
+    return vec4f(clamp(c, vec3f(0.0), vec3f(1.0)), 1.0);
 }

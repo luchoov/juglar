@@ -80,7 +80,7 @@ The present moment stays crisp, in front of its own blurred history.
 
 | Signal | What it moves |
 |---|---|
-| bass | how fast the tunnel flows outward, the ring's size, and how much of the line the trails keep, so kicks leave echoes |
+| bass | how fast the tunnel flows outward, the ring's size (smoothed, since Milestone 5), and how much of the line the trails keep, so kicks leave echoes |
 | mid | how fast the picture turns (it reverses slowly, every 80 seconds) |
 | treble | the swirl that bends trails into spirals, and the line's thickness |
 | energy | the height of the wave on the ring |
@@ -101,7 +101,7 @@ The research note (`docs/research/focus-and-relaxation.md`) sets limits that app
 - **Few stripes.** Echoes fade within about a second, so at most a few rings are visible at once; the limit is five light/dark pairs.
 - **Reduced motion.** When Windows' "Show animations" setting is off, the scene sees silence and no time passing: a still ring. Juglar checks the setting once a second, so turning it off applies right away. `JUGLAR_REDUCED_MOTION=1` or `0` overrides it.
 
-What is **not** done yet: nothing measures the final picture. A limiter that counts actual flashes in what is about to be shown, and holds back a frame that would break the limit, comes with the beat detection in Milestone 5. Until then, these limits hold by design, not by measurement.
+When M4 was written, nothing measured the final picture; these limits held by design only. Milestone 5 added the flash limiter (note 09), which checks every frame before it is shown. Its first finding was about *Tide*: the ring's line, one or two pixels wide and bright, trembled with the waveform by a fraction of a pixel every frame and swept back and forth with every kick, so the pixels along it blinked several times a second. Since then the line draws a waveform smoothed in three stages and follows bass, energy and treble smoothed over 0.3 s; the kicks still speed up the flow. Note 09 tells the story.
 
 ## 9. What it costs
 
