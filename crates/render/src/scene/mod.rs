@@ -9,6 +9,7 @@
 //! the scenes are hand-made, each trying a different idea, and the arrow
 //! keys switch between them.
 
+mod corona;
 mod crystal;
 mod harmonograph;
 mod julia;
@@ -46,6 +47,7 @@ pub(crate) fn all() -> Vec<Box<dyn Scene>> {
         Box::new(julia::Julia::new()),
         Box::new(crystal::Crystal::new()),
         Box::new(vortex::Vortex::new()),
+        Box::new(corona::Corona::new()),
     ]
 }
 

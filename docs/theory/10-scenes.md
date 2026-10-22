@@ -77,6 +77,12 @@ Five arms and not more: regular stripes of more than five light and dark pairs a
 
 Rings turning against each other stretch whatever lies across them into thin filaments, the way stirring stretches cream in coffee. The first version turned them four times harder and kept the trails longer: the arms were torn into thin bright threads that slid across the pixels, and with music the limiter held up to 0.3% of the screen along them. Turning the rings a third as hard and fading the trails sooner leaves the arms whole, and the limiter holds nothing.
 
+## Corona: flames around an eclipse
+
+A dark disc, its rim a thin steady line, and around it a ring that gives off paint: each point of the ring as much as its band of the spectrum is loud, bass at the top and treble at the bottom, mirrored left to right like *Tide*'s ring. The warp carries the paint outward, as in a tunnel, and stirs it with turbulence, the curl of a churning noise field like *Oil*'s current, so the paint rises in tongues that curl and split, like the sun's corona seen in an eclipse. Along the ring, a slowly churning pattern of noise makes some angles give off more than others, so the flames come in tongues rather than as an even halo. The paint cools along the palette as it rises, from peach gold through pink and violet to blue, and the whole palette turns slowly, faster after a change of section. The bass makes the flames rise faster, beats surge them, the energy stirs them harder.
+
+Real flames flicker several times a second, which on a screen would be flashing. These follow the spectrum smoothed in three stages and a turbulence that changes over seconds: they lick, but don't flicker.
+
 ## Why nothing here flashes
 
 The lesson of note 09 applies to every scene: a bright, thin shape that trembles makes the pixels along it blink. So the levels that move the lights, the rose and the blobs are smoothed in three stages, like *Tide*'s waveform, and beats push motion (speed, zoom, current) rather than brightness. Colors turn slowly: a looping palette that cycled several times a second would flash.
@@ -100,6 +106,7 @@ It counts too much rather than too little: a thin line that *moves* across a blo
 | Julia | 0.47% | 0.16% | 0.05% / 0.006% |
 | Crystal | 0.38% | 0.000% | 0.08% / 0.000% |
 | Vortex | 0.08–0.12% | 0.002% | 0.03–0.04% / 0.000% |
+| Corona | 0.000% | 0.000% | 0.000% / 0.000% |
 
 The scenes with thin moving lines (Kaleido's rose, Harmonograph's figure, Julia's ring and its echoes) score highest, the soft ones nothing. The new scenes were tuned to stay at or below the old ones. The cell column should read zero, since the limiter never lets a cell break the rule; the few cells counted are most likely the capture's doing (it misses about two frames in five, and sees the screen after dithering and Windows' compositor), but this hasn't been proved.
 
@@ -118,6 +125,7 @@ GPU time per frame on the development PC (GTX 1060, release build, music playing
 | Julia | 0.242–0.250 ms | 0.796 ms |
 | Crystal | 0.243–0.249 ms | 0.804 ms |
 | Vortex | 0.245–0.249 ms | 0.830 ms |
+| Corona | 0.260–0.264 ms | 0.926 ms |
 
 ## Further reading
 
