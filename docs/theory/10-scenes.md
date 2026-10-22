@@ -1,8 +1,8 @@
-# 10 — Six scenes, six ideas
+# 10 — Twelve scenes, twelve ideas
 
 Milestone 4 had one scene, *Tide*. The feedback loop (note 05) and the palettes (note 06) can do much more than one calm ring, so before the generator of Milestone 6 starts combining building blocks, a few hand-made scenes try ideas that are deliberately different from each other: in what they draw, how the picture moves, and their colors. The left and right arrow keys switch between them; `JUGLAR_SCENE=oil` (or any name) picks the first one. The code is in `crates/render/src/scene/`, one `.rs` and one `.wgsl` file per scene.
 
-They are sketches, tuned by eye on one evening of music. Each one passes through the flash limiter like everything else (note 09), and with music it held back nothing in any of them (0.0% of the screen over 18 to 22 s each, in their final versions).
+The first five sketches (*Orbits* to *Harmonograph*) came first, tuned by eye on one evening of music. Six more followed (*Julia* to *Lenses*), pushed further toward the psychedelic: two fractals computed by the loop itself, a vortex, flames, melting paint and lenses. None of them has been judged by eye on a real screen yet, only from screenshots. Each passes through the flash limiter like everything else (note 09); how hard each one makes it work, and a check for the flicker it can't see, are at the end of this note.
 
 ## What a scene is
 
@@ -10,7 +10,7 @@ Every scene runs on the same two steps (note 05): the **feedback** step warps an
 
 - `sources`: what it paints into the trails;
 - `overlay`: what it paints sharply on top;
-- `warp`: a chance to change where each point's old paint comes from, after the usual zoom and turn. *Tide* and *Orbits* leave it alone; *Kaleido* folds it into mirror images; *Oil* adds a current.
+- `warp`: a chance to change where each point's old paint comes from, after the usual zoom and turn. *Tide* and *Orbits* leave it alone; *Kaleido* folds it into mirror images; *Oil* adds a current; *Julia* replaces it with a step of a fractal's rule. Most of what is new in the later scenes is a new warp.
 - each frame, a **look**: the zoom, turn and fade, eight numbers its shader reads ("knobs"), and its palette.
 
 ## Looping palettes
@@ -65,9 +65,9 @@ Near the fractal's edge, bands get thinner than a pixel and move fast when c mov
 
 *Crystal* uses the same trick as *Julia* with a different step. Each frame, the old picture is turned, folded into five mirrored wedges (as in *Kaleido*), moved out from the middle and shrunk to about half its size. Read backwards, as the warp is (note 05), that puts a small copy of the whole old picture in each of five places around a ring. The next frame copies those copies, and so on: a soft ring drawn by the waveform in the middle comes back as five rings, then twenty-five smaller ones, a hundred and twenty-five smaller still, a snowflake of rings that is a fractal. Mathematicians call a set of shrinking copies like this an *iterated function system*; here the loop runs it, one generation per frame.
 
-Each generation is fainter than the one before (0.8 of its ink) and a step further along the palette, so the crystal is colored by generation: the newest ring in the middle, the oldest copies, smallest and darkest, at the rim. The mids and beats twist the fold, which turns every generation by a little more than the one inside it, so the crystal twists into spirals and back; the bass pushes the copies out and in, and the crystal breathes.
+Each generation is fainter than the one before and a step further along the palette, so the crystal is colored by generation: the newest ring in the middle, the oldest copies, smallest and darkest, at the rim. The mids and beats twist the fold, which turns every generation by a little more than the one inside it, so the crystal twists into spirals and back; the bass pushes the copies out and in, and the crystal breathes.
 
-Small copies of a moving shape are where flicker finer than a cell would hide. So the ring is soft and wide, the fold changes slowly, and the generations fade fast: with them fading to 0.86 instead of 0.8, the deeper copies filled the crystal with a carpet of tiny rings and the check below counted four times more.
+Small copies of a moving shape are where flicker finer than a cell would hide. So the ring is soft and wide, the fold changes slowly, and the generations fade fast (to 0.76 of their ink each). With them fading to 0.86, the deeper copies filled the crystal with a carpet of tiny rings and the check below counted four times more. And because every generation turns a little more than the one inside it, the smallest copies at the rim move fastest when the twist changes: with the twist twice as fast as now, the limiter held up to 0.2% of the screen there with music.
 
 ## Vortex: rings that turn against each other
 
@@ -93,7 +93,7 @@ Two choices keep it calm where it could flash. The band follows the spectrum smo
 
 A thin coat of color is laid over the whole picture every frame, from a marble pattern (noise bent by more noise) that drifts. Four lenses wander over it, each one bending the picture under it, every frame: two magnify it and turn it one way, two shrink it and turn it the other. A lens drawn once would just show a bulge. In the loop, the bend is repeated every frame, so a magnifying lens keeps blowing the marble out from its middle and a shrinking one keeps drawing it in, and the colors stream between them in swirls, like an oil slick stirred under four drops of water. A faint ring marks each lens's glass edge. Each lens bends as hard as its band (bass, mids, treble, overall level), and beats make all four bend harder for a moment; nothing gets brighter.
 
-The marble first showed a straight seam across the picture, which turned out to be in the noise every scene with noise used: a random value per point of a grid, made with the usual shortcut of taking the fraction of sin(x) × 43758.5. The GPU computed some grid points slightly differently depending on which neighboring cell asked, and the huge multiplier turned that rounding difference into a completely different value. The noise is now shared by all scenes and hashes integers instead, so both neighbors agree exactly. It costs *Oil* 0.03 ms more per frame.
+The marble first showed a straight seam across the picture, which turned out to be in the noise every scene with noise used: a random value per point of a grid, made with the usual shortcut of taking the fraction of sin(x) × 43758.5. The GPU computed some grid points slightly differently depending on which neighboring cell asked, and the huge multiplier turned that rounding difference into a completely different value. The noise is now shared by all scenes and hashes integers instead, so both neighbors agree exactly. It costs *Oil* 0.017 ms more per frame (0.247 to 0.264 ms).
 
 ## Why nothing here flashes
 
@@ -103,45 +103,52 @@ The research's settings for focus and relaxation (slow motion, low saturation) a
 
 ## Checking for flicker finer than a cell
 
-The limiter watches cells of 8×8 pixels at 1080 rows (4×4 in a 960×540 window), and flicker much finer than that, a dot or a thin line blinking, changes a cell's mean too little to be seen (note 09). Scenes must not draw it, and with fractals, folds and fine bands that is easy to get wrong. So the new scenes were checked from outside: a script captured the window as fast as it could (about 45 frames per second) for 15 seconds, and counted transitions with the limiter's own rule (swings of 0.1 back from the last extreme, at most four in any second) in every block of 2×2 pixels, and again in every limiter cell.
+The limiter watches cells of 8×8 pixels at 1080 rows (4×4 in a 960×540 window), and flicker much finer than that, a dot or a thin line blinking, changes a cell's mean too little to be seen (note 09). Scenes must not draw it, and with fractals, folds and fine bands that is easy to get wrong. So every scene was checked from outside: a script captured the window as fast as it could (about 46 frames per second, so it misses about two frames in five) for 20 seconds, turned each pixel into linear luminance as the limiter does, and counted transitions with the limiter's own rule (swings of 0.1 back from the last extreme, at most four in any second) in every block of 2×2 pixels, and again in every limiter cell. It also marks on a picture where the rule broke.
 
 It counts too much rather than too little: a thin line that *moves* across a block counts the same as one that blinks in place, so every scene with sharp lines in motion scores above zero. Its numbers are for comparing scenes, not a verdict. The capture tool is not part of Juglar; it lives with the other measuring scripts outside the repository.
 
-| Scene | 2×2 blocks ever breaking the rule, music | at the synthetic drop | cells, music / drop |
-|---|---|---|---|
-| Tide | 0.07% | 0.12% | 0.000% / 0.000% |
-| Orbits | 0.000% | 0.000% | 0.000% / 0.000% |
-| Kaleido | 2.8% | 1.1% | 0.29% / 0.24% |
-| Oil | 0.002% | 0.000% | 0.000% / 0.000% |
-| Plasma | 0.000% | 0.000% | 0.000% / 0.000% |
-| Harmonograph | 0.95% | 0.77% | 0.17% / 0.14% |
-| Julia | 0.47% | 0.16% | 0.05% / 0.006% |
-| Crystal | 0.38% | 0.000% | 0.08% / 0.000% |
-| Vortex | 0.08–0.12% | 0.002% | 0.03–0.04% / 0.000% |
-| Corona | 0.000% | 0.000% | 0.000% / 0.000% |
-| Melt | 0.002% | 0.000% | 0.000% / 0.000% |
-| Lenses | 0.003–0.008% | 0.000% | 0.000% / 0.000% |
+Every scene at strong intensity (0.9), in one session, with the same playlist and with the synthetic song from 4 s before its drop. "Held" is the limiter's own count, read twice a second, at its highest.
 
-The scenes with thin moving lines (Kaleido's rose, Harmonograph's figure, Julia's ring and its echoes) score highest, the soft ones nothing. The new scenes were tuned to stay at or below the old ones. The cell column should read zero, since the limiter never lets a cell break the rule; the few cells counted are most likely the capture's doing (it misses about two frames in five, and sees the screen after dithering and Windows' compositor), but this hasn't been proved.
+| Scene | 2×2 blocks ever breaking the rule, music / drop | cells, music / drop | held, music / drop |
+|---|---|---|---|
+| Tide | 0.03% / 0.06% | 0 / 0 | 0 / 0 |
+| Orbits | 0 / 0 | 0 / 0 | 0 / 0 |
+| Kaleido | 2.7% / 1.2% | 0.04% / 0.01% | 0 / 0 |
+| Oil | 0 / 0 | 0 / 0 | 0 / 0 |
+| Plasma | 0 / 0 | 0 / 0 | 0 / 0 |
+| Harmonograph | 2.7% / 0.7% | 0.10% / 0.006% | **0.2%** / 0 |
+| Julia | 0.43% / 0.12% | 0.006% / 0 | 0 / 0 |
+| Crystal | 0.003% / 0 | 0 / 0 | 0 / 0 |
+| Vortex | 0.15% / 0.003% | 0.06% / 0 | 0 / 0 |
+| Corona | 0 / 0 | 0 / 0 | 0 / 0 |
+| Melt | 0.006% / 0 | 0 / 0 | 0 / 0 |
+| Lenses | 0.008% / 0 | 0 / 0 | 0 / 0 |
+
+The scenes with thin moving lines (Kaleido's rose, Harmonograph's figure, Julia's ring and its echoes) score highest, the soft ones nothing; the new scenes stay at or below the old ones. Two findings came out of the check itself:
+
+- **The limiter is busier than its count shows.** Its share is read twice a second and shown with one decimal, so a few cells held for a moment read 0.0%. The check sees them: in a first version of *Vortex* the title said 0.0% while the screenshots showed the limiter's square specks along the arms (section *Vortex*). With this playlist, *Harmonograph*, unchanged since its first version, made the limiter hold up to 0.2% of the screen where its strands cross; it held nothing on the evening it was made. It needs retuning.
+- **Cells at the limit look like cells over it.** The cell column should read zero, since the limiter never lets a cell break the rule. A cell the limiter keeps exactly at its limit makes its fifth transition exactly a second after its first, and the capture's clock, a frame or so off the moment each frame was drawn, then sees five in slightly less than a second. The check allows 0.05 s for that; the few cells it still counts are most likely the same thing with a larger slip, so they mark where the limiter is at work, but this hasn't been proved. An early version of the check also averaged colors before turning them into light (the limiter does the opposite), which made sharp lines look like flashing cells; the numbers above are from the corrected version.
 
 ## What they cost
 
-GPU time per frame on the development PC (GTX 1060, release build, music playing, with bloom). The first six were measured once, over 20 to 22 s; the newer ones twice, over 15 s each, the range shown. Every scene costs the CPU the same (handing a frame to the driver costs the same whatever it holds): 7.8% of one core for *Tide* and for every new scene alike, measured in the same session.
+GPU time per frame on the development PC (GTX 1060, release build, music playing, with bloom). The first six were measured once when they were made, over 20 to 22 s; the newer ones, and *Oil* again after it changed noise, over 15 s, the range of two runs where there were two. Every scene costs the CPU the same, since handing a frame to the driver costs the same whatever it holds: 7.8 to 8.0% of one core for *Tide* and every new scene alike, measured in the same session (7.3% for *Tide* in an earlier session; the difference is between sessions, not scenes).
 
 | Scene | 960×540 | maximized, 1920×1009 |
 |---|---|---|
-| Tide | 0.222 ms | 0.722 ms |
+| Tide | 0.218–0.222 ms | 0.722 ms |
 | Orbits | 0.256 ms | |
 | Kaleido | 0.245 ms | |
-| Oil | 0.247 ms (0.276 ms with the shared noise) | |
+| Oil | 0.264 ms | 0.904 ms |
 | Plasma | 0.237 ms | |
 | Harmonograph | 0.412 ms | |
 | Julia | 0.242–0.250 ms | 0.796 ms |
-| Crystal | 0.243–0.249 ms | 0.804 ms |
+| Crystal | 0.247–0.249 ms | 0.800–0.804 ms |
 | Vortex | 0.245–0.249 ms | 0.830 ms |
-| Corona | 0.260–0.264 ms | 0.926 ms |
+| Corona | 0.280 ms | 0.996 ms |
 | Melt | 0.241–0.243 ms | 0.829 ms |
 | Lenses | 0.257–0.260 ms | 0.906 ms |
+
+The fractals cost no more than a tunnel: one step of z² + c, or a fold, is a handful of arithmetic per pixel, and the loop does the repeating. The noise-driven scenes (*Oil*, *Corona*, *Lenses*) cost most among the new ones: each pixel evaluates the noise field several times per frame.
 
 ## Further reading
 
@@ -149,3 +156,5 @@ GPU time per frame on the development PC (GTX 1060, release build, music playing
 - Robert Bridson, Jim Hourihan and Marcus Nordenstam, "Curl-Noise for Procedural Fluid Flow", SIGGRAPH 2007: why the curl of a noise field moves like a liquid.
 - Inigo Quilez, "Palettes" (iquilezles.org): cosine palettes, looping and not.
 - Anthony Ashton, *Harmonograph: A Visual Guide to the Mathematics of Music* (2003): the instrument, and why simple ratios draw closed figures.
+- Heinz-Otto Peitgen and Peter Richter, *The Beauty of Fractals* (1986): Julia sets and the Mandelbrot set, escape times and their colors.
+- Michael Barnsley, *Fractals Everywhere* (1988): iterated function systems, the shrinking copies behind *Crystal*.
