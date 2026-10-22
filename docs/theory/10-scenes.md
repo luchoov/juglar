@@ -47,20 +47,57 @@ A Victorian instrument: one pendulum swings the pen, another the paper, and the 
 
 The figure is 128 points computed on the CPU and sent in the slots the waveform normally uses. Every pixel measures its distance to all 127 segments, which is the most expensive drawing in Juglar: drawn at full size on top of the trails as well, it took 1.2 ms of GPU time per frame. Drawn only into the half-size trails it takes 0.41 ms, and the bloom gives the soft line its glow back. The first version drew nine turns of the figure: the strands crowded the middle, the line looked like a polygon, and the limiter held 0.5% of the screen where many strands crossed back and forth. Four turns, drifting more slowly, hold nothing.
 
+## Julia: a fractal, one step per frame
+
+A Julia set comes from one rule: take a point z of the plane, square it and add a fixed number c (both as complex numbers, so squaring doubles the angle and squares the distance from the middle), and repeat. Some points run off to infinity, others stay forever; the border between them is the fractal. The usual way to draw it repeats the rule a few hundred times for every pixel, every frame.
+
+*Julia* doesn't. Its warp *is* the rule: each pixel takes its old paint from z² + c. Points whose next step leaves the picture get fresh paint. A point one step from leaving shows that paint one frame later, a point two steps away two frames later, and so on: after a few dozen frames, every pixel shows how many steps its point needs to escape, computed by the loop itself, one step per frame, for the price of one sample. Paint moves along the palette with every step, so the steps come out as bands of color, and points that never escape stay black: the filled-in Julia set.
+
+Anything else painted into the picture is copied back through the steps too. A ring drawn by the waveform, outside the fractal, comes back as nested, ever smaller and more crinkled copies of itself hugging the fractal's edge.
+
+The music moves c, slowly, around a circle where the most intricate Julia sets lie (near the edge of the Mandelbrot set, which maps them all). The mids and beats speed it up, the bass moves it in and out, a change of section sends it further. Each new c reshapes the whole fractal, and the bands flow as it changes.
+
+The fade and the color change here are per frame, not per second, since each frame is one step. At a lower frame rate the picture looks the same and settles more slowly.
+
+Near the fractal's edge, bands get thinner than a pixel and move fast when c moves. Three things keep that from flickering: c moves slowly and smoothly; the paint fades with every step, so the deepest steps, where bands are thinnest, are dim; and the palette was chosen for colors of similar brightness (linear luminance 0.11 to 0.41), so bands sliding past a point change its hue more than its light. A first version also drew the ring inside the fractal, where its paint circulated through the black interior: beautiful, but it shimmered six to twenty times more (see "Checking for flicker finer than a cell" below).
+
 ## Why nothing here flashes
 
 The lesson of note 09 applies to every scene: a bright, thin shape that trembles makes the pixels along it blink. So the levels that move the lights, the rose and the blobs are smoothed in three stages, like *Tide*'s waveform, and beats push motion (speed, zoom, current) rather than brightness. Colors turn slowly: a looping palette that cycled several times a second would flash.
 
 The research's settings for focus and relaxation (slow motion, low saturation) are not what these sketches are for. They remain the target for those modes, which arrive with the settings in Milestone 7.
 
-| Scene | GPU time per frame (960×540, with music, with bloom, one run of 20 to 22 s) |
-|---|---|
-| Tide | 0.222 ms |
-| Orbits | 0.256 ms |
-| Kaleido | 0.245 ms |
-| Oil | 0.247 ms |
-| Plasma | 0.237 ms |
-| Harmonograph | 0.412 ms |
+## Checking for flicker finer than a cell
+
+The limiter watches cells of 8×8 pixels at 1080 rows (4×4 in a 960×540 window), and flicker much finer than that, a dot or a thin line blinking, changes a cell's mean too little to be seen (note 09). Scenes must not draw it, and with fractals, folds and fine bands that is easy to get wrong. So the new scenes were checked from outside: a script captured the window as fast as it could (about 45 frames per second) for 15 seconds, and counted transitions with the limiter's own rule (swings of 0.1 back from the last extreme, at most four in any second) in every block of 2×2 pixels, and again in every limiter cell.
+
+It counts too much rather than too little: a thin line that *moves* across a block counts the same as one that blinks in place, so every scene with sharp lines in motion scores above zero. Its numbers are for comparing scenes, not a verdict. The capture tool is not part of Juglar; it lives with the other measuring scripts outside the repository.
+
+| Scene | 2×2 blocks ever breaking the rule, music | at the synthetic drop | cells, music / drop |
+|---|---|---|---|
+| Tide | 0.07% | 0.12% | 0.000% / 0.000% |
+| Orbits | 0.000% | 0.000% | 0.000% / 0.000% |
+| Kaleido | 2.8% | 1.1% | 0.29% / 0.24% |
+| Oil | 0.002% | 0.000% | 0.000% / 0.000% |
+| Plasma | 0.000% | 0.000% | 0.000% / 0.000% |
+| Harmonograph | 0.95% | 0.77% | 0.17% / 0.14% |
+| Julia | 0.47% | 0.16% | 0.05% / 0.006% |
+
+The scenes with thin moving lines (Kaleido's rose, Harmonograph's figure, Julia's ring and its echoes) score highest, the soft ones nothing. The new scenes were tuned to stay at or below the old ones. The cell column should read zero, since the limiter never lets a cell break the rule; the few cells counted are most likely the capture's doing (it misses about two frames in five, and sees the screen after dithering and Windows' compositor), but this hasn't been proved.
+
+## What they cost
+
+GPU time per frame on the development PC (GTX 1060, release build, music playing, with bloom). The first six were measured once, over 20 to 22 s; the newer ones twice, over 15 s each, the range shown. Every scene costs the CPU the same (handing a frame to the driver costs the same whatever it holds): 7.8% of one core for *Tide* and for *Julia* alike, in the same session.
+
+| Scene | 960×540 | maximized, 1920×1009 |
+|---|---|---|
+| Tide | 0.222 ms | 0.722 ms |
+| Orbits | 0.256 ms | |
+| Kaleido | 0.245 ms | |
+| Oil | 0.247 ms | |
+| Plasma | 0.237 ms | |
+| Harmonograph | 0.412 ms | |
+| Julia | 0.242–0.250 ms | 0.796 ms |
 
 ## Further reading
 

@@ -10,6 +10,7 @@
 //! keys switch between them.
 
 mod harmonograph;
+mod julia;
 mod kaleido;
 mod oil;
 mod orbits;
@@ -40,6 +41,7 @@ pub(crate) fn all() -> Vec<Box<dyn Scene>> {
         Box::new(oil::Oil::new()),
         Box::new(plasma::Plasma::new()),
         Box::new(harmonograph::Harmonograph::new()),
+        Box::new(julia::Julia::new()),
     ]
 }
 
