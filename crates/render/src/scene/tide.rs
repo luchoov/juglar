@@ -12,6 +12,8 @@
 //! | energy | the wave's height                                             |
 //! | mood   | energy smoothed over seconds: how long trails last and how    |
 //! |        | warm the colors get                                           |
+//! | beat   | a surge in the outward flow                                   |
+//! | novelty| after a change of section, longer trails and cooler colors    |
 //!
 //! Every number below is a matter of taste, tuned by eye on real music and
 //! on the synthetic song. Changing the scene means changing them, or the
@@ -49,8 +51,12 @@ const MOOD_SECONDS: f32 = 3.0;
 /// Seconds each of the waveform's three smoothing stages takes to follow.
 /// One stage would leave a random step every frame, only smaller.
 const WAVE_SECONDS: f32 = 0.25;
-/// Seconds over which the ring's size, height and thickness follow the music.
-const RING_SECONDS: f32 = 0.3;
+/// Seconds each of the three smoothing stages of the ring's size, height
+/// and thickness takes. With one stage of 0.3 s, kicks twice a second still
+/// swung the line by a pixel or two, and the limiter held a few spots.
+const RING_SECONDS: f32 = 0.2;
+/// Seconds each smoothing stage of beat and novelty takes.
+const EVENT_SECONDS: f32 = 0.12;
 
 pub(crate) struct Tide {
     /// Time that passes only while motion is allowed; the slow wandering and
@@ -61,12 +67,14 @@ pub(crate) struct Tide {
     /// The waveform, smoothed over time in three stages.
     waveform: [[f32; WAVEFORM_POINTS]; 3],
     /// Bass, energy and treble as the ring follows them, smoothed.
-    ring: [f32; 3],
+    ring: [[f32; 3]; 3],
+    /// Beat and novelty, smoothed in three stages.
+    events: [[f32; 2]; 3],
 }
 
 impl Tide {
     pub fn new() -> Self {
-        Self { clock: 0.0, mood: 0.0, waveform: [[0.0; WAVEFORM_POINTS]; 3], ring: [0.0; 3] }
+        Self { clock: 0.0, mood: 0.0, waveform: [[0.0; WAVEFORM_POINTS]; 3], ring: [[0.0; 3]; 3], events: [[0.0; 2]; 3] }
     }
 
 }
@@ -89,11 +97,9 @@ impl Scene for Tide {
         self.clock += dt * motion;
         // With reduced motion the line keeps its shape: nothing follows.
         let waveform = smooth3(&mut self.waveform, &s.waveform, dt * motion, WAVE_SECONDS);
-        let follow_ring = 1.0 - (-dt * motion / RING_SECONDS).exp();
-        for (smooth, raw) in self.ring.iter_mut().zip([s.bass, s.energy, s.treble]) {
-            *smooth += (raw - *smooth) * follow_ring;
-        }
-        let [ring_bass, ring_energy, ring_treble] = self.ring;
+        let [ring_bass, ring_energy, ring_treble] =
+            smooth3(&mut self.ring, &[s.bass, s.energy, s.treble], dt * motion, RING_SECONDS);
+        let [beat, novelty] = smooth3(&mut self.events, &[s.beat, s.novelty], dt * motion, EVENT_SECONDS);
 
         // Intensity scales every movement: 0 is calm, 1 is strong.
         let live = motion * (0.4 + 1.2 * s.intensity.clamp(0.0, 1.0));
@@ -102,12 +108,13 @@ impl Scene for Tide {
         let swirl_direction = (self.clock * TAU / 53.0).cos();
 
         // The tunnel flows outward fast enough for trails to reach the
-        // edges before they fade, faster with the bass.
-        let zoom_per_second = live * (0.5 + 1.4 * s.bass);
+        // edges before they fade, faster with the bass, and surges on a beat.
+        let zoom_per_second = live * (0.5 + 1.4 * s.bass + 1.2 * beat);
         let turn_per_second = live * spin_direction * (0.05 + 0.25 * s.mid);
         let swirl_per_second = live * swirl_direction * (0.1 + 0.6 * s.treble);
-        // Trails last longer when the music is full.
-        let persistence = 0.22 + 0.22 * self.mood;
+        // Trails last longer when the music is full, and for a while after
+        // the music changes character.
+        let persistence = 0.22 + 0.22 * self.mood + 0.15 * novelty;
 
         Look {
             center: [
@@ -133,7 +140,9 @@ impl Scene for Tide {
             palette: PALETTE,
             // Quiet music draws in blue, full music in sand; a slow sway
             // keeps the color alive in between.
-            palette_shift: 0.85 - 0.8 * self.mood + 0.06 * (self.clock * TAU / 120.0).sin(),
+            // A change of section leans the colors toward the cool end for
+            // a few seconds.
+            palette_shift: 0.85 - 0.8 * self.mood + 0.15 * novelty + 0.06 * (self.clock * TAU / 120.0).sin(),
             palette_wrap: false,
             exposure: 1.3,
             bloom: 0.35,

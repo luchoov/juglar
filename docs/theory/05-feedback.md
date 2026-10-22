@@ -101,7 +101,7 @@ The research note (`docs/research/focus-and-relaxation.md`) sets limits that app
 - **Few stripes.** Echoes fade within about a second, so at most a few rings are visible at once; the limit is five light/dark pairs.
 - **Reduced motion.** When Windows' "Show animations" setting is off, the scene sees silence and no time passing: a still ring. Juglar checks the setting once a second, so turning it off applies right away. `JUGLAR_REDUCED_MOTION=1` or `0` overrides it.
 
-When M4 was written, nothing measured the final picture; these limits held by design only. Milestone 5 added the flash limiter (note 09), which checks every frame before it is shown. Its first finding was about *Tide*: the ring's line, one or two pixels wide and bright, trembled with the waveform by a fraction of a pixel every frame and swept back and forth with every kick, so the pixels along it blinked several times a second. Since then the line draws a waveform smoothed in three stages and follows bass, energy and treble smoothed over 0.3 s; the kicks still speed up the flow. Note 09 tells the story.
+When M4 was written, nothing measured the final picture; these limits held by design only. Milestone 5 added the flash limiter (note 09), which checks every frame before it is shown. Its first finding was about *Tide*: the ring's line, one or two pixels wide and bright, trembled with the waveform by a fraction of a pixel every frame and swept back and forth with every kick, so the pixels along it blinked several times a second. Since then the line draws a waveform smoothed in three stages and follows bass, energy and treble smoothed the same way; the kicks still speed up the flow. Note 09 tells the story.
 
 ## 9. What it costs
 
