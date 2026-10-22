@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Juglar Hears</title>
+<meta name="description" content="An interactive explanation of how Juglar turns sound into numbers: waves, the FFT, windowing, log bands and envelopes.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #09090b; --surface: #0f0f12; --line: #1c1c21; --line-strong: #2a2a31;
+    --fg: #d4d4d8; --strong: #f4f4f5; --muted: #71717a;
+    --accent: #e4e4e7; --raw: #3a3a42;
+    --bass: #5b7fa6; --mid: #5f9488; --treble: #a39a78;
+    --code-bg: #0c0c0f;
+    --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.75 var(--mono); -webkit-font-smoothing: antialiased; }
+  main { max-width: 720px; margin: 0 auto; padding: 72px 16px 112px; }
+  header .meta { color: var(--muted); margin: 0 0 20px; }
+  h1 { font-size: 28px; line-height: 1.2; font-weight: 600; color: var(--strong); margin: 0 0 20px; letter-spacing: -0.02em; }
+  h2 { font-size: 16px; line-height: 1.4; font-weight: 600; color: var(--strong); margin: 72px 0 14px; }
+  h2 .num { color: var(--muted); font-weight: 400; margin-right: 14px; }
+  p { margin: 0 0 16px; }
+  .lede { color: var(--muted); }
+  b, strong { color: var(--strong); font-weight: 500; }
+  em { font-style: normal; color: var(--strong); }
+  code { font: inherit; color: var(--strong); }
+  figure { margin: 28px 0; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 2px; }
+  canvas { display: block; width: 100%; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 24px; margin-bottom: 16px; font-size: 12px; }
+  .control label { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 2px; }
+  .control label output { color: var(--fg); font-variant-numeric: tabular-nums; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 16px; background: transparent; margin: 0; }
+  input[type=range]::-webkit-slider-runnable-track { height: 1px; background: var(--line-strong); }
+  input[type=range]::-moz-range-track { height: 1px; background: var(--line-strong); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 9px; margin-top: -4px; background: var(--strong); border: 0; border-radius: 0; }
+  input[type=range]::-moz-range-thumb { width: 9px; height: 9px; background: var(--strong); border: 0; border-radius: 0; }
+  input[type=range]:focus-visible { outline: 1px solid var(--muted); outline-offset: 2px; }
+  input[type=checkbox] { accent-color: var(--strong); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; font-size: 12px; margin-bottom: 16px; color: var(--muted); }
+  select, button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 2px; padding: 3px 10px; }
+  button { cursor: pointer; }
+  button:hover, select:hover { border-color: var(--muted); }
+  .readout { display: flex; flex-wrap: wrap; gap: 6px 24px; font-size: 12px; margin-top: 12px; color: var(--muted); }
+  .readout b { font-variant-numeric: tabular-nums; }
+  .swatch { display: inline-block; width: 8px; height: 8px; margin-right: 8px; vertical-align: 0; }
+  figcaption { font-size: 12px; line-height: 1.6; color: var(--muted); margin-top: 12px; }
+  details { margin: 16px 0; border: 1px solid var(--line); background: var(--code-bg); }
+  summary { cursor: pointer; padding: 10px 14px; font-size: 12px; color: var(--muted); }
+  summary:hover { color: var(--fg); }
+  pre { margin: 0; padding: 4px 16px 16px; overflow-x: auto; font: 12px/1.6 var(--mono); color: var(--fg); }
+  .src { font-size: 12px; color: var(--muted); padding: 0 16px 12px; margin: 0; }
+  footer { margin-top: 88px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  @media (max-width: 520px) { h1 { font-size: 22px; } body { font-size: 13px; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <p class="meta">juglar / explorables / 01</p>
+  <h1>How Juglar hears</h1>
+  <p class="lede">Before Juglar can draw anything, it has to turn sound into a handful of numbers that move like music. This page runs the same algorithms as Juglar's <code>dsp</code> crate, so you can poke at them.</p>
+</header>
+
+<h2><span class="num">01</span>A sound is a sum of waves</h2>
+<p>Your speakers play one long list of numbers, 48,000 per second. That list can always be described as several sine waves of different frequencies added together. Below are three tones and some noise. The graph shows the 2048 samples Juglar analyzes at once, about 43 milliseconds.</p>
+<figure>
+  <div class="controls" id="tone-controls"></div>
+  <canvas id="wave" height="180" aria-label="Waveform of the current analysis window"></canvas>
+  <figcaption>Dim: the raw samples. White: the same samples after the Hann window fades the edges to zero (section 03). Dashed: the window itself.</figcaption>
+</figure>
+
+<h2><span class="num">02</span>The FFT finds the waves</h2>
+<p>The Fourier transform asks, for every frequency, “how much of this is in the signal?” It multiplies the samples by a wave of that frequency and adds up the result: matching waves add up, others cancel out. The <em>fast</em> Fourier transform gets the same answer for all 1025 frequencies in about 22,000 steps instead of 4 million. Move the tones above and watch their peaks move here.</p>
+<figure>
+  <div class="row">
+    <label>FFT size <select id="fft-size"><option>1024</option><option selected>2048</option><option>4096</option></select></label>
+    <label><input type="checkbox" id="windowed" checked> Hann window</label>
+    <span id="bin-info"></span>
+  </div>
+  <canvas id="spectrum" height="240" aria-label="Spectrum of the current window"></canvas>
+  <div class="readout" id="band-readout"></div>
+  <figcaption>Horizontal axis: frequency on a log scale, 20 Hz to 20 kHz. Vertical: level in dB. Shaded: the bass, mid and treble bands Juglar sums into.</figcaption>
+</figure>
+<details>
+  <summary>Optional, for the curious: the real Rust code for one stage (<code>crates/dsp/src/fft.rs</code>)</summary>
+<pre>// Merge pairs of half-size transforms into full-size ones: sizes 2, 4, ..., n.
+let mut size = 2;
+while size &lt;= self.n {
+    let half = size / 2;
+    let stride = self.n / size;
+    for block in buf.chunks_exact_mut(size) {
+        let (evens, odds) = block.split_at_mut(half);
+        for (k, (even, odd)) in evens.iter_mut().zip(odds.iter_mut()).enumerate() {
+            let twisted = *odd * self.twiddles[k * stride];
+            *odd = *even - twisted;
+            *even = *even + twisted;
+        }
+    }
+    size *= 2;
+}</pre>
+  <p class="src">Each pass doubles the size of the transforms it has built. After log2(n) passes, the whole buffer is the spectrum.</p>
+</details>
+
+<h2><span class="num">03</span>Why the edges have to fade</h2>
+<p>The FFT assumes its 2048 samples repeat forever. Real audio almost never ends where it started, so the imaginary repetition has a jump, and a jump contains every frequency. Turn the <b>Hann window</b> off above: each clean peak smears into a wide skirt that buries quiet sounds. Fading the edges in and out removes the jump. The price is a slightly wider peak.</p>
+<p>Now change the <b>FFT size</b>. A bigger window separates frequencies better (look at two low tones close together), but it averages over more time, so the visuals would react later. That trade-off can't be escaped; Juglar uses 2048.</p>
+
+<h2><span class="num">04</span>Thirty-two bands, the way we hear</h2>
+<p>We hear pitch by ratio: 100 to 200 Hz and 1000 to 2000 Hz both sound like one octave. So Juglar groups the bins into 32 bands that are evenly spaced on a <em>log</em> axis. Look at the leftmost bars: below 100 Hz there are only a few bins to share among several bands, so neighbors show the same height. Switch to 4096 and they separate.</p>
+<figure>
+  <canvas id="bands" height="170" aria-label="32 log-spaced bands"></canvas>
+  <figcaption>Each bar sums the power of its bins. Bars are colored by the band they fall in.</figcaption>
+</figure>
+
+<h2><span class="num">05</span>Envelopes: jump, then breathe</h2>
+<p>Even after all that, the level changes nervously from one frame to the next. Visuals driven directly by it tremble. An envelope follower smooths it unevenly: it rises fast (<b>attack</b>) and falls slowly (<b>release</b>). Below is a drum pattern at 120 BPM. Make the release very short and the envelope copies the jitter; make it long and the beats blur together.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>Attack <output id="attack-out"></output></label><input type="range" id="attack" min="1" max="200" value="15"></div>
+    <div class="control"><label>Release <output id="release-out"></output></label><input type="range" id="release" min="10" max="1500" value="250"></div>
+  </div>
+  <div class="row"><button id="play" type="button">Pause</button><span>Dim: raw level per frame. White: the envelope.</span></div>
+  <canvas id="envelope" height="200" aria-label="Raw drum level and its envelope over the last four seconds"></canvas>
+</figure>
+<details>
+  <summary>Optional, for the curious: the real Rust code (<code>crates/dsp/src/smoothing.rs</code>)</summary>
+<pre>pub fn update(&amp;mut self, input: f32, dt: f32) -&gt; f32 {
+    let tau = if input &gt; self.value { self.attack } else { self.release };
+    // Exact exponential smoothing for this `dt`, not the frame-rate
+    // dependent `value += (input - value) * k`.
+    let k = if tau &gt; 0.0 { 1.0 - (-dt / tau).exp() } else { 1.0 };
+    self.value += (input - self.value) * k;
+    self.value
+}</pre>
+  <p class="src">Using the real elapsed time <code>dt</code> makes the smoothing look the same at 30, 60 or 144 frames per second.</p>
+</details>
+
+<footer>
+  Part of <b>Juglar</b>, a music visualizer that listens like a musician. The JavaScript here mirrors the Rust in <code>crates/dsp</code>; theory notes in <code>docs/theory/02-fft.md</code> and <code>03-bands-and-envelopes.md</code>.
+</footer>
+</main>
+
+<script>
+"use strict";
+const SR = 48000;
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+// ---------- FFT: same algorithm as crates/dsp/src/fft.rs ----------
+const plans = new Map();
+function plan(n) {
+  if (!plans.has(n)) {
+    const bits = Math.log2(n);
+    const rev = new Uint32Array(n);
+    for (let i = 0; i < n; i++) {
+      let r = 0, x = i;
+      for (let b = 0; b < bits; b++) { r = (r << 1) | (x & 1); x >>= 1; }
+      rev[i] = r;
+    }
+    const cos = new Float64Array(n / 2), sin = new Float64Array(n / 2);
+    for (let k = 0; k < n / 2; k++) { const a = -2 * Math.PI * k / n; cos[k] = Math.cos(a); sin[k] = Math.sin(a); }
+    plans.set(n, { rev, cos, sin });
+  }
+  return plans.get(n);
+}
+function fft(re, im) {
+  const n = re.length, { rev, cos, sin } = plan(n);
+  for (let i = 0; i < n; i++) {
+    const j = rev[i];
+    if (j > i) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
+  }
+  for (let size = 2; size <= n; size *= 2) {
+    const half = size / 2, stride = n / size;
+    for (let start = 0; start < n; start += size) {
+      for (let k = 0; k < half; k++) {
+        const e = start + k, o = e + half, wr = cos[k * stride], wi = sin[k * stride];
+        const tr = re[o] * wr - im[o] * wi, ti = re[o] * wi + im[o] * wr;
+        re[o] = re[e] - tr; im[o] = im[e] - ti; re[e] += tr; im[e] += ti;
+      }
+    }
+  }
+}
+const hann = (n) => Float64Array.from({ length: n }, (_, t) => 0.5 - 0.5 * Math.cos(2 * Math.PI * t / n));
+
+// ---------- Bands: same rules as crates/dsp/src/analyzer.rs ----------
+function hzToBins(low, high, n) {
+  const binHz = SR / n, nyq = n / 2;
+  const start = Math.min(Math.max(Math.round(low / binHz), 1), nyq - 1);
+  const end = Math.min(Math.max(Math.round(high / binHz), start + 1), nyq);
+  return [start, end];
+}
+function logBands(low, high, count, n) {
+  const ratio = high / low, edge = (i) => low * Math.pow(ratio, i / count);
+  return Array.from({ length: count }, (_, i) => hzToBins(edge(i), edge(i + 1), n));
+}
+const BANDS = [
+  { name: "bass", hz: [20, 250], color: "--bass" },
+  { name: "mid", hz: [250, 4000], color: "--mid" },
+  { name: "treble", hz: [4000, 16000], color: "--treble" },
+];
+const toDb = (ms) => ms > 0 ? Math.max(10 * Math.log10(ms), -120) : -120;
+
+// ---------- The signal ----------
+const tones = [
+  { f: 80, a: 0.5, phase: 0.3 },
+  { f: 440, a: 0.25, phase: 1.1 },
+  { f: 5200, a: 0.08, phase: 2.0 },
+];
+let noise = 0.01;
+let fftSize = 2048;
+let windowed = true;
+
+function rng(seed) { // mulberry32, so the noise doesn't flicker on every redraw
+  return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+function signal(n) {
+  const out = new Float64Array(n), rand = rng(7);
+  for (let t = 0; t < n; t++) {
+    let s = 0;
+    for (const tone of tones) s += tone.a * Math.sin(2 * Math.PI * tone.f * t / SR + tone.phase);
+    out[t] = s + noise * (rand() * 2 - 1);
+  }
+  return out;
+}
+
+function analyze() {
+  const n = fftSize, samples = signal(n), w = windowed ? hann(n) : new Float64Array(n).fill(1);
+  const re = Float64Array.from(samples, (s, t) => s * w[t]), im = new Float64Array(n);
+  fft(re, im);
+  let sumSq = 0; for (const x of w) sumSq += x * x;
+  const scale = 2 / (n * sumSq); // Parseval: bin power -> mean square of the signal
+  const power = new Float64Array(n / 2 + 1);
+  for (let k = 0; k <= n / 2; k++) power[k] = (re[k] * re[k] + im[k] * im[k]) * scale;
+  const level = ([s, e]) => { let p = 0; for (let k = s; k < e; k++) p += power[k]; return toDb(p); };
+  return { n, samples, w, power, level };
+}
+
+// ---------- Canvas helpers ----------
+function setup(canvas) {
+  const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.height / (canvas._dpr || 1);
+  canvas._h = canvas._h || canvas.height;
+  canvas.width = Math.round(w * dpr); canvas.height = Math.round(canvas._h * dpr); canvas._dpr = dpr;
+  canvas.style.height = canvas._h + "px";
+  const ctx = canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w, h: canvas._h };
+}
+const fLow = 20, fHigh = 20000;
+const xOfHz = (hz, w) => w * Math.log(hz / fLow) / Math.log(fHigh / fLow);
+function label(ctx, text, x, y, align = "left") {
+  ctx.fillStyle = css("--muted"); ctx.font = "10px " + css("--mono"); ctx.textAlign = align; ctx.fillText(text, x, y);
+}
+
+function drawWave(a) {
+  const { ctx, w, h } = setup(document.getElementById("wave"));
+  ctx.clearRect(0, 0, w, h);
+  const mid = h / 2, scale = h / 2 / 1.1;
+  ctx.strokeStyle = css("--line"); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
+  const plot = (fn, color, width) => {
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath();
+    for (let x = 0; x < w; x++) {
+      const t = Math.min(a.n - 1, Math.floor(x / w * a.n));
+      const y = mid - Math.max(-1.1, Math.min(1.1, fn(t))) * scale;
+      x ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.stroke();
+  };
+  plot((t) => a.samples[t], css("--raw"), 1);
+  if (windowed) {
+    ctx.setLineDash([4, 4]); plot((t) => a.w[t], css("--muted"), 1); ctx.setLineDash([]);
+    plot((t) => a.samples[t] * a.w[t], css("--accent"), 1.25);
+  }
+  label(ctx, `${(a.n / SR * 1000).toFixed(1)} ms`, w - 4, h - 6, "right");
+}
+
+function drawSpectrum(a) {
+  const { ctx, w, h } = setup(document.getElementById("spectrum"));
+  ctx.clearRect(0, 0, w, h);
+  const top = 6, bottom = h - 18, yOfDb = (db) => top + (bottom - top) * (-Math.max(-100, Math.min(0, db)) / 100);
+  for (const band of BANDS) {
+    ctx.fillStyle = css(band.color); ctx.globalAlpha = 0.07;
+    ctx.fillRect(xOfHz(band.hz[0], w), top, xOfHz(band.hz[1], w) - xOfHz(band.hz[0], w), bottom - top);
+  }
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = css("--line"); ctx.lineWidth = 1;
+  for (const db of [-20, -40, -60, -80]) {
+    ctx.beginPath(); ctx.moveTo(0, yOfDb(db)); ctx.lineTo(w, yOfDb(db)); ctx.stroke(); label(ctx, `${db} dB`, 4, yOfDb(db) - 3);
+  }
+  for (const [hz, text] of [[100, "100 Hz"], [1000, "1 kHz"], [10000, "10 kHz"]]) label(ctx, text, xOfHz(hz, w), h - 4, "center");
+  ctx.strokeStyle = css("--accent"); ctx.lineWidth = 1.5; ctx.beginPath();
+  let started = false;
+  for (let k = 1; k <= a.n / 2; k++) {
+    const hz = k * SR / a.n; if (hz < fLow) continue;
+    const x = xOfHz(hz, w), y = yOfDb(toDb(a.power[k]));
+    started ? ctx.lineTo(x, y) : (ctx.moveTo(x, y), started = true);
+  }
+  ctx.stroke();
+
+  document.getElementById("bin-info").textContent =
+    `bins ${(SR / a.n).toFixed(1)} Hz apart · window ${(a.n / SR * 1000).toFixed(0)} ms`;
+  document.getElementById("band-readout").innerHTML = BANDS.map((b) =>
+    `<span><span class="swatch" style="background:${css(b.color)}"></span>${b.name} <b>${a.level(hzToBins(b.hz[0], b.hz[1], a.n)).toFixed(1)} dBFS</b></span>`
+  ).join("");
+}
+
+function drawBands(a) {
+  const { ctx, w, h } = setup(document.getElementById("bands"));
+  ctx.clearRect(0, 0, w, h);
+  const bands = logBands(30, 16000, 32, a.n), gap = 3, bw = (w - gap * 31) / 32, bottom = h - 16;
+  bands.forEach((bins, i) => {
+    const v = Math.max(0, Math.min(1, (a.level(bins) + 80) / 80));
+    const centerHz = Math.sqrt(bins[0] * bins[1]) * SR / a.n;
+    const band = BANDS.find((b) => centerHz < b.hz[1]) || BANDS[2];
+    ctx.fillStyle = css(band.color);
+    const x = i * (bw + gap), bh = Math.max(1, v * (bottom - 4));
+    ctx.fillRect(x, bottom - bh, bw, bh);
+  });
+  label(ctx, "30 Hz", 0, h - 2); label(ctx, "16 kHz", w, h - 2, "right");
+}
+
+// ---------- Controls for section 1 ----------
+const hzFromSlider = (v) => 30 * Math.pow(16000 / 30, v / 1000);
+const sliderFromHz = (hz) => Math.round(1000 * Math.log(hz / 30) / Math.log(16000 / 30));
+const fmtHz = (hz) => hz >= 1000 ? `${(hz / 1000).toFixed(hz >= 10000 ? 1 : 2)} kHz` : `${Math.round(hz)} Hz`;
+
+function control(parent, text, attrs, format, onInput) {
+  const div = document.createElement("div"); div.className = "control";
+  const lab = document.createElement("label"), out = document.createElement("output"), input = document.createElement("input");
+  lab.textContent = text; lab.appendChild(out); input.type = "range"; Object.assign(input, attrs);
+  const sync = () => { out.textContent = format(+input.value); onInput(+input.value); };
+  input.addEventListener("input", () => { sync(); render(); });
+  div.append(lab, input); parent.appendChild(div); sync();
+}
+const toneControls = document.getElementById("tone-controls");
+tones.forEach((tone, i) => {
+  control(toneControls, `Tone ${i + 1} frequency`, { min: 0, max: 1000, value: sliderFromHz(tone.f) }, (v) => fmtHz(hzFromSlider(v)), (v) => tone.f = hzFromSlider(v));
+  control(toneControls, `Tone ${i + 1} amplitude`, { min: 0, max: 100, value: Math.round(tone.a * 100) }, (v) => (v / 100).toFixed(2), (v) => tone.a = v / 100);
+});
+control(toneControls, "Noise", { min: 0, max: 100, value: Math.round(noise * 1000) }, (v) => (v / 1000).toFixed(3), (v) => noise = v / 1000);
+
+document.getElementById("fft-size").addEventListener("change", (e) => { fftSize = +e.target.value; render(); });
+document.getElementById("windowed").addEventListener("change", (e) => { windowed = e.target.checked; render(); });
+
+function render() {
+  const a = analyze();
+  drawWave(a); drawSpectrum(a); drawBands(a);
+}
+
+// ---------- Section 5: envelope playground ----------
+const attackIn = document.getElementById("attack"), releaseIn = document.getElementById("release");
+const syncEnvLabels = () => {
+  document.getElementById("attack-out").textContent = `${attackIn.value} ms`;
+  document.getElementById("release-out").textContent = `${releaseIn.value} ms`;
+};
+attackIn.addEventListener("input", syncEnvLabels); releaseIn.addEventListener("input", syncEnvLabels); syncEnvLabels();
+
+const HISTORY_S = 4, FRAME_DT = 1 / 60;
+const history = []; // [raw, envelope] per frame
+let env = 0, clock = 0, jitterRand = rng(11), playing = !matchMedia("(prefers-reduced-motion: reduce)").matches, visible = true;
+
+function drumLevel(t) {
+  const beat = 0.5, kickAge = t % beat, hatAge = (t + beat / 2) % beat;
+  const kick = Math.exp(-kickAge / 0.06), hat = 0.35 * Math.exp(-hatAge / 0.02);
+  const jitter = (jitterRand() - 0.5) * 0.25; // frames catch hits at different moments
+  return Math.max(0, Math.min(1, Math.max(kick, hat) + jitter * (0.3 + kick)));
+}
+function stepEnvelope(input, dt) { // same as Envelope::update
+  const tau = (input > env ? +attackIn.value : +releaseIn.value) / 1000;
+  const k = tau > 0 ? 1 - Math.exp(-dt / tau) : 1;
+  env += (input - env) * k;
+  return env;
+}
+function tickEnvelope() {
+  clock += FRAME_DT;
+  const raw = drumLevel(clock);
+  history.push([raw, stepEnvelope(raw, FRAME_DT)]);
+  while (history.length > HISTORY_S / FRAME_DT) history.shift();
+}
+function drawEnvelope() {
+  const { ctx, w, h } = setup(document.getElementById("envelope"));
+  ctx.clearRect(0, 0, w, h);
+  const top = 8, bottom = h - 8, max = HISTORY_S / FRAME_DT;
+  const xOf = (i) => w - (history.length - 1 - i) / max * w, yOf = (v) => bottom - v * (bottom - top);
+  const line = (idx, color, width) => {
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath();
+    history.forEach((p, i) => i ? ctx.lineTo(xOf(i), yOf(p[idx])) : ctx.moveTo(xOf(i), yOf(p[idx])));
+    ctx.stroke();
+  };
+  line(0, css("--raw"), 1); line(1, css("--accent"), 1.75);
+}
+// Fill the history so the graph isn't empty before playing.
+for (let i = 0; i < HISTORY_S / FRAME_DT; i++) tickEnvelope();
+
+const playButton = document.getElementById("play");
+const syncPlay = () => playButton.textContent = playing ? "Pause" : "Play";
+playButton.addEventListener("click", () => { playing = !playing; syncPlay(); });
+syncPlay();
+new IntersectionObserver(([entry]) => visible = entry.isIntersecting).observe(document.getElementById("envelope"));
+
+let lastTime = performance.now(), carry = 0;
+function frame(now) {
+  carry += Math.min(0.25, (now - lastTime) / 1000); lastTime = now;
+  if (playing && visible) {
+    while (carry >= FRAME_DT) { tickEnvelope(); carry -= FRAME_DT; }
+    drawEnvelope();
+  } else {
+    carry = 0;
+  }
+  requestAnimationFrame(frame);
+}
+render(); drawEnvelope(); requestAnimationFrame(frame);
+
+window.addEventListener("resize", () => { render(); drawEnvelope(); });
+</script>
+</body>
+</html>

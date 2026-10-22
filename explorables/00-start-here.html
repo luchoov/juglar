@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Juglar: Start Here</title>
+<meta name="description" content="A starting point for Juglar's documentation that assumes no knowledge of music, audio or programming.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #09090b; --surface: #0f0f12; --line: #1c1c21; --line-strong: #2a2a31;
+    --fg: #d4d4d8; --strong: #f4f4f5; --muted: #71717a;
+    --accent: #e4e4e7; --raw: #3a3a42;
+    --bass: #5b7fa6; --mid: #5f9488; --treble: #a39a78;
+    --code-bg: #0c0c0f;
+    --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.75 var(--mono); -webkit-font-smoothing: antialiased; }
+  main { max-width: 720px; margin: 0 auto; padding: 72px 16px 112px; }
+  header .meta { color: var(--muted); margin: 0 0 20px; }
+  h1 { font-size: 28px; line-height: 1.2; font-weight: 600; color: var(--strong); margin: 0 0 20px; letter-spacing: -0.02em; }
+  h2 { font-size: 16px; line-height: 1.4; font-weight: 600; color: var(--strong); margin: 72px 0 14px; }
+  h2 .num { color: var(--muted); font-weight: 400; margin-right: 14px; }
+  p { margin: 0 0 16px; }
+  .lede { color: var(--muted); }
+  b, strong { color: var(--strong); font-weight: 500; }
+  em { font-style: normal; color: var(--strong); }
+  code { font: inherit; color: var(--strong); }
+  figure { margin: 28px 0; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 2px; }
+  canvas { display: block; width: 100%; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 24px; margin-bottom: 16px; font-size: 12px; }
+  .control label { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 2px; }
+  .control label output { color: var(--fg); font-variant-numeric: tabular-nums; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 16px; background: transparent; margin: 0; }
+  input[type=range]::-webkit-slider-runnable-track { height: 1px; background: var(--line-strong); }
+  input[type=range]::-moz-range-track { height: 1px; background: var(--line-strong); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 9px; margin-top: -4px; background: var(--strong); border: 0; border-radius: 0; }
+  input[type=range]::-moz-range-thumb { width: 9px; height: 9px; background: var(--strong); border: 0; border-radius: 0; }
+  input[type=range]:focus-visible { outline: 1px solid var(--muted); outline-offset: 2px; }
+  input[type=checkbox] { accent-color: var(--strong); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; font-size: 12px; margin-bottom: 16px; color: var(--muted); }
+  select, button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 2px; padding: 3px 10px; }
+  button { cursor: pointer; }
+  button:hover, select:hover { border-color: var(--muted); }
+  .readout { display: flex; flex-wrap: wrap; gap: 6px 24px; font-size: 12px; margin-top: 12px; color: var(--muted); }
+  .readout b { font-variant-numeric: tabular-nums; }
+  .swatch { display: inline-block; width: 8px; height: 8px; margin-right: 8px; vertical-align: 0; }
+  figcaption { font-size: 12px; line-height: 1.6; color: var(--muted); margin-top: 12px; }
+  details { margin: 16px 0; border: 1px solid var(--line); background: var(--code-bg); }
+  summary { cursor: pointer; padding: 10px 14px; font-size: 12px; color: var(--muted); }
+  summary:hover { color: var(--fg); }
+  pre { margin: 0; padding: 4px 16px 16px; overflow-x: auto; font: 12px/1.6 var(--mono); color: var(--fg); }
+  .src { font-size: 12px; color: var(--muted); padding: 0 16px 12px; margin: 0; }
+  footer { margin-top: 88px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  @media (max-width: 520px) { h1 { font-size: 22px; } body { font-size: 13px; } }
+</style>
+<style>
+  .lead-list { margin: 0 0 16px; padding-left: 0; list-style: none; }
+  .lead-list li { padding-left: 18px; position: relative; margin-bottom: 6px; }
+  .lead-list li::before { content: "–"; position: absolute; left: 0; color: var(--muted); }
+  dl.glossary { margin: 24px 0; display: grid; grid-template-columns: 150px 1fr; gap: 14px 24px; }
+  dl.glossary dt { color: var(--strong); font-weight: 500; }
+  dl.glossary dd { margin: 0; color: var(--fg); }
+  @media (max-width: 560px) { dl.glossary { grid-template-columns: 1fr; gap: 2px; } dl.glossary dd { margin-bottom: 12px; } }
+  ol.path { margin: 16px 0; padding-left: 0; list-style: none; counter-reset: step; }
+  ol.path li { counter-increment: step; padding: 12px 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: 40px 1fr; }
+  ol.path li::before { content: counter(step, decimal-leading-zero); color: var(--muted); }
+  ol.path li:last-child { border-bottom: 1px solid var(--line); }
+  ol.path a { color: var(--strong); }
+  ol.path span { display: block; color: var(--muted); font-size: 12px; }
+  a { color: var(--strong); text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+  a:hover { text-decoration-color: var(--strong); }
+  .pipeline { width: 100%; height: auto; display: block; }
+  .pipeline text { font-family: var(--mono); }
+  .note { font-size: 12px; color: var(--muted); }
+  .toggles { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 12px; margin-bottom: 16px; color: var(--fg); }
+  .toggles label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <p class="meta">juglar / explorables / 00</p>
+  <h1>Start here</h1>
+  <p class="lede">Juglar is a program that listens to whatever music your computer is playing and draws moving images that follow it. This page explains, from zero, every idea the rest of the documentation relies on. No music theory and no programming needed. If you have headphones or speakers, you can also listen.</p>
+</header>
+
+<h2><span class="num">01</span>Sound is air moving</h2>
+<p>A speaker is a thin surface that pushes the air forward and pulls it back, very fast. Those pushes travel through the air as waves and move your eardrum the same way. That's all sound is: air pressure going up and down.</p>
+<p>Two things describe a simple sound:</p>
+<ul class="lead-list">
+  <li><b>Frequency</b>: how many times per second the air goes back and forth. It is measured in <b>hertz (Hz)</b>. Few times per second sounds low (a bass); many times sounds high (a whistle). People hear roughly from 20 Hz to 20,000 Hz.</li>
+  <li><b>Amplitude</b>: how far the air moves each time. Bigger sounds louder.</li>
+</ul>
+<p>Press play and move the sliders. The graph always shows the same 20 milliseconds (two hundredths of a second), so a higher frequency fits more waves into it.</p>
+<figure>
+  <div class="row"><button id="tone-play" type="button">Play</button><span class="note">Starts quiet. Lower your volume first.</span></div>
+  <div class="controls">
+    <div class="control"><label>Frequency <output id="freq-out"></output></label><input type="range" id="freq" min="0" max="1000"></div>
+    <div class="control"><label>Amplitude <output id="amp-out"></output></label><input type="range" id="amp" min="0" max="100" value="60"></div>
+  </div>
+  <canvas id="tone" height="160" aria-label="The tone's wave over 20 milliseconds"></canvas>
+  <figcaption>Up and down is the air pressure; left to right is time.</figcaption>
+</figure>
+
+<h2><span class="num">02</span>How a computer stores sound</h2>
+<p>A computer can't store a smooth curve. Instead, it measures the height of the wave at regular moments and keeps the list of numbers. Each measurement is a <b>sample</b>. Your computer takes <b>48,000 samples every second</b>, usually twice (left and right speaker).</p>
+<p>Each sample is just a number between −1 and 1: 0 is silence, and ±1 is the loudest the speaker can go. So, to a computer, a song is a very long list of numbers. Move the slider: with few samples the dots can't follow the wave; with enough of them, they trace it closely.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>Samples per wave <output id="spw-out"></output></label><input type="range" id="spw" min="2" max="40" value="12"></div>
+  </div>
+  <canvas id="sampling" height="170" aria-label="A wave and the samples taken from it"></canvas>
+  <figcaption>Line: the real air pressure. Dots: what the computer keeps. A rule called the Nyquist limit says you need at least two samples per wave, which is why 48,000 samples per second can hold sounds up to 24,000 Hz, just above what we hear.</figcaption>
+</figure>
+
+<h2><span class="num">03</span>Real music is many sounds at once</h2>
+<p>A song is never one clean wave. A drum, a bass, a voice and a cymbal all play together, and the speaker can only move one way at a time, so their waves simply add up into one complicated shape. Turn the parts on and off, and listen.</p>
+<figure>
+  <div class="row"><button id="mix-play" type="button">Play</button><span class="note">Lower your volume first.</span></div>
+  <div class="toggles" id="mix-toggles"></div>
+  <canvas id="mix" height="170" aria-label="The sum of the selected parts"></canvas>
+  <figcaption>Thin lines: each part alone. Bright line: what actually reaches the speaker, the sum.</figcaption>
+</figure>
+<p>Looking at the bright line, you can't tell what's playing. Juglar's first job is to undo that sum: to find out how much bass, how much voice and how much cymbal there is, many times per second. The tool that does it is the <b>Fourier transform</b>, explained in <a href="01-how-juglar-hears.html">explorable 01</a>.</p>
+
+<h2><span class="num">04</span>What Juglar does, step by step</h2>
+<figure>
+  <svg class="pipeline" viewBox="0 0 680 300" role="img" aria-labelledby="pipeline-title">
+    <title id="pipeline-title">Juglar's pipeline: listen, analyze, signals, generate, draw</title>
+    <g id="pipeline-steps"></g>
+  </svg>
+</figure>
+<ul class="lead-list">
+  <li><b>Listen.</b> Windows mixes the sound of every app before sending it to the speakers. Juglar asks Windows for a copy of that mix, so it works with any music player.</li>
+  <li><b>Analyze.</b> About 30 times per second, Juglar takes the last 43 milliseconds of sound and measures how much energy there is in the lows, mids and highs.</li>
+  <li><b>Signals.</b> Those measurements become a few numbers between 0 and 1, smoothed so they move like music: they jump on a drum hit and fade out after it.</li>
+  <li><b>Generate.</b> The generator turns the signals into a scene: shapes, motion and colors chosen to fit the music.</li>
+  <li><b>Draw.</b> The graphics card (GPU), the part of the computer built to color millions of pixels at once, draws each frame. The main processor (CPU) stays almost idle, so Juglar can run next to a game.</li>
+</ul>
+<p>The goal that makes Juglar different is in the <a href="../docs/vision.md">vision</a>: to listen like a musician, recognizing when the chorus comes back, which key the song is in, and when a drop is about to land, not just how loud it is.</p>
+
+<h2><span class="num">05</span>Words you will see</h2>
+<dl class="glossary">
+  <dt>Hertz (Hz)</dt><dd>Times per second. 440 Hz is the note A that orchestras tune to. 1 kHz is 1,000 Hz.</dd>
+  <dt>Sample</dt><dd>One measurement of the sound wave. 48,000 of them make one second.</dd>
+  <dt>Decibel (dB)</dt><dd>A way to measure loudness that matches how ears work: every −6 dB halves the wave's size. Juglar uses <b>dBFS</b>, where 0 is the loudest possible and quieter sounds are negative.</dd>
+  <dt>Bass, mid, treble</dt><dd>Low, middle and high frequencies. Roughly: kick drum and bass guitar; voices and guitars; cymbals and hi-hats.</dd>
+  <dt>Spectrum</dt><dd>A picture of how much of each frequency is present right now, from low to high.</dd>
+  <dt>Fourier transform (FFT)</dt><dd>The math that turns a list of samples into a spectrum. FFT is the fast way to compute it.</dd>
+  <dt>Band</dt><dd>A range of frequencies added together into one number, like "all the bass".</dd>
+  <dt>Envelope</dt><dd>A smoothed version of a value that rises fast and falls slowly, so visuals hit on the beat and breathe after it.</dd>
+  <dt>Beat, tempo</dt><dd>The pulse you tap your foot to, and how fast it goes, in beats per minute (BPM).</dd>
+  <dt>Key, chord</dt><dd>The family of notes a song uses, and a few notes played together. Major usually sounds bright, minor darker.</dd>
+  <dt>Frame, FPS</dt><dd>One image on screen, and how many are shown per second. Smooth motion is 60 or more.</dd>
+  <dt>CPU, GPU</dt><dd>The computer's main processor, good at one thing after another; and the graphics card, good at the same thing on millions of pixels at once.</dd>
+  <dt>Shader</dt><dd>A tiny program that runs on the GPU and decides the color of each pixel.</dd>
+  <dt>Thread</dt><dd>One line of work inside a program. Juglar listens on one and draws on another, so neither waits for the other.</dd>
+  <dt>Rust</dt><dd>The programming language Juglar is written in. You don't need to read it to follow the documentation.</dd>
+</dl>
+
+<h2><span class="num">06</span>Where to go next</h2>
+<ol class="path">
+  <li><div><a href="01-how-juglar-hears.html">How Juglar hears</a><span>Interactive: waves, the FFT, bands and envelopes.</span></div></li>
+  <li><div><a href="../docs/vision.md">Vision</a><span>What makes Juglar different, in one page.</span></div></li>
+  <li><div><a href="../docs/decisions.md">Decisions</a><span>Every important choice, why it was made, and what it costs.</span></div></li>
+  <li><div><a href="../docs/theory/01-audio-capture.md">Theory notes</a><span>One per milestone, in order: capture, FFT, bands and envelopes, and more as Juglar grows.</span></div></li>
+  <li><div><a href="../docs/roadmap.md">Roadmap</a><span>What's built, what's next.</span></div></li>
+</ol>
+
+<footer>
+  Part of <b>Juglar</b>, a music visualizer that listens like a musician.
+</footer>
+</main>
+
+<script>
+"use strict";
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+function setup(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas._h = canvas._h || canvas.height;
+  const w = canvas.clientWidth, h = canvas._h;
+  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); canvas.style.height = h + "px";
+  const ctx = canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+function axis(ctx, w, mid) {
+  ctx.strokeStyle = css("--line"); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
+}
+function label(ctx, text, x, y, align = "left") {
+  ctx.fillStyle = css("--muted"); ctx.font = "10px " + css("--mono"); ctx.textAlign = align; ctx.fillText(text, x, y);
+}
+function curve(ctx, w, fn, color, width) {
+  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath();
+  for (let x = 0; x <= w; x++) { const y = fn(x / w); x ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+  ctx.stroke();
+}
+
+// ---------- Audio: one shared context, created on the first click ----------
+let audio = null;
+function audioContext() {
+  if (!audio) audio = new AudioContext();
+  if (audio.state === "suspended") audio.resume();
+  return audio;
+}
+const MAX_GAIN = 0.12; // keep it gentle
+function voice(type, freq) {
+  const ac = audioContext(), osc = ac.createOscillator(), gain = ac.createGain();
+  osc.type = type; osc.frequency.value = freq; gain.gain.value = 0;
+  osc.connect(gain).connect(ac.destination); osc.start();
+  return { osc, gain };
+}
+const ramp = (param, value) => param.setTargetAtTime(value, audioContext().currentTime, 0.03);
+
+// ---------- 01: a single tone ----------
+const freqIn = document.getElementById("freq"), ampIn = document.getElementById("amp");
+const hzOf = (v) => 40 * Math.pow(8000 / 40, v / 1000);
+freqIn.value = Math.round(1000 * Math.log(220 / 40) / Math.log(8000 / 40));
+const fmtHz = (hz) => hz >= 1000 ? `${(hz / 1000).toFixed(2)} kHz` : `${Math.round(hz)} Hz`;
+let tone = null;
+const tonePlay = document.getElementById("tone-play");
+
+function drawTone() {
+  const hz = hzOf(+freqIn.value), amp = +ampIn.value / 100;
+  document.getElementById("freq-out").textContent = fmtHz(hz);
+  document.getElementById("amp-out").textContent = amp.toFixed(2);
+  const { ctx, w, h } = setup(document.getElementById("tone"));
+  const mid = h / 2, scale = h / 2 - 10;
+  axis(ctx, w, mid);
+  // 20 ms window. Very high tones would alias at screen resolution, so cap the drawn detail.
+  curve(ctx, w, (x) => mid - amp * scale * Math.sin(2 * Math.PI * hz * x * 0.020), css("--accent"), 1.25);
+  label(ctx, "0 ms", 0, h - 4); label(ctx, "20 ms", w, h - 4, "right");
+  label(ctx, `${Math.round(hz * 0.020)} waves in 20 ms`, w, 12, "right");
+  if (tone) { ramp(tone.osc.frequency, hz); ramp(tone.gain.gain, amp * MAX_GAIN); }
+}
+tonePlay.addEventListener("click", () => {
+  if (tone) { ramp(tone.gain.gain, 0); const t = tone; setTimeout(() => t.osc.stop(), 200); tone = null; tonePlay.textContent = "Play"; return; }
+  tone = voice("sine", hzOf(+freqIn.value)); tonePlay.textContent = "Stop"; drawTone();
+});
+freqIn.addEventListener("input", drawTone); ampIn.addEventListener("input", drawTone);
+
+// ---------- 02: sampling ----------
+const spwIn = document.getElementById("spw");
+function drawSampling() {
+  const spw = +spwIn.value, cycles = 2;
+  document.getElementById("spw-out").textContent = spw;
+  const { ctx, w, h } = setup(document.getElementById("sampling"));
+  const mid = h / 2, scale = h / 2 - 14, wave = (x) => Math.sin(2 * Math.PI * cycles * x);
+  axis(ctx, w, mid);
+  curve(ctx, w, (x) => mid - scale * wave(x), css("--raw"), 1.25);
+  const n = spw * cycles, pts = [];
+  for (let i = 0; i <= n; i++) { const x = i / n; pts.push([x * w, mid - scale * wave(x)]); }
+  ctx.strokeStyle = css("--muted"); ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath();
+  pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = css("--accent");
+  for (const [x, y] of pts) {
+    ctx.strokeStyle = css("--line-strong"); ctx.beginPath(); ctx.moveTo(x, mid); ctx.lineTo(x, y); ctx.stroke();
+    ctx.fillRect(x - 2, y - 2, 4, 4);
+  }
+}
+spwIn.addEventListener("input", drawSampling);
+
+// ---------- 03: a mix ----------
+// Each part: how it sounds (oscillator) and a simple stand-in for how its wave looks.
+const parts = [
+  { name: "bass", type: "sine", freq: 55, amp: 0.6, color: "--bass", on: true },
+  { name: "voice", type: "triangle", freq: 330, amp: 0.35, color: "--mid", on: true },
+  { name: "cymbal", type: "square", freq: 3520, amp: 0.08, color: "--treble", on: false },
+];
+const shape = {
+  sine: (p) => Math.sin(2 * Math.PI * p),
+  triangle: (p) => 2 / Math.PI * Math.asin(Math.sin(2 * Math.PI * p)),
+  square: (p) => Math.sign(Math.sin(2 * Math.PI * p)),
+};
+let mix = null;
+const mixPlay = document.getElementById("mix-play"), togglesEl = document.getElementById("mix-toggles");
+parts.forEach((part, i) => {
+  const lab = document.createElement("label"), box = document.createElement("input"), sw = document.createElement("span");
+  box.type = "checkbox"; box.checked = part.on; sw.className = "swatch"; sw.style.background = css(part.color);
+  lab.append(box, sw, document.createTextNode(`${part.name} · ${fmtHz(part.freq)}`));
+  box.addEventListener("change", () => { part.on = box.checked; drawMix(); });
+  togglesEl.appendChild(lab);
+});
+function drawMix() {
+  const { ctx, w, h } = setup(document.getElementById("mix"));
+  const mid = h / 2, scale = (h / 2 - 10) / 1.05, span = 0.040; // 40 ms
+  axis(ctx, w, mid);
+  const at = (part, x) => part.on ? part.amp * shape[part.type](part.freq * x * span) : 0;
+  for (const part of parts) if (part.on) {
+    ctx.globalAlpha = 0.55; curve(ctx, w, (x) => mid - scale * at(part, x), css(part.color), 1); ctx.globalAlpha = 1;
+  }
+  curve(ctx, w, (x) => mid - scale * parts.reduce((s, p) => s + at(p, x), 0), css("--accent"), 1.5);
+  label(ctx, "0 ms", 0, h - 4); label(ctx, "40 ms", w, h - 4, "right");
+  if (mix) parts.forEach((p, i) => ramp(mix[i].gain.gain, p.on ? p.amp * MAX_GAIN * 0.8 : 0));
+}
+mixPlay.addEventListener("click", () => {
+  if (mix) { mix.forEach((v) => { ramp(v.gain.gain, 0); setTimeout(() => v.osc.stop(), 200); }); mix = null; mixPlay.textContent = "Play"; return; }
+  if (tone) tonePlay.click();
+  mix = parts.map((p) => voice(p.type, p.freq)); mixPlay.textContent = "Stop"; drawMix();
+});
+tonePlay.addEventListener("click", () => { if (tone && mix) mixPlay.click(); });
+
+// Silence everything when the page is hidden.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { if (tone) tonePlay.click(); if (mix) mixPlay.click(); }
+});
+
+// ---------- 04: pipeline diagram ----------
+function drawPipeline() {
+  const steps = [
+    ["Listen", "a copy of what", "speakers play"],
+    ["Analyze", "lows, mids and", "highs, 30x/s"],
+    ["Signals", "a few numbers", "from 0 to 1"],
+    ["Generate", "shapes, motion,", "colors"],
+    ["Draw", "the GPU paints", "every frame"],
+  ];
+  const g = document.getElementById("pipeline-steps"), ns = "http://www.w3.org/2000/svg";
+  g.innerHTML = "";
+  const narrow = document.querySelector(".pipeline").clientWidth < 560;
+  const svg = document.querySelector(".pipeline");
+  const el = (tag, attrs, text) => { const e = document.createElementNS(ns, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text) e.textContent = text; g.appendChild(e); return e; };
+  const boxW = narrow ? 300 : 118, boxH = narrow ? 62 : 96, gapX = narrow ? 0 : 22, gapY = narrow ? 22 : 0;
+  const total = narrow ? [boxW + 40, steps.length * boxH + (steps.length - 1) * gapY + 20] : [steps.length * boxW + (steps.length - 1) * gapX + 20, boxH + 60];
+  svg.setAttribute("viewBox", `0 0 ${total[0]} ${total[1]}`);
+  steps.forEach(([title, l1, l2], i) => {
+    const x = narrow ? 20 : 10 + i * (boxW + gapX), y = narrow ? 10 + i * (boxH + gapY) : 30;
+    el("rect", { x, y, width: boxW, height: boxH, fill: css("--surface"), stroke: i === 3 ? css("--muted") : css("--line-strong") });
+    el("text", { x: x + 12, y: y + 22, fill: css("--strong"), "font-size": 13, "font-weight": 600 }, title);
+    el("text", { x: x + 12, y: y + (narrow ? 40 : 50), fill: css("--muted"), "font-size": 10 }, narrow ? `${l1} ${l2}` : l1);
+    if (!narrow) el("text", { x: x + 12, y: y + 64, fill: css("--muted"), "font-size": 10 }, l2);
+    if (i < steps.length - 1) {
+      const line = narrow
+        ? { x1: x + boxW / 2, y1: y + boxH, x2: x + boxW / 2, y2: y + boxH + gapY }
+        : { x1: x + boxW, y1: y + boxH / 2, x2: x + boxW + gapX, y2: y + boxH / 2 };
+      el("line", { ...line, stroke: css("--muted"), "stroke-width": 1 });
+      const [ax, ay] = [line.x2, line.y2];
+      el("path", { d: narrow ? `M${ax - 4} ${ay - 6} L${ax} ${ay} L${ax + 4} ${ay - 6}` : `M${ax - 6} ${ay - 4} L${ax} ${ay} L${ax - 6} ${ay + 4}`, fill: "none", stroke: css("--muted") });
+    }
+  });
+  if (!narrow) {
+    // Brackets over the steps each processor runs.
+    const bracket = (from, to, text) => {
+      const x1 = 10 + from * (boxW + gapX), x2 = 10 + to * (boxW + gapX) + boxW;
+      el("path", { d: `M${x1} 22 V16 H${x2} V22`, fill: "none", stroke: css("--line-strong") });
+      el("text", { x: x1 + 6, y: 11, fill: css("--muted"), "font-size": 10 }, text);
+    };
+    bracket(0, 3, "CPU: almost idle");
+    bracket(4, 4, "GPU");
+  }
+}
+
+function renderAll() { drawTone(); drawSampling(); drawMix(); drawPipeline(); }
+renderAll();
+window.addEventListener("resize", renderAll);
+document.fonts && document.fonts.ready.then(renderAll);
+</script>
+</body>
+</html>

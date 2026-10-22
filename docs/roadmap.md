@@ -1,6 +1,8 @@
 # Roadmap
 
-Each milestone ends with something visible or measurable, and with a short theory note in `docs/theory/` explaining what was built and why. Read the note before moving on.
+Each milestone ends with something visible or measurable, a short theory note in `docs/theory/` explaining what was built and why, new entries in `docs/decisions.md` for any important choice, and, when the technique is worth seeing, an interactive page in `explorables/`. All of it must be understandable without reading code (decision D13). Read the note before moving on.
+
+The north star is in `docs/vision.md`: a visualizer that listens like a musician.
 
 ## M1 — Hearing the system
 
@@ -44,6 +46,19 @@ Each milestone ends with something visible or measurable, and with a short theor
 - Global flash limiter.
 - Theory: `07-beats.md`, `08-bloom-and-hdr.md`, `09-photosensitivity.md`.
 
+## M5.5 — Listening like a musician
+
+The core innovation (see `docs/vision.md`). Built before the generator so it is designed around these signals from day one.
+
+- Chromagram, key and chord estimate → harmony signals.
+- Harmonic/percussive separation → separate `percussive` and `harmonic` energies.
+- Tempo tracking with beat prediction; build-up and drop detection → `tension`, `beat_phase`.
+- Beat-synchronous features and a self-similarity matrix → `section` and `recurrence` (this part sounds like that earlier part).
+- Audio fingerprint → per-song seed.
+- Explorables: one page per idea (chroma wheel, harmonic/percussive split, self-similarity matrix filling in live, tension curve).
+
+**Done when:** on a pop song with a repeated chorus, the second chorus is recognized as a recurrence of the first within a few bars, and a drop is announced by rising tension before it lands.
+
 ## M6 — The generator
 
 - Building blocks, composition rules, WGSL emission, background pipeline compilation.
@@ -68,4 +83,5 @@ Each milestone ends with something visible or measurable, and with a short theor
 ## Always
 
 - CI builds the core for `wasm32-unknown-unknown` to keep it OS-free.
+- Every technique worth seeing gets an explorable in `explorables/`, showing the real algorithm next to its code.
 - README tracks measured CPU/GPU cost against other visualizers.
