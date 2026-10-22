@@ -77,7 +77,7 @@ impl Scene for Crystal {
         // Radians per second; it reverses slowly, so the crystal twists
         // one way and back.
         let direction = (self.clock * TAU / 90.0).sin();
-        self.twist += moving * live * direction * (0.03 + 0.08 * mid + 0.1 * beat);
+        self.twist += moving * live * direction * (0.02 + 0.05 * mid + 0.05 * beat);
         self.hue += moving * (0.02 + 0.2 * novelty);
 
         Look {
@@ -86,7 +86,7 @@ impl Scene for Crystal {
             rotation: 0.0,
             swirl: 0.0,
             // Per generation, see above.
-            decay: 0.8,
+            decay: 0.76,
             palette_drift: 0.13,
             knobs: [
                 self.twist,

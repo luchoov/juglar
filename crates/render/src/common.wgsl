@@ -116,7 +116,9 @@ fn pcg(n: u32) -> u32 {
 
 // A random number in 0..1 for each point of an integer grid.
 fn grid_random(i: vec2i) -> f32 {
-    return f32(pcg(bitcast<u32>(i.x) ^ pcg(bitcast<u32>(i.y)))) / 4294967296.0;
+    // One hash of both coordinates folded into one number; the odd
+    // multiplier keeps nearby points apart.
+    return f32(pcg(bitcast<u32>(i.x) * 0x27d4eb2du + bitcast<u32>(i.y))) / 4294967296.0;
 }
 
 // Smooth noise: random values on a grid, blended with an S-curve. The grid
