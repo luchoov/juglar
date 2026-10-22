@@ -6,24 +6,13 @@
 //
 // Lengths are in short sides from the middle; y grows downward.
 
-fn melt_hash(x: f32) -> f32 {
-    return fract(sin(x * 127.1) * 43758.5453);
-}
-
-// Smooth noise along one direction: random values blended with an S-curve.
-fn melt_noise(x: f32) -> f32 {
-    let i = floor(x);
-    let f = fract(x);
-    return mix(melt_hash(i), melt_hash(i + 1.0), f * f * (3.0 - 2.0 * f));
-}
-
 // The paint here ran down from above, faster in some columns than others,
 // and the columns sway sideways, mirrored about the middle.
 fn warp(p: vec2f, q: vec2f) -> vec2f {
     let x = abs(q.x);
-    let speed = 0.15 + 0.85 * melt_noise(x * 14.0 + knob(2u)) * melt_noise(x * 5.0 - 0.5 * knob(2u) + 9.0);
+    let speed = 0.15 + 0.85 * noise(vec2f(x * 14.0 + knob(2u), 0.0)) * noise(vec2f(x * 5.0 - 0.5 * knob(2u) + 9.0, 0.0));
     let side = clamp(q.x * 8.0, -1.0, 1.0);
-    let sway = knob(1u) * side * sin(q.y * 6.0 - knob(3u)) * melt_noise(x * 3.0 + 4.0);
+    let sway = knob(1u) * side * sin(q.y * 6.0 - knob(3u)) * noise(vec2f(x * 3.0 + 4.0, 0.0));
     return q - vec2f(sway, knob(0u) * speed);
 }
 

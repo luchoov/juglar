@@ -3,24 +3,10 @@
 // Knobs: 0 the turbulence's pattern, 1 how far it moves paint this frame,
 // 2 the sun's radius, 3 the ring's soft width, 4 how much the ring gives off.
 
-fn corona_hash(p: vec2f) -> f32 {
-    return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453);
-}
-
-// Smooth noise: random values on a grid, blended with an S-curve.
-fn corona_noise(p: vec2f) -> f32 {
-    let i = floor(p);
-    let f = fract(p);
-    let u = f * f * (3.0 - 2.0 * f);
-    let bottom = mix(corona_hash(i), corona_hash(i + vec2f(1.0, 0.0)), u.x);
-    let top = mix(corona_hash(i + vec2f(0.0, 1.0)), corona_hash(i + vec2f(1.0, 1.0)), u.x);
-    return mix(bottom, top, u.y);
-}
-
 // Two layers of noise, churning in different directions.
 fn corona_field(p: vec2f) -> f32 {
     let t = knob(0u);
-    return corona_noise(p * 5.0 + vec2f(t, -0.6 * t)) + 0.5 * corona_noise(p * 11.0 + vec2f(-1.2 * t, 0.8 * t + 7.0));
+    return noise(p * 5.0 + vec2f(t, -0.6 * t)) + 0.5 * noise(p * 11.0 + vec2f(-1.2 * t, 0.8 * t + 7.0));
 }
 
 // The tunnel's outward flow, plus turbulence: the curl of the noise field
@@ -52,7 +38,7 @@ fn sources(p: vec2f, pixel: f32) -> vec3f {
     // Tongues: the ring gives off more at some angles than others, a
     // pattern that churns with the turbulence and has no regular spacing.
     let angle = atan2(p.y, p.x);
-    let tongues = corona_noise(vec2f(cos(angle), sin(angle)) * 4.0 + vec2f(knob(0u) * 1.7, 3.0));
+    let tongues = noise(vec2f(cos(angle), sin(angle)) * 4.0 + vec2f(knob(0u) * 1.7, 3.0));
     let glow = exp(-0.5 * d * d) * knob(4u) * (0.1 + level) * (0.2 + 1.6 * tongues * tongues);
     // Inside the sun, nothing: a dark disc that covers the flames' past.
     let disc = 1.0 - smoothstep(radius - 2.0 * pixel, radius, r);

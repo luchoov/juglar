@@ -4,25 +4,11 @@
 // changed, 2 how far the current moves color this frame, 3-6 each blob's
 // level (bass, mid, treble, energy), 7 the current's scale.
 
-fn oil_hash(p: vec2f) -> f32 {
-    return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453);
-}
-
-// Smooth noise: random values on a grid, blended with an S-curve.
-fn oil_noise(p: vec2f) -> f32 {
-    let i = floor(p);
-    let f = fract(p);
-    let u = f * f * (3.0 - 2.0 * f);
-    let bottom = mix(oil_hash(i), oil_hash(i + vec2f(1.0, 0.0)), u.x);
-    let top = mix(oil_hash(i + vec2f(0.0, 1.0)), oil_hash(i + vec2f(1.0, 1.0)), u.x);
-    return mix(bottom, top, u.y);
-}
-
 // Two layers of noise, drifting in different directions.
 fn oil_field(p: vec2f) -> f32 {
     let t = knob(1u);
     let s = knob(7u);
-    return oil_noise(p * s + vec2f(t, -0.7 * t)) + 0.5 * oil_noise(p * s * 2.1 + vec2f(17.0 - 1.3 * t, t));
+    return noise(p * s + vec2f(t, -0.7 * t)) + 0.5 * noise(p * s * 2.1 + vec2f(17.0 - 1.3 * t, t));
 }
 
 // The current: the old paint here came from upstream. Following the field's

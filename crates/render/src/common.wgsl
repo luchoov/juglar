@@ -106,3 +106,31 @@ fn rotate(p: vec2f, angle: f32) -> vec2f {
     let s = sin(angle);
     return vec2f(c * p.x - s * p.y, s * p.x + c * p.y);
 }
+
+// A well-mixed 32-bit hash (PCG), as in `limiter.wgsl`.
+fn pcg(n: u32) -> u32 {
+    let state = n * 747796405u + 2891336453u;
+    let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+    return (word >> 22u) ^ word;
+}
+
+// A random number in 0..1 for each point of an integer grid.
+fn grid_random(i: vec2i) -> f32 {
+    return f32(pcg(bitcast<u32>(i.x) ^ pcg(bitcast<u32>(i.y)))) / 4294967296.0;
+}
+
+// Smooth noise: random values on a grid, blended with an S-curve. The grid
+// points are integers so that both cells sharing a point agree on its
+// value exactly. The usual shortcut, fract(sin(x) × 43758.5), amplifies a
+// rounding difference in x into a different value, and GPUs may round the
+// same point differently when it is reached from the cell on either side:
+// straight seams appeared across the picture.
+fn noise(p: vec2f) -> f32 {
+    let cell = floor(p);
+    let i = vec2i(cell);
+    let f = p - cell;
+    let u = f * f * (3.0 - 2.0 * f);
+    let bottom = mix(grid_random(i), grid_random(i + vec2i(1, 0)), u.x);
+    let top = mix(grid_random(i + vec2i(0, 1)), grid_random(i + vec2i(1, 1)), u.x);
+    return mix(bottom, top, u.y);
+}
