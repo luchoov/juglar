@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beats and Flashes</title>
+<meta name="description" content="An interactive explanation of how Juglar finds beats (spectral flux in three regions, an adaptive threshold), notices a change of section (novelty), and keeps the picture from flashing (the flash limiter and the red guard).">
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #09090b; --surface: #0f0f12; --line: #1c1c21; --line-strong: #2a2a31;
+    --fg: #d4d4d8; --strong: #f4f4f5; --muted: #71717a;
+    --accent: #e4e4e7; --raw: #3a3a42;
+    --bass: #5b7fa6; --mid: #5f9488; --treble: #a39a78;
+    --held: #7189ad;
+    --code-bg: #0c0c0f;
+    --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.75 var(--mono); -webkit-font-smoothing: antialiased; }
+  main { max-width: 720px; margin: 0 auto; padding: 72px 16px 112px; }
+  header .meta { color: var(--muted); margin: 0 0 20px; }
+  h1 { font-size: 28px; line-height: 1.2; font-weight: 600; color: var(--strong); margin: 0 0 20px; letter-spacing: -0.02em; }
+  h2 { font-size: 16px; line-height: 1.4; font-weight: 600; color: var(--strong); margin: 72px 0 14px; }
+  h2 .num { color: var(--muted); font-weight: 400; margin-right: 14px; }
+  p { margin: 0 0 16px; }
+  .lede { color: var(--muted); }
+  b, strong { color: var(--strong); font-weight: 500; }
+  em { font-style: normal; color: var(--strong); }
+  code { font: inherit; color: var(--strong); }
+  a { color: var(--strong); text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+  a:hover { text-decoration-color: var(--strong); }
+  figure { margin: 28px 0; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 2px; }
+  canvas { display: block; width: 100%; }
+  canvas.pixelated { image-rendering: pixelated; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 24px; margin-bottom: 16px; font-size: 12px; }
+  .control label { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 2px; }
+  .control label output { color: var(--fg); font-variant-numeric: tabular-nums; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 16px; background: transparent; margin: 0; }
+  input[type=range]::-webkit-slider-runnable-track { height: 1px; background: var(--line-strong); }
+  input[type=range]::-moz-range-track { height: 1px; background: var(--line-strong); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 9px; margin-top: -4px; background: var(--strong); border: 0; border-radius: 0; }
+  input[type=range]::-moz-range-thumb { width: 9px; height: 9px; background: var(--strong); border: 0; border-radius: 0; }
+  input[type=range]:focus-visible { outline: 1px solid var(--muted); outline-offset: 2px; }
+  input[type=checkbox] { accent-color: var(--strong); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; font-size: 12px; margin-bottom: 16px; color: var(--muted); }
+  .row label { display: flex; gap: 8px; align-items: center; }
+  select, button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 2px; padding: 3px 10px; }
+  button { cursor: pointer; }
+  button:hover, select:hover { border-color: var(--muted); }
+  .readout { display: flex; flex-wrap: wrap; gap: 6px 24px; font-size: 12px; margin-top: 12px; color: var(--muted); min-height: 1.6em; }
+  .readout b { font-variant-numeric: tabular-nums; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .pair .tag { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  figcaption { font-size: 12px; line-height: 1.6; color: var(--muted); margin-top: 12px; }
+  details { margin: 16px 0; border: 1px solid var(--line); background: var(--code-bg); }
+  summary { cursor: pointer; padding: 10px 14px; font-size: 12px; color: var(--muted); }
+  summary:hover { color: var(--fg); }
+  pre { margin: 0; padding: 4px 16px 16px; overflow-x: auto; font: 12px/1.6 var(--mono); color: var(--fg); }
+  .src { font-size: 12px; color: var(--muted); padding: 0 16px 12px; margin: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 16px 0; }
+  th, td { text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 400; }
+  .seq { display: grid; grid-template-columns: 56px repeat(16, 1fr); gap: 3px; font-size: 11px; margin-bottom: 16px; align-items: center; }
+  .seq span { color: var(--muted); }
+  .seq button { padding: 0; height: 18px; border-radius: 0; background: var(--bg); }
+  .seq button[aria-pressed="true"] { background: var(--fg); border-color: var(--fg); }
+  .seq button.downbeat { border-color: var(--muted); }
+  .swatches { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .swatch { height: 72px; border: 1px solid var(--line-strong); }
+  footer { margin-top: 88px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  @media (max-width: 520px) { h1 { font-size: 22px; } body { font-size: 13px; } .pair, .swatches { grid-template-columns: 1fr; } .seq { grid-template-columns: 40px repeat(16, 1fr); gap: 2px; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <p class="meta">juglar / explorables / 04</p>
+  <h1>Beats and flashes</h1>
+  <p class="lede">Juglar can tell when something happens in the music, a kick, a snare, a drop, and it makes sure the picture never answers with flashing. This page is about both. The first half mirrors <code>crates/dsp/src/onset.rs</code>, the detector of onsets, beats and novelty; the second, <code>crates/render/src/limiter.rs</code> and <code>limiter.wgsl</code>, the flash limiter every frame passes through. The theory is in notes 07 and 09.</p>
+</header>
+
+<h2><span class="num">01</span>Loud is not the same as new</h2>
+<p>The obvious way to find a drum hit is to wait for the sound to get loud. Below is two seconds of drums, repeated four times, built from the pattern in the grid: click a square to add or remove a hit. Under them, a pad (a soft chord) swells and fades every four seconds, and some noise hisses throughout. All of it is synthesized on this page; <b>Listen</b> plays it.</p>
+<figure>
+  <div class="seq" id="seq" aria-label="Drum pattern, sixteen steps"></div>
+  <div class="controls">
+    <div class="control"><label>Pad <output id="pad-out"></output></label><input type="range" id="pad" min="0" max="100" value="60"></div>
+    <div class="control"><label>Noise <output id="noise-out"></output></label><input type="range" id="noise" min="0" max="100" value="20"></div>
+    <div class="control"><label>Drums <output id="drums-out"></output></label><input type="range" id="drums" min="0" max="100" value="70"></div>
+  </div>
+  <div class="row">
+    <button id="listen" type="button">Listen</button>
+    <button id="pattern-default" type="button">A simple beat</button>
+    <button id="pattern-busy" type="button">A busy one</button>
+    <button id="pattern-clear" type="button">Only the pad</button>
+  </div>
+  <canvas id="loudness" height="150" aria-label="The clip's waveform and loudness over eight seconds"></canvas>
+  <figcaption>Top: the sound wave. Bottom: its loudness in decibels, measured every 10.7 ms. Small ticks above mark where the hits really are (taller for kicks and snares, shorter for hi-hats).</figcaption>
+</figure>
+<p>Turn the pad up and watch the loudness: the swell lifts it as much as the drums do, and a threshold on loudness would either miss the drums in the quiet parts or fire on the swell in the loud ones. Turn the noise up and the drums sink into it. What marks the start of a sound is not that it is loud, but that <b>energy appears where there was none a moment ago</b>.</p>
+
+<h2><span class="num">02</span>Spectral flux, in three regions</h2>
+<p>Every 10.7 ms (a <b>hop</b>), Juglar takes the newest 21 ms of sound, transforms it (explorable 01), and measures about 18 bands in decibels: narrow in the bass, wide in the treble. For each band it subtracts the level two hops earlier; rises count, falls count as zero. The rises, averaged over a group of bands, are the <b>spectral flux</b>. It is computed separately for three regions: low (kicks, bass), middle (snares, voices) and high (hi-hats, cymbals).</p>
+<figure>
+  <div class="row">
+    <label><input type="checkbox" id="opt-lag" checked> Compare with two hops back</label>
+    <label><input type="checkbox" id="opt-scale" checked> Measure rises against each band's noise</label>
+    <label><input type="checkbox" id="opt-regions" checked> Three regions</label>
+  </div>
+  <div class="controls">
+    <div class="control"><label>Threshold: deviations above the mean <output id="spread-out"></output></label><input type="range" id="spread" min="0" max="60" value="30"></div>
+    <div class="control"><label><span><input type="checkbox" id="opt-floor" checked> Floor from noise statistics</span></label></div>
+  </div>
+  <canvas id="flux" height="330" aria-label="Spectral flux in three regions, with thresholds and the onsets found"></canvas>
+  <div class="readout" id="flux-readout"></div>
+  <figcaption>Each strip is one region's flux (white), its adaptive threshold (gray) and the onsets found (ticks below the strip). With "three regions" off, one strip measures the whole spectrum. The readout compares the onsets with where the hits really are: found, missed, and extra (an onset where there was no hit), counting kicks and snares for the low and middle regions and hi-hats for the high one.</figcaption>
+</figure>
+<p>Three details make it work. Switch each off and see what breaks:</p>
+<ul>
+  <li><b>Two hops back, not one.</b> Each 21 ms window overlaps the previous one by half, so an attack lands half in one window and half in the next. Comparing with two hops back compares windows that don't overlap, and the whole attack shows up in one rise.</li>
+  <li><b>Rises measured against each band's noise.</b> A band only a few frequency steps wide is a shaky measurement: in steady noise its level jumps by several decibels from hop to hop (6 dB for a band one step wide, divided by the square root of its width). Dividing each rise by that number counts it in "how unusual for this band". Without it, the narrow bass bands drown everything in noise: turn the noise up and watch the extra onsets appear.</li>
+  <li><b>Three regions.</b> Averaged over the whole spectrum, a kick drum fills only the lowest bands and gets diluted by everything else.</li>
+</ul>
+
+<h2><span class="num">03</span>When is a rise an onset?</h2>
+<p>Flux is never zero in real music. An onset is a hop whose flux <b>stands out</b>: it is a local peak (higher than the hop before, no lower than the hop after, so onsets are reported one hop late), it clears an <b>adaptive threshold</b> (the last second's mean plus three times its typical deviation: high in busy music, low in a quiet ballad), it clears a <b>floor</b> set from the statistics of noise (so steady hiss never fires), and the region hasn't fired in the last 100 ms. The levels are measured relative to the loudest band, so the volume doesn't matter.</p>
+<p>A <b>beat</b> is an onset in the low or middle region: kicks and snares, what you tap your foot to. Hi-hats are found in the high region but don't make beats. Lower the spread above to 1 and the threshold hugs the flux: every wobble becomes an onset. Raise it to 6 and quiet hits are missed.</p>
+<details>
+  <summary>Optional, for the curious: the peak picking (<code>crates/dsp/src/onset.rs</code>)</summary>
+<pre>fn hop(&amp;mut self, flux: f32, refractory_samples: u64) -&gt; bool {
+    let n = self.past.len() as f32;
+    let mean = self.past.iter().sum::&lt;f32&gt;() / n;
+    let deviation = self.past.iter().map(|f| (f - mean).abs()).sum::&lt;f32&gt;() / n;
+    self.threshold = (mean + THRESHOLD_SPREAD * deviation).max(self.floor);
+    self.past[self.write] = flux;
+    self.write = (self.write + 1) % self.past.len();
+
+    self.recent = [self.recent[1], self.recent[2], flux];
+    let [before, candidate, after] = self.recent;
+    let rested = self.since.is_none_or(|since| since &gt;= refractory_samples);
+    candidate &gt; before &amp;&amp; candidate &gt;= after &amp;&amp; candidate &gt; self.threshold &amp;&amp; rested
+}</pre>
+  <p class="src">The JavaScript on this page runs the same steps with the same constants.</p>
+</details>
+
+<h2><span class="num">04</span>Novelty: the music changed</h2>
+<p>A drop, a chorus, a breakdown: the song changes character, and the change lasts. Juglar keeps two running averages of every band's level, one over half a second, one over four. While the music keeps its character they agree; when it changes, the short one moves first. How far apart they are, in decibels across all bands, is the <b>novelty</b>: 2.5 dB is 0, 6 dB is 1.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>How much louder the drop is <output id="drop-out"></output></label><input type="range" id="drop" min="0" max="24" value="14"></div>
+    <div class="control"><label>Drums before the drop</label><select id="before"><option value="0">none</option><option value="1" selected>hi-hats</option></select></div>
+  </div>
+  <canvas id="novelty" height="170" aria-label="Novelty over sixteen seconds with a drop in the middle"></canvas>
+  <figcaption>Sixteen seconds: quiet hiss with hi-hats, then at 8 s a drop (kicks, a bass note, everything louder). Top: how far apart the two averages are, in dB, with the 2.5 and 6 dB marks. Bottom: novelty. It rises within a second of the drop and fades over several as the long average catches up.</figcaption>
+</figure>
+
+<h2><span class="num">05</span>What counts as a flash</h2>
+<p>Now the other side: what the picture does with all this. A small share of people can have a seizure triggered by flashing light, and many more get headaches from it. Juglar's rule (from its research notes, built on WCAG 2.3.1) is <b>at most two flashes in any second, anywhere on the screen</b>. A flash is a pair of opposing changes in luminance of <b>0.1 or more</b> (black is 0, white 1): two <b>transitions</b>. Four transitions per rolling second is the limit.</p>
+<p>Counting them is not comparing frames: a brightness that rises 0.03 per frame for five frames never changes much from one frame to the next, but it swung by 0.15. So the counter follows the luminance, remembers its last extreme, and counts a transition when it swings back from that extreme by 0.1 or more.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>Pattern</label><select id="wave-kind"><option value="square" selected>switching on and off</option><option value="sine">smooth pulsing</option><option value="ramp">slow ramps</option><option value="flicker">random flicker</option></select></div>
+    <div class="control"><label>Flashes per second <output id="wave-hz-out"></output></label><input type="range" id="wave-hz" min="2" max="120" value="40"></div>
+    <div class="control"><label>Swing in luminance <output id="wave-amp-out"></output></label><input type="range" id="wave-amp" min="0" max="100" value="70"></div>
+  </div>
+  <canvas id="wave" height="230" aria-label="A luminance over three seconds before and after the limiter"></canvas>
+  <div class="readout" id="wave-readout"></div>
+  <figcaption>Top: the luminance a scene asks for, three seconds at 60 frames per second; marks below it are transitions. Bottom: what the limiter shows. Once a second holds four transitions, a swing that would make a fifth is held to 0.09: the luminance may keep going the way it was heading, not come back.</figcaption>
+</figure>
+<p>Below 2 flashes per second, or with a swing under 0.1, the limiter changes nothing. Above, it lets the first two flashes through and then holds the light where it is until a second has passed since the oldest transition: the strobe becomes two pulses per second.</p>
+<details>
+  <summary>Optional, for the curious: one cell of the limiter (<code>crates/render/src/limiter.rs</code>)</summary>
+<pre>pub fn step(&amp;mut self, y: f32, dt: f32) -&gt; (f32, f32) {
+    self.ages.iter_mut().for_each(|a| *a += dt);
+    let recent = self.ages.iter().filter(|&amp;&amp;a| a &lt; WINDOW).count();
+    let (mut low, mut high) = (-1.0, 2.0);
+    if recent &gt;= MAX_TRANSITIONS {
+        if self.direction &gt; 0.0 { low = self.extreme - (DELTA - MARGIN); }
+        else if self.direction &lt; 0.0 { high = self.extreme + (DELTA - MARGIN); }
+    }
+    let mut alpha: f32 = 1.0;
+    if y &lt; low { alpha = (low - self.last) / (y - self.last); }
+    else if y &gt; high { alpha = (high - self.last) / (y - self.last); }
+    let alpha = alpha.clamp(0.0, 1.0);
+    let shown = self.last + (y - self.last) * alpha;
+    // ...then follow `shown`: a new extreme, or a transition.</pre>
+  <p class="src">The GPU runs the same steps in <code>limiter.wgsl</code>, for every cell of the screen at once.</p>
+</details>
+
+<h2><span class="num">06</span>The limiter on a picture</h2>
+<p>A flash in a corner is a flash even if the rest of the screen is calm, so the limiter watches the screen in small square <b>cells</b>, each with its own count, and holds back only the cells that would break the rule. The held cell shows a mix of what it showed last frame and the new frame: just enough of the new frame to keep the swing under 0.1. It all happens on the GPU in the same frame, before anything reaches the screen.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>Test picture</label><select id="pic-kind"><option value="strobe" selected>a flashing square</option><option value="line">a trembling bright line</option><option value="dot">a moving light</option><option value="checker">a fine checkerboard flickering</option></select></div>
+    <div class="control"><label id="pic-param-label">Flashes per second <output id="pic-param-out"></output></label><input type="range" id="pic-param" min="1" max="20" value="8"></div>
+  </div>
+  <div class="row">
+    <button id="pic-play" type="button">Pause</button>
+    <label><input type="checkbox" id="pic-cells" checked> Outline held cells</label>
+    <label id="pic-stages-label">Smoothing stages <select id="pic-stages"><option value="0" selected>none</option><option value="1">one</option><option value="3">three</option></select></label>
+  </div>
+  <div class="pair">
+    <div><div class="tag">What the scene drew</div><canvas id="pic-in" class="pixelated" aria-label="The test picture as drawn"></canvas></div>
+    <div><div class="tag">What reaches the screen</div><canvas id="pic-out" class="pixelated" aria-label="The test picture after the limiter"></canvas></div>
+  </div>
+  <div class="readout" id="pic-readout"></div>
+  <figcaption>A 160×90 picture in cells of 4×4 pixels (Juglar's cells are 8×8 pixels at 1080 rows; bigger here so you can see them). The animation runs slower than real time when your screen can't keep up, but the limiter counts in real seconds as Juglar does.</figcaption>
+</figure>
+<p>The <b>trembling bright line</b> is the limiter's first finding in Juglar itself. <em>Tide</em>'s ring was a bright line one or two pixels wide drawn from the waveform, which changes every frame: the line trembled by a fraction of a pixel, and the pixels along it blinked several times a second. At a distance it looks like motion; at the scale of a pixel it is flashing, and the limiter held the cells along the ring, leaving specks. Smoothing the waveform over time once (each frame moving part of the way toward the new one) only halved the holds there: a one-stage average still takes a small random step every frame. Three stages in a row leave a smooth path, and nothing was held. Try the three settings. This small picture trembles more gently than Tide's ring did, so here one stage already helps a lot; turn the trembling all the way up and it still leaves cells held, while three leave none.</p>
+<p>The <b>fine checkerboard</b> shows what the limiter can't see: squares swapping light and dark keep each cell's average the same, so no cell ever swings. Flicker finer than a cell is invisible to it, and scenes must not draw it. The <b>moving light</b> passes each cell once in a while: two transitions, not a flash.</p>
+
+<h2><span class="num">07</span>No saturated red</h2>
+<p>Flickering saturated red is a hazard of its own: WCAG counts a color as saturated red when red carries 80% or more of its light. Juglar's palettes keep every color at 75% or less, and as a last guard the limiter moves any color above 75% toward a gray of the <b>same luminance</b>, exactly far enough. Keeping the luminance means the guard can never create a flash itself.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>Red <output id="red-r-out"></output></label><input type="range" id="red-r" min="0" max="255" value="230"></div>
+    <div class="control"><label>Green <output id="red-g-out"></output></label><input type="range" id="red-g" min="0" max="255" value="30"></div>
+    <div class="control"><label>Blue <output id="red-b-out"></output></label><input type="range" id="red-b" min="0" max="255" value="40"></div>
+  </div>
+  <div class="swatches">
+    <div><div class="tag">Asked for</div><div class="swatch" id="red-in"></div></div>
+    <div><div class="tag">Shown</div><div class="swatch" id="red-shown"></div></div>
+  </div>
+  <div class="readout" id="red-readout"></div>
+  <figcaption>The share of red is measured in linear light (note 06), where light adds up: red / (red + green + blue). Gray has a third of its light in red, so mixing in some of it lowers the share; the mix is solved for the share landing on 75%.</figcaption>
+</figure>
+
+<footer>
+  Part of <b>Juglar</b>, a music visualizer that listens like a musician. The JavaScript here mirrors <code>crates/dsp/src/onset.rs</code>, <code>crates/render/src/limiter.rs</code> and <code>limiter.wgsl</code>; the theory is in <code>docs/theory/07-beats.md</code> and <code>09-photosensitivity.md</code>. No set of limits makes a picture safe for every viewer, and these haven't been checked by an independent analyzer. Previous: <a href="03-feedback-and-color.html">03, feedback and color</a>.
+</footer>
+</main>
+
+<script>
+"use strict";
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const TAU = 2 * Math.PI;
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const toLinear = (c) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+const toSrgb = (c) => c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+
+function setup(canvas, aspect) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas._h = canvas._h || canvas.height;
+  const w = canvas.clientWidth, h = aspect ? Math.round(w * aspect) : canvas._h;
+  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); canvas.style.height = h + "px";
+  const ctx = canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+function label(ctx, text, x, y, align = "left", color = css("--muted")) {
+  ctx.fillStyle = color; ctx.font = "10px " + css("--mono"); ctx.textAlign = align; ctx.fillText(text, x, y);
+}
+function trace(ctx, values, x0, y0, w, h, lo, hi, color, width = 1) {
+  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath();
+  for (let i = 0; i < values.length; i++) {
+    const x = x0 + (i / (values.length - 1)) * w, y = y0 + h - clamp((values[i] - lo) / (hi - lo), 0, 1) * h;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.stroke();
+}
+// Seeded noise in -1..1 (xorshift32), so every redraw hears the same clip.
+function noiseSource(seed) {
+  let s = seed >>> 0 || 1;
+  return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 2147483648 - 1; };
+}
+
+// ---------- An FFT (radix 2, in place), as crates/dsp/src/fft.rs ----------
+function makeFft(n) {
+  const levels = Math.log2(n), rev = new Uint32Array(n), cos = new Float64Array(n / 2), sin = new Float64Array(n / 2);
+  for (let i = 0; i < n; i++) { let r = 0; for (let b = 0; b < levels; b++) r |= ((i >> b) & 1) << (levels - 1 - b); rev[i] = r; }
+  for (let i = 0; i < n / 2; i++) { cos[i] = Math.cos(TAU * i / n); sin[i] = -Math.sin(TAU * i / n); }
+  return (re, im) => {
+    for (let i = 0; i < n; i++) { const j = rev[i]; if (j > i) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; } }
+    for (let size = 2; size <= n; size *= 2) {
+      const half = size / 2, step = n / size;
+      for (let start = 0; start < n; start += size) for (let k = 0; k < half; k++) {
+        const c = cos[k * step], s = sin[k * step], a = start + k, b = a + half;
+        const tr = re[b] * c - im[b] * s, ti = re[b] * s + im[b] * c;
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+      }
+    }
+  };
+}
+
+// ---------- The onset detector: same steps and constants as onset.rs ----------
+const RATE = 48000, SIZE = 1024, HOP = SIZE / 2, HOP_SECONDS = HOP / RATE;
+const REGION_BANDS = [[[40, 250], 4], [[250, 4000], 12], [[4000, 16000], 8]];
+const MIN_BINS = 4, RANGE_DB = 45, SILENCE_DB = -100, PEAK_FALL_DB_PER_S = 3, NOISE_DB = 6;
+const THRESHOLD_SECONDS = 1, NOISE_RISE = [0.56, 0.83], THRESHOLD_FLOOR = 4.8, REFRACTORY = 0.1;
+const NOVELTY_SHORT = 0.5, NOVELTY_LONG = 4, NOVELTY_DB = [2.5, 6], NOVELTY_RANGE_DB = 30;
+const BEAT_REGIONS = [true, true, false];
+
+function hzToBins(low, high) {
+  const binHz = RATE / SIZE, nyquist = SIZE / 2;
+  const start = clamp(Math.round(low / binHz), 1, nyquist - 1);
+  return { start, end: clamp(Math.round(high / binHz), start + 1, nyquist) };
+}
+function logBands([low, high], count) {
+  return Array.from({ length: count }, (_, i) => hzToBins(low * Math.pow(high / low, i / count), low * Math.pow(high / low, (i + 1) / count)));
+}
+function merged(bands) {
+  const out = [];
+  for (const band of bands) {
+    const last = out[out.length - 1];
+    if (last && last.end - last.start < MIN_BINS) last.end = Math.max(last.end, band.end); else out.push({ ...band });
+  }
+  if (out.length > 1 && out[out.length - 1].end - out[out.length - 1].start < MIN_BINS) { const last = out.pop(); out[out.length - 1].end = last.end; }
+  return out;
+}
+
+// Runs the detector over `samples`. Options: lag (1 or 2), scale (rises in
+// noise deviations), regions (three, or one for the whole spectrum), spread,
+// floor. Returns per-hop traces.
+function detect(samples, opt) {
+  const lag = opt.lag, window = new Float64Array(SIZE);
+  let sumSq = 0;
+  for (let i = 0; i < SIZE; i++) { window[i] = 0.5 - 0.5 * Math.cos(TAU * i / SIZE); sumSq += window[i] * window[i]; }
+  const powerScale = 2 / (SIZE * sumSq), fft = makeFft(SIZE);
+  const groups = opt.regions ? REGION_BANDS : [[[40, 16000], 24]];
+  const bands = [], regions = [];
+  for (const [hz, count] of groups) {
+    const first = bands.length; bands.push(...merged(logBands(hz, count))); const end = bands.length;
+    regions.push({ first, end, past: new Float64Array(Math.round(THRESHOLD_SECONDS / HOP_SECONDS)), write: 0, recent: [0, 0, 0],
+      floor: opt.floor ? NOISE_RISE[0] + THRESHOLD_FLOOR * NOISE_RISE[1] / Math.sqrt(end - first) : 0, since: null,
+      flux: [], threshold: [], onsets: [] });
+  }
+  const n = bands.length, scales = bands.map((b) => opt.scale ? Math.sqrt(b.end - b.start) / NOISE_DB : 1 / NOISE_DB);
+  const previous = Array.from({ length: 2 }, () => new Float64Array(n).fill(SILENCE_DB));
+  const short = new Float64Array(n).fill(SILENCE_DB), long = new Float64Array(n).fill(SILENCE_DB), rises = new Float64Array(n);
+  const re = new Float64Array(SIZE), im = new Float64Array(SIZE);
+  const out = { regions, beats: [], loudness: [], change: [], novelty: [] };
+  let peak = SILENCE_DB, sinceBeat = null;
+  const kShort = 1 - Math.exp(-HOP_SECONDS / NOVELTY_SHORT), kLong = 1 - Math.exp(-HOP_SECONDS / NOVELTY_LONG);
+  const refractory = REFRACTORY - HOP_SECONDS;
+  // As in onset.rs, the history starts as a window of silence and a hop is
+  // analyzed every HOP samples: the first window is half silence.
+  for (let hop = 0; (hop + 1) * HOP <= samples.length; hop++) {
+    const start = (hop - 1) * HOP;
+    let rms = 0;
+    for (let i = 0; i < SIZE; i++) { const s = start + i < 0 ? 0 : samples[start + i]; re[i] = s * window[i]; im[i] = 0; rms += s * s; }
+    out.loudness.push(10 * Math.log10(Math.max(rms / SIZE, 1e-10)));
+    fft(re, im);
+    for (let b = 0; b < n; b++) {
+      let power = 0;
+      for (let k = bands[b].start; k < bands[b].end; k++) power += re[k] * re[k] + im[k] * im[k];
+      rises[b] = 10 * Math.log10(Math.max(power * powerScale, 1e-12));
+    }
+    const loudest = Math.max(SILENCE_DB, ...rises);
+    const waking = peak <= SILENCE_DB && loudest > SILENCE_DB;
+    peak = Math.max(loudest, peak - PEAK_FALL_DB_PER_S * HOP_SECONDS);
+    const floor = Math.max(peak - RANGE_DB, SILENCE_DB), audible = Math.max(peak - NOVELTY_RANGE_DB, SILENCE_DB);
+    let difference = 0;
+    for (let b = 0; b < n; b++) {
+      const level = Math.max(rises[b], floor);
+      rises[b] = Math.max(level - previous[lag - 1][b], 0) * scales[b];
+      previous[1][b] = previous[0][b]; previous[0][b] = level;
+      if (waking) { short[b] = level; long[b] = level; }
+      short[b] += (level - short[b]) * kShort; long[b] += (level - long[b]) * kLong;
+      difference += (Math.max(short[b], audible) - Math.max(long[b], audible)) ** 2;
+    }
+    const change = Math.sqrt(difference / n);
+    out.change.push(change); out.novelty.push(smoothstep(NOVELTY_DB[0], NOVELTY_DB[1], change));
+    let beat = false;
+    for (const [r, region] of regions.entries()) {
+      let flux = 0;
+      for (let b = region.first; b < region.end; b++) flux += rises[b];
+      flux /= Math.max(region.end - region.first, 1);
+      const past = region.past, len = past.length;
+      let mean = 0; for (const f of past) mean += f; mean /= len;
+      let dev = 0; for (const f of past) dev += Math.abs(f - mean); dev /= len;
+      const threshold = Math.max(mean + opt.spread * dev, region.floor);
+      past[region.write] = flux; region.write = (region.write + 1) % len;
+      region.recent = [region.recent[1], region.recent[2], flux];
+      region.flux.push(flux); region.threshold.push(threshold);
+      if (region.since !== null) region.since += HOP_SECONDS;
+      const [before, candidate, after] = region.recent;
+      const rested = region.since === null || region.since >= refractory;
+      if (candidate > before && candidate >= after && candidate > threshold && rested) {
+        region.since = HOP_SECONDS;
+        region.onsets.push(hop * HOP_SECONDS); // the onset happened one hop ago, at the newest sample of that hop's window
+        beat ||= opt.regions ? BEAT_REGIONS[r] : true;
+      }
+    }
+    if (sinceBeat !== null) sinceBeat += HOP_SECONDS;
+    if (beat && (sinceBeat === null || sinceBeat >= refractory)) { sinceBeat = HOP_SECONDS; out.beats.push(hop * HOP_SECONDS); }
+  }
+  return out;
+}
+
+// ---------- The clip: drums from the grid, a pad, noise ----------
+const STEPS = 16, STEP_SECONDS = 0.125, CLIP_SECONDS = 8;
+const ROWS = ["kick", "snare", "hi-hat"];
+const PATTERNS = {
+  simple: [[0, 4, 8, 12], [4, 12], [0, 2, 4, 6, 8, 10, 12, 14]],
+  busy: [[0, 3, 6, 8, 10, 11, 14], [4, 12, 15], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]],
+  none: [[], [], []],
+};
+let grid = PATTERNS.simple.map((steps) => Array.from({ length: STEPS }, (_, i) => steps.includes(i)));
+
+function hits() {
+  const list = [];
+  for (let bar = 0; bar < CLIP_SECONDS / (STEPS * STEP_SECONDS); bar++)
+    for (let row = 0; row < 3; row++) for (let s = 0; s < STEPS; s++) if (grid[row][s]) list.push({ row, t: (bar * STEPS + s) * STEP_SECONDS });
+  return list;
+}
+
+function synthesize(seconds, parts) {
+  const out = new Float32Array(Math.round(seconds * RATE)), noise = noiseSource(7);
+  const { pad = 0, hiss = 0, drums = 0, events = [], bassFrom = Infinity, bassLevel = 0 } = parts;
+  for (let i = 0; i < out.length; i++) {
+    const t = i / RATE;
+    // A chord (A, C sharp, E) swelling over four seconds.
+    const swell = 0.5 - 0.5 * Math.cos(TAU * t / 4);
+    let s = pad * swell * 0.12 * (Math.sin(TAU * 220 * t) + Math.sin(TAU * 277.2 * t) + Math.sin(TAU * 329.6 * t));
+    s += hiss * 0.25 * noise();
+    if (t >= bassFrom) s += bassLevel * 0.3 * Math.sin(TAU * 55 * t);
+    out[i] = s;
+  }
+  // Hi-hats: noise differenced three times (only highs remain), 30 ms.
+  // Snares: noise and a 190 Hz tone, 80 ms. Kicks: a tone falling from
+  // 120 to 50 Hz, 120 ms (the tests' kick, with a little pitch drop).
+  for (const { row, t, gain = 1 } of events) {
+    const start = Math.round(t * RATE), g = drums * gain;
+    let a = 0, b = 0, c = 0, phase = 0;
+    for (let k = 0; k < RATE * 0.3 && start + k < out.length; k++) {
+      const u = k / RATE;
+      if (row === 0) { phase += TAU * (50 + 70 * Math.exp(-u / 0.03)) / RATE; out[start + k] += g * 0.8 * Math.sin(phase) * Math.exp(-u / 0.12); }
+      else if (row === 1) out[start + k] += g * (0.35 * noise() + 0.25 * Math.sin(TAU * 190 * u)) * Math.exp(-u / 0.08);
+      else { const x = noise(), d1 = x - a, d2 = d1 - b, d3 = d2 - c; a = x; b = d1; c = d2; out[start + k] += g * 0.08 * d3 * Math.exp(-u / 0.03); }
+    }
+  }
+  return out;
+}
+
+const seqEl = document.getElementById("seq");
+function buildGrid() {
+  seqEl.textContent = "";
+  ROWS.forEach((name, row) => {
+    const tag = document.createElement("span"); tag.textContent = name; seqEl.append(tag);
+    for (let s = 0; s < STEPS; s++) {
+      const b = document.createElement("button"); b.type = "button";
+      b.setAttribute("aria-label", `${name}, step ${s + 1}`); b.setAttribute("aria-pressed", grid[row][s]);
+      if (s % 4 === 0) b.classList.add("downbeat");
+      b.addEventListener("click", () => { grid[row][s] = !grid[row][s]; b.setAttribute("aria-pressed", grid[row][s]); scheduleClip(); });
+      seqEl.append(b);
+    }
+  });
+}
+
+const $ = (id) => document.getElementById(id);
+let clip = null, analysis = null, clipTimer = 0;
+function options() {
+  return { lag: $("opt-lag").checked ? 2 : 1, scale: $("opt-scale").checked, regions: $("opt-regions").checked, spread: $("spread").value / 10, floor: $("opt-floor").checked };
+}
+function scheduleClip() { clearTimeout(clipTimer); clipTimer = setTimeout(updateClip, 30); }
+function updateClip() {
+  $("pad-out").textContent = $("pad").value + "%"; $("noise-out").textContent = $("noise").value + "%"; $("drums-out").textContent = $("drums").value + "%";
+  clip = { hits: hits() };
+  clip.samples = synthesize(CLIP_SECONDS, { pad: $("pad").value / 100, hiss: $("noise").value / 100, drums: $("drums").value / 100, events: clip.hits });
+  updateFlux();
+}
+function updateFlux() {
+  $("spread-out").textContent = ($("spread").value / 10).toFixed(1);
+  analysis = detect(clip.samples, options());
+  drawLoudness(); drawFlux();
+}
+
+function drawHitTicks(ctx, x0, w, y, seconds, list) {
+  ctx.fillStyle = css("--muted");
+  for (const h of list) { const x = x0 + (h.t / seconds) * w, tall = h.row < 2 ? 6 : 3; ctx.fillRect(Math.round(x), y - tall, 1, tall); }
+}
+function drawLoudness() {
+  const { ctx, w, h } = setup($("loudness"));
+  const x0 = 34, pw = w - x0 - 4, s = clip.samples;
+  drawHitTicks(ctx, x0, pw, 8, CLIP_SECONDS, clip.hits);
+  // The wave, as min/max per column.
+  const top = 12, wh = 60;
+  ctx.fillStyle = css("--raw");
+  for (let x = 0; x < pw; x++) {
+    const a = Math.floor(x / pw * s.length), b = Math.floor((x + 1) / pw * s.length);
+    let lo = 0, hi = 0; for (let i = a; i < b; i++) { lo = Math.min(lo, s[i]); hi = Math.max(hi, s[i]); }
+    ctx.fillRect(x0 + x, top + wh / 2 - clamp(hi, -1, 1) * wh / 2, 1, Math.max(1, (hi - lo) * wh / 2));
+  }
+  label(ctx, "wave", 0, top + 10);
+  const ly = top + wh + 12, lh = h - ly - 4;
+  ctx.fillStyle = css("--line"); ctx.fillRect(x0, ly + lh, pw, 1);
+  trace(ctx, analysis.loudness, x0, ly, pw, lh, -60, 0, css("--fg"));
+  label(ctx, "dB", 0, ly + 10); label(ctx, "0", x0 - 4, ly + 8, "right"); label(ctx, "-60", x0 - 4, ly + lh, "right");
+}
+function drawFlux() {
+  const { ctx, w, h } = setup($("flux"));
+  const regions = analysis.regions, x0 = 34, pw = w - x0 - 4;
+  const names = regions.length === 3 ? ["low", "middle", "high"] : ["all"];
+  const rowH = (h - 14) / regions.length;
+  regions.forEach((region, r) => {
+    const y = 14 + r * rowH, sh = rowH - 22;
+    const top = Math.max(4, ...region.threshold.slice(Math.round(1 / HOP_SECONDS)), ...region.flux) * 1.05;
+    ctx.fillStyle = css("--line"); ctx.fillRect(x0, y + sh, pw, 1);
+    trace(ctx, region.threshold, x0, y, pw, sh, 0, top, css("--muted"));
+    trace(ctx, region.flux, x0, y, pw, sh, 0, top, css("--fg"));
+    label(ctx, names[r], 0, y + 10);
+    ctx.fillStyle = css("--strong");
+    for (const t of region.onsets) ctx.fillRect(Math.round(x0 + (t / CLIP_SECONDS) * pw), y + sh + 4, 1, 7);
+  });
+  drawHitTicks(ctx, x0, pw, 10, CLIP_SECONDS, clip.hits);
+  // Score each region against the true hits: an onset within 35 ms after a
+  // hit (the window's length plus a hop) finds it. A kick and a snare on the
+  // same step are one hit: one onset can find them.
+  const score = (onsets, rows) => {
+    const truth = [...new Set(clip.hits.filter((h) => rows.includes(h.row)).map((h) => h.t))], used = new Set();
+    let found = 0;
+    for (const t of truth) { const i = onsets.findIndex((o, k) => !used.has(k) && o >= t - 0.005 && o <= t + 0.035); if (i >= 0) { used.add(i); found++; } }
+    return { found, total: truth.length, extra: onsets.length - used.size };
+  };
+  const parts = [];
+  if (regions.length === 3) {
+    const low = score(regions[0].onsets, [0, 1]), mid = score(regions[1].onsets, [0, 1]), high = score(regions[2].onsets, [2]);
+    parts.push(`low: <b>${low.found}</b>/${low.total} kicks and snares, <b>${low.extra}</b> extra`);
+    parts.push(`middle: <b>${mid.found}</b>/${mid.total}, <b>${mid.extra}</b> extra`);
+    parts.push(`high: <b>${high.found}</b>/${high.total} hi-hats, <b>${high.extra}</b> extra`);
+  } else {
+    const all = score(regions[0].onsets, [0, 1, 2]);
+    parts.push(`all: <b>${all.found}</b>/${all.total} hits, <b>${all.extra}</b> extra`);
+  }
+  const beats = score(analysis.beats, [0, 1]);
+  parts.push(`beats: <b>${beats.found}</b>/${beats.total}, <b>${beats.extra}</b> extra`);
+  $("flux-readout").innerHTML = parts.map((p) => `<span>${p}</span>`).join("");
+}
+
+let audio = null;
+$("listen").addEventListener("click", () => {
+  if (!clip) return;
+  audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+  const buffer = audio.createBuffer(1, clip.samples.length, RATE);
+  buffer.copyToChannel(clip.samples, 0);
+  const source = audio.createBufferSource(); source.buffer = buffer;
+  const gain = audio.createGain(); gain.gain.value = 0.5; source.connect(gain).connect(audio.destination); source.start();
+});
+const setPattern = (name) => { grid = PATTERNS[name].map((steps) => Array.from({ length: STEPS }, (_, i) => steps.includes(i))); buildGrid(); scheduleClip(); };
+$("pattern-default").addEventListener("click", () => setPattern("simple"));
+$("pattern-busy").addEventListener("click", () => setPattern("busy"));
+$("pattern-clear").addEventListener("click", () => setPattern("none"));
+for (const id of ["pad", "noise", "drums"]) $(id).addEventListener("input", scheduleClip);
+for (const id of ["opt-lag", "opt-scale", "opt-regions", "opt-floor", "spread"]) $(id).addEventListener("input", updateFlux);
+
+// ---------- Novelty: a drop at 8 s ----------
+function drawNovelty() {
+  const dropDb = +$("drop").value, hatsBefore = $("before").value === "1";
+  $("drop-out").textContent = dropDb + " dB";
+  const seconds = 16, loud = Math.pow(10, dropDb / 20) * 0.2, events = [];
+  for (let t = 0; t < seconds; t += 0.25) if (hatsBefore || t >= 8) events.push({ row: 2, t, gain: t >= 8 ? loud * 5 : 1 });
+  for (let t = 8; t < seconds; t += 0.5) events.push({ row: 0, t, gain: loud * 4 });
+  const samples = synthesize(seconds, { pad: 0, hiss: 0.03, drums: 1, events, bassFrom: 8, bassLevel: loud });
+  const result = detect(samples, { lag: 2, scale: true, regions: true, spread: 3, floor: true });
+  const { ctx, w, h } = setup($("novelty"));
+  const x0 = 34, pw = w - x0 - 4, top = 8, ch = 80, ny = top + ch + 18, nh = h - ny - 14;
+  const maxDb = 10;
+  ctx.fillStyle = css("--line");
+  for (const mark of NOVELTY_DB) ctx.fillRect(x0, top + ch - (mark / maxDb) * ch, pw, 1);
+  ctx.fillRect(x0 + pw / 2, top, 1, h - top - 14);
+  trace(ctx, result.change, x0, top, pw, ch, 0, maxDb, css("--fg"));
+  label(ctx, "dB", 0, top + 10); label(ctx, "2.5", x0 - 4, top + ch - 2.5 / maxDb * ch + 3, "right"); label(ctx, "6", x0 - 4, top + ch - 6 / maxDb * ch + 3, "right");
+  ctx.fillStyle = css("--line"); ctx.fillRect(x0, ny + nh, pw, 1);
+  trace(ctx, result.novelty, x0, ny, pw, nh, 0, 1, css("--strong"));
+  label(ctx, "novelty", 0, ny + 10);
+  label(ctx, "0 s", x0, h - 2); label(ctx, "drop", x0 + pw / 2, h - 2, "center"); label(ctx, "16 s", x0 + pw, h - 2, "right");
+}
+$("drop").addEventListener("input", drawNovelty);
+$("before").addEventListener("input", drawNovelty);
+
+// ---------- The limiter's cell: same steps as Cell::step in limiter.rs ----------
+const DELTA = 0.1, MARGIN = 0.01, MAX_TRANSITIONS = 4, WINDOW = 1, NEVER = 1000, RED_SHARE = 0.75;
+function newCell() { return { extreme: 0, direction: 0, last: 0, ages: [NEVER, NEVER, NEVER, NEVER] }; }
+// Returns [shown, alpha, transition].
+function step(cell, y, dt) {
+  for (let i = 0; i < 4; i++) cell.ages[i] += dt;
+  const recent = cell.ages.filter((a) => a < WINDOW).length;
+  let low = -1, high = 2;
+  if (recent >= MAX_TRANSITIONS) {
+    if (cell.direction > 0) low = cell.extreme - (DELTA - MARGIN);
+    else if (cell.direction < 0) high = cell.extreme + (DELTA - MARGIN);
+  }
+  let alpha = 1;
+  if (y < low) alpha = (low - cell.last) / (y - cell.last);
+  else if (y > high) alpha = (high - cell.last) / (y - cell.last);
+  alpha = clamp(alpha, 0, 1);
+  const shown = cell.last + (y - cell.last) * alpha;
+  let transition = false;
+  if (cell.direction === 0) {
+    if (Math.abs(shown - cell.extreme) >= DELTA) { cell.direction = Math.sign(shown - cell.extreme); cell.extreme = shown; transition = true; }
+  } else if (cell.direction > 0) {
+    if (shown > cell.extreme) cell.extreme = shown;
+    else if (cell.extreme - shown >= DELTA) { cell.direction = -1; cell.extreme = shown; transition = true; }
+  } else if (shown < cell.extreme) cell.extreme = shown;
+  else if (shown - cell.extreme >= DELTA) { cell.direction = 1; cell.extreme = shown; transition = true; }
+  if (transition) { cell.ages.pop(); cell.ages.unshift(0); }
+  for (let i = 0; i < 4; i++) cell.ages[i] = Math.min(cell.ages[i], NEVER);
+  cell.last = shown;
+  return [shown, alpha, transition];
+}
+// Transitions of a sequence, counted the same way without holding anything.
+function transitions(values) {
+  const counter = { extreme: values[0], direction: 0 }, marks = [];
+  values.forEach((v, i) => {
+    let t = false;
+    if (counter.direction === 0) { if (Math.abs(v - counter.extreme) >= DELTA) { counter.direction = Math.sign(v - counter.extreme); counter.extreme = v; t = true; } }
+    else if (counter.direction > 0) { if (v > counter.extreme) counter.extreme = v; else if (counter.extreme - v >= DELTA) { counter.direction = -1; counter.extreme = v; t = true; } }
+    else if (v < counter.extreme) counter.extreme = v; else if (v - counter.extreme >= DELTA) { counter.direction = 1; counter.extreme = v; t = true; }
+    if (t) marks.push(i);
+  });
+  return marks;
+}
+const worstSecond = (marks, fps) => { let worst = 0; for (let i = 0; i < marks.length; i++) { let k = i; while (k < marks.length && marks[k] - marks[i] < fps) k++; worst = Math.max(worst, k - i); } return worst; };
+
+function drawWave() {
+  const kind = $("wave-kind").value, hz = $("wave-hz").value / 10, amp = $("wave-amp").value / 100, fps = 60, frames = 180;
+  $("wave-hz-out").textContent = hz.toFixed(1); $("wave-amp-out").textContent = amp.toFixed(2);
+  const base = 0.15, noise = noiseSource(3);
+  let flick = base;
+  const input = Array.from({ length: frames }, (_, i) => {
+    const t = i / fps;
+    if (kind === "square") return base + amp * ((t * hz) % 1 < 0.5 ? 1 : 0);
+    if (kind === "sine") return base + amp * (0.5 - 0.5 * Math.cos(TAU * hz * t));
+    if (kind === "ramp") { const phase = (t * hz) % 1; return base + amp * (phase < 0.5 ? phase * 2 : 2 - phase * 2); }
+    if (i % Math.max(1, Math.round(fps / (2 * hz))) === 0) flick = base + amp * (0.5 + 0.5 * noise());
+    return flick;
+  });
+  const cell = newCell(), shown = [];
+  cell.last = input[0]; cell.extreme = input[0];
+  for (const y of input) shown.push(step(cell, y, 1 / fps)[0]);
+  const before = transitions(input), after = transitions(shown);
+  const { ctx, w, h } = setup($("wave"));
+  const x0 = 34, pw = w - x0 - 4, rh = (h - 20) / 2;
+  [[input, before, "asked for"], [shown, after, "shown"]].forEach(([values, marks, name], r) => {
+    const y = r * (rh + 10), sh = rh - 14;
+    ctx.fillStyle = css("--line"); ctx.fillRect(x0, y + sh, pw, 1); ctx.fillRect(x0, y, pw, 1);
+    trace(ctx, values, x0, y, pw, sh, 0, 1, r ? css("--strong") : css("--fg"));
+    label(ctx, name, 0, y + 10); label(ctx, "1", x0 - 4, y + 8, "right"); label(ctx, "0", x0 - 4, y + sh, "right");
+    ctx.fillStyle = css("--strong");
+    for (const m of marks) ctx.fillRect(Math.round(x0 + (m / (frames - 1)) * pw), y + sh + 4, 1, 6);
+  });
+  label(ctx, "0 s", x0, h - 2); label(ctx, "3 s", x0 + pw, h - 2, "right");
+  $("wave-readout").innerHTML = `<span>most transitions in any second, asked for: <b>${worstSecond(before, fps)}</b></span><span>shown: <b>${worstSecond(after, fps)}</b></span><span>limit: <b>4</b></span>`;
+}
+for (const id of ["wave-kind", "wave-hz", "wave-amp"]) $(id).addEventListener("input", drawWave);
+
+// ---------- The limiter on a picture ----------
+// 90 rows don't divide into cells of 4: the last row of cells is half a
+// cell tall, as Juglar's grid rounds up too.
+const PW = 160, PH = 90, CELL = 4, CW = Math.ceil(PW / CELL), CH = Math.ceil(PH / CELL);
+let picCells = [], picShown = new Float32Array(PW * PH), picTime = 0, picFrame = 0;
+let ringStages = [[], [], []], playing = !reduced, visible = true, lastClock = 0;
+const RING_POINTS = 48, WAVE_SECONDS = 0.25;
+function resetPicture() {
+  picCells = Array.from({ length: CW * CH }, newCell); picShown.fill(0); picTime = 0; picFrame = 0;
+  ringStages = [0, 1, 2].map(() => new Float32Array(RING_POINTS));
+}
+const picNoise = noiseSource(11);
+function candidate(dt) {
+  const kind = $("pic-kind").value, param = +$("pic-param").value, img = new Float32Array(PW * PH).fill(0.04);
+  if (kind === "strobe") {
+    const on = (picTime * param) % 1 < 0.5;
+    for (let y = 20; y < 70; y++) for (let x = 20; x < 70; x++) img[y * PW + x] = on ? 0.85 : 0.04;
+  } else if (kind === "line") {
+    // A ring whose edge trembles: new random wobble every frame, smoothed
+    // over time in 0, 1 or 3 stages of 0.25 s, as Tide's waveform.
+    const stages = +$("pic-stages").value, follow = 1 - Math.exp(-dt / WAVE_SECONDS);
+    let input = Array.from({ length: RING_POINTS }, () => picNoise());
+    for (let s = 0; s < stages; s++) { const st = ringStages[s]; for (let i = 0; i < RING_POINTS; i++) { st[i] += (input[i] - st[i]) * follow; } input = Array.from(st); }
+    const amplitude = param * 0.6;
+    for (let y = 0; y < PH; y++) for (let x = 0; x < PW; x++) {
+      const dx = x + 0.5 - PW / 2, dy = y + 0.5 - PH / 2, r = Math.hypot(dx, dy);
+      let a = Math.atan2(dy, dx) / TAU; a -= Math.floor(a);
+      const f = a * RING_POINTS, i = Math.floor(f) % RING_POINTS, j = (i + 1) % RING_POINTS;
+      const radius = 28 + amplitude * (input[i] + (input[j] - input[i]) * (f - Math.floor(f)));
+      const cover = clamp(1.2 - Math.abs(r - radius), 0, 1);
+      img[y * PW + x] = 0.04 + 0.85 * cover;
+    }
+  } else if (kind === "dot") {
+    const a = picTime * TAU * param / 10, cx = PW / 2 + 45 * Math.cos(a), cy = PH / 2 + 28 * Math.sin(a);
+    for (let y = 0; y < PH; y++) for (let x = 0; x < PW; x++) { const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy); img[y * PW + x] = 0.04 + 0.85 * clamp(4 - d, 0, 1); }
+  } else {
+    const phase = Math.floor(picTime * param * 2) % 2;
+    for (let y = 20; y < 70; y++) for (let x = 90; x < 140; x++) img[y * PW + x] = ((x + y + phase) % 2) ? 0.85 : 0.04;
+  }
+  return img;
+}
+function limitPicture(img, dt) {
+  // Per cell: mean luminance (the picture is gray, so luminance is the value).
+  const alphas = new Float32Array(CW * CH);
+  let held = 0;
+  for (let cy = 0; cy < CH; cy++) for (let cx = 0; cx < CW; cx++) {
+    let sum = 0, count = 0;
+    for (let y = cy * CELL; y < Math.min((cy + 1) * CELL, PH); y++) for (let x = cx * CELL; x < Math.min((cx + 1) * CELL, PW); x++) { sum += img[y * PW + x]; count++; }
+    const [, alpha] = step(picCells[cy * CW + cx], sum / count, dt);
+    alphas[cy * CW + cx] = alpha; if (alpha < 0.999) held++;
+  }
+  // Per pixel: the mix of what was shown and the new frame.
+  for (let y = 0; y < PH; y++) for (let x = 0; x < PW; x++) {
+    const i = y * PW + x, alpha = alphas[Math.floor(y / CELL) * CW + Math.floor(x / CELL)];
+    picShown[i] = picShown[i] + (img[i] - picShown[i]) * alpha;
+  }
+  return { alphas, held: held / (CW * CH) };
+}
+let heldHistory = [];
+function drawPicture(img, result) {
+  for (const [id, data] of [["pic-in", img], ["pic-out", picShown]]) {
+    const canvas = $(id);
+    if (canvas.width !== PW) { canvas.width = PW; canvas.height = PH; }
+    canvas.style.height = Math.round(canvas.clientWidth * PH / PW) + "px";
+    const ctx = canvas.getContext("2d"), pixels = ctx.createImageData(PW, PH);
+    for (let i = 0; i < PW * PH; i++) { const v = Math.round(toSrgb(clamp(data[i], 0, 1)) * 255); pixels.data[i * 4] = v; pixels.data[i * 4 + 1] = v; pixels.data[i * 4 + 2] = v; pixels.data[i * 4 + 3] = 255; }
+    ctx.putImageData(pixels, 0, 0);
+    if (id === "pic-out" && $("pic-cells").checked) {
+      ctx.strokeStyle = css("--held"); ctx.lineWidth = 1;
+      for (let c = 0; c < CW * CH; c++) if (result.alphas[c] < 0.999) ctx.strokeRect((c % CW) * CELL + 0.5, Math.floor(c / CW) * CELL + 0.5, CELL - 1, CELL - 1);
+    }
+  }
+  heldHistory.push(result.held); if (heldHistory.length > 120) heldHistory.shift();
+  const mean = heldHistory.reduce((a, b) => a + b, 0) / heldHistory.length;
+  $("pic-readout").innerHTML = `<span>cells held now: <b>${(result.held * 100).toFixed(1)}%</b></span><span>over the last two seconds: <b>${(mean * 100).toFixed(1)}%</b></span>`;
+}
+function picParamLabel() {
+  const kind = $("pic-kind").value, p = +$("pic-param").value;
+  const text = { strobe: ["Flashes per second", `${p}`], line: ["How much it trembles", `${(p * 0.6).toFixed(1)} px`], dot: ["Speed", `${(p / 10).toFixed(1)} turns/s`], checker: ["Swaps per second", `${p * 2}`] }[kind];
+  $("pic-param-label").firstChild.textContent = text[0] + " "; $("pic-param-out").textContent = text[1];
+  $("pic-stages-label").style.visibility = kind === "line" ? "visible" : "hidden";
+}
+function picStep(dt) {
+  picTime += dt;
+  const img = candidate(dt);
+  drawPicture(img, limitPicture(img, dt));
+}
+function frame(now) {
+  if (playing && visible) {
+    const dt = lastClock ? Math.min((now - lastClock) / 1000, 0.1) : 1 / 60;
+    picStep(dt);
+  }
+  lastClock = now;
+  requestAnimationFrame(frame);
+}
+$("pic-play").addEventListener("click", () => { playing = !playing; $("pic-play").textContent = playing ? "Pause" : "Play"; });
+$("pic-play").textContent = playing ? "Pause" : "Play";
+$("pic-kind").addEventListener("input", () => {
+  const defaults = { strobe: 8, line: 5, dot: 5, checker: 8 };
+  $("pic-param").value = defaults[$("pic-kind").value]; picParamLabel(); resetPicture(); heldHistory = []; picStep(1 / 60);
+});
+$("pic-param").addEventListener("input", picParamLabel);
+$("pic-stages").addEventListener("input", () => { resetPicture(); heldHistory = []; });
+new IntersectionObserver((entries) => { visible = entries[0].isIntersecting; }).observe($("pic-out"));
+
+// ---------- The red guard: same formula as fs_present in limiter.wgsl ----------
+function drawRed() {
+  const srgb = ["red-r", "red-g", "red-b"].map((id) => +$(id).value);
+  ["red-r", "red-g", "red-b"].forEach((id, i) => { $(id + "-out").textContent = srgb[i]; });
+  let c = srgb.map((v) => toLinear(v / 255));
+  const total = c[0] + c[1] + c[2], share = total > 1e-4 ? c[0] / total : 0;
+  const gray = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2], excess = c[0] - RED_SHARE * total;
+  let k = 0;
+  if (total > 1e-4 && excess > 0) { k = clamp(excess / (excess + (3 * RED_SHARE - 1) * gray), 0, 1); c = c.map((v) => v + (gray - v) * k); }
+  const out = c.map((v) => Math.round(toSrgb(clamp(v, 0, 1)) * 255));
+  const after = c[0] / Math.max(c[0] + c[1] + c[2], 1e-9);
+  $("red-in").style.background = `rgb(${srgb.join(",")})`;
+  $("red-shown").style.background = `rgb(${out.join(",")})`;
+  const luminance = (v) => 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+  $("red-readout").innerHTML = `<span>red's share: <b>${(share * 100).toFixed(0)}%</b> → <b>${(after * 100).toFixed(0)}%</b></span><span>mixed toward gray: <b>${(k * 100).toFixed(0)}%</b></span><span>luminance: <b>${luminance(srgb.map((v) => toLinear(v / 255))).toFixed(3)}</b> → <b>${luminance(c).toFixed(3)}</b></span>`;
+}
+for (const id of ["red-r", "red-g", "red-b"]) $(id).addEventListener("input", drawRed);
+
+function drawAll() { if (clip) { drawLoudness(); drawFlux(); } drawNovelty(); drawWave(); drawRed(); }
+let resizeTimer = 0;
+addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(drawAll, 100); });
+buildGrid(); resetPicture(); picParamLabel(); updateClip(); drawAll(); picStep(1 / 60);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

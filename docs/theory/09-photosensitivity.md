@@ -88,3 +88,4 @@ The GPU time rises by 70%, to 4% of a frame at full size: the limiter reads and 
 - W3C, *Understanding WCAG 2.2, Success Criterion 2.3.1: Three Flashes or Below Threshold*: what counts as a flash, and the current red-flash definition.
 - ITU-R, *Recommendation BT.1702-3* (2023): the broadcast guidance, including patterns.
 - Juglar's `docs/research/focus-and-relaxation.md`, sections 7 and 9: where the numbers above come from, and what Juglar must not claim.
+- Explorable `04-beats-and-flashes.html`: the limiter on a strobe and on small test pictures (the trembling line among them), and the red guard, with the knobs in your hands.

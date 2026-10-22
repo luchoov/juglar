@@ -12,6 +12,7 @@ Each page is a single self-contained HTML file with no dependencies: open it in 
 | 01 | [How Juglar hears](01-how-juglar-hears.html) | Sums of waves, the FFT, windowing, the time–frequency trade-off, log bands, attack/release envelopes |
 | 02 | [How Juglar draws](02-how-juglar-draws.html) | One shader for every pixel, mixing in linear light, the oscilloscope trigger, frame pacing, what a frame costs |
 | 03 | [Feedback and color](03-feedback-and-color.html) | The feedback loop running live (Tide on the synthetic song), painting twice, backward warping, float storage, cosine palettes and the red check, tone mapping, dithering |
+| 04 | [Beats and flashes](04-beats-and-flashes.html) | Loudness versus onsets (with audio), spectral flux in three regions, adaptive thresholds and beats, novelty at a drop, what counts as a flash, the flash limiter on a strobe and on a picture, the red guard |
 
 Planned (see `docs/vision.md`): chroma wheel and key detection, harmonic/percussive separation, the self-similarity matrix filling in as a song plays, beat prediction and the build-up tension curve, procedural composition.
 

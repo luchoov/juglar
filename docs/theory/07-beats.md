@@ -69,3 +69,4 @@ On real music the detector was only checked by its statistics (beats per second,
 - Simon Dixon, "Onset Detection Revisited", DAFx 2006: peak picking with an adaptive threshold.
 - Sebastian Böck and Gerhard Widmer, "Maximum Filter Vibrato Suppression for Onset Detection", DAFx 2013 (SuperFlux): why comparing with a frame further back helps.
 - Jonathan Foote, "Automatic Audio Segmentation Using a Measure of Audio Novelty", ICME 2000: novelty as a change between neighborhoods in time, the idea Milestone 5.5 will build on.
+- Explorable `04-beats-and-flashes.html`: build a drum pattern, switch off each part of the detector and see what breaks, and watch novelty rise at a drop.
