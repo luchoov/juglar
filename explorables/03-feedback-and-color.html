@@ -1,0 +1,778 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feedback and Color</title>
+<meta name="description" content="An interactive explanation of Juglar's feedback loop and its color: warping the last frame backwards, fading it in floating point, painting twice, cosine palettes, tone mapping and dithering.">
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #09090b; --surface: #0f0f12; --line: #1c1c21; --line-strong: #2a2a31;
+    --fg: #d4d4d8; --strong: #f4f4f5; --muted: #71717a;
+    --accent: #e4e4e7; --raw: #3a3a42;
+    --bass: #5b7fa6; --mid: #5f9488; --treble: #a39a78;
+    --red: #a87272; --green: #739b73; --blue: #7189ad;
+    --code-bg: #0c0c0f;
+    --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.75 var(--mono); -webkit-font-smoothing: antialiased; }
+  main { max-width: 720px; margin: 0 auto; padding: 72px 16px 112px; }
+  header .meta { color: var(--muted); margin: 0 0 20px; }
+  h1 { font-size: 28px; line-height: 1.2; font-weight: 600; color: var(--strong); margin: 0 0 20px; letter-spacing: -0.02em; }
+  h2 { font-size: 16px; line-height: 1.4; font-weight: 600; color: var(--strong); margin: 72px 0 14px; }
+  h2 .num { color: var(--muted); font-weight: 400; margin-right: 14px; }
+  p { margin: 0 0 16px; }
+  .lede { color: var(--muted); }
+  b, strong { color: var(--strong); font-weight: 500; }
+  em { font-style: normal; color: var(--strong); }
+  code { font: inherit; color: var(--strong); }
+  a { color: var(--strong); text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+  a:hover { text-decoration-color: var(--strong); }
+  figure { margin: 28px 0; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 2px; }
+  canvas { display: block; width: 100%; }
+  canvas.pixelated { image-rendering: pixelated; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 24px; margin-bottom: 16px; font-size: 12px; }
+  .controls.three { grid-template-columns: 40px repeat(3, 1fr); gap: 6px 16px; align-items: end; }
+  .controls.three .head { color: var(--muted); }
+  .control label { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 2px; }
+  .control label output { color: var(--fg); font-variant-numeric: tabular-nums; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 16px; background: transparent; margin: 0; }
+  input[type=range]::-webkit-slider-runnable-track { height: 1px; background: var(--line-strong); }
+  input[type=range]::-moz-range-track { height: 1px; background: var(--line-strong); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 9px; margin-top: -4px; background: var(--strong); border: 0; border-radius: 0; }
+  input[type=range]::-moz-range-thumb { width: 9px; height: 9px; background: var(--strong); border: 0; border-radius: 0; }
+  input[type=range]:focus-visible { outline: 1px solid var(--muted); outline-offset: 2px; }
+  input[type=checkbox] { accent-color: var(--strong); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; font-size: 12px; margin-bottom: 16px; color: var(--muted); }
+  .row label { display: flex; gap: 8px; align-items: center; }
+  select, button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 2px; padding: 3px 10px; }
+  button { cursor: pointer; }
+  button:hover, select:hover { border-color: var(--muted); }
+  .readout { display: flex; flex-wrap: wrap; gap: 6px 24px; font-size: 12px; margin-top: 12px; color: var(--muted); min-height: 1.6em; }
+  .readout b { font-variant-numeric: tabular-nums; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .pair .tag { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  figcaption { font-size: 12px; line-height: 1.6; color: var(--muted); margin-top: 12px; }
+  details { margin: 16px 0; border: 1px solid var(--line); background: var(--code-bg); }
+  summary { cursor: pointer; padding: 10px 14px; font-size: 12px; color: var(--muted); }
+  summary:hover { color: var(--fg); }
+  pre { margin: 0; padding: 4px 16px 16px; overflow-x: auto; font: 12px/1.6 var(--mono); color: var(--fg); }
+  .src { font-size: 12px; color: var(--muted); padding: 0 16px 12px; margin: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 16px 0; }
+  th, td { text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 400; }
+  footer { margin-top: 88px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  @media (max-width: 520px) { h1 { font-size: 22px; } body { font-size: 13px; } .pair { grid-template-columns: 1fr; } .controls.three { grid-template-columns: 28px repeat(3, 1fr); } }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <p class="meta">juglar / explorables / 03</p>
+  <h1>Feedback and color</h1>
+  <p class="lede">Explorable 02 drew what Juglar hears. This page is about drawing something to look at: a picture that is, every frame, a slightly changed copy of the one before, and the steps that turn it into colors. It mirrors Juglar's <code>render</code> crate: <code>feedback.wgsl</code>, <code>composite.wgsl</code> and the scene <em>Tide</em> in <code>scene/tide.rs</code> and <code>scene/tide.wgsl</code>.</p>
+</header>
+
+<h2><span class="num">01</span>A picture made of its own past</h2>
+<p>Point a camera at the screen showing its own picture, zoom in a little, tilt it a little, and an endless tunnel appears. Juglar does the same in software. Every frame it takes the previous picture, <b>warps</b> it (zooms, turns, swirls), <b>fades</b> it a little, and <b>paints</b> one simple shape on top: a ring whose edge is the waveform. Nobody draws the tunnel. It is the ring's own past, carried outward.</p>
+<p>Below, the whole loop runs in your browser on the synthetic song from explorable 02, with Juglar's numbers. The picture is small (the loop's images are 160×90 here, about a twelfth of Juglar's in each direction), but every step is the same. Move the controls; they multiply what the music asks for.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>Zoom <output id="zoom-out"></output></label><input type="range" id="zoom" min="0" max="300" value="100"></div>
+    <div class="control"><label>Turn <output id="turn-out"></output></label><input type="range" id="turn" min="0" max="400" value="100"></div>
+    <div class="control"><label>Swirl <output id="swirl-out"></output></label><input type="range" id="swirl" min="0" max="400" value="100"></div>
+    <div class="control"><label>Persistence <output id="persist-out"></output></label><input type="range" id="persist" min="25" max="400" value="100"></div>
+    <div class="control"><label>Paint deposited into the loop <output id="deposit-out"></output></label><input type="range" id="deposit" min="0" max="500" value="100"></div>
+    <div class="control"><label>Intensity <output id="intensity-out"></output></label><select id="intensity"><option value="0.2">1 gentle</option><option value="0.5" selected>2 medium</option><option value="0.9">3 strong</option></select></div>
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="eight-bit"> Store the loop in 8 bits</label>
+    <label><input type="checkbox" id="paint-once"> Paint only once</label>
+    <label>Show <select id="loop-view"><option value="picture">the picture</option><option value="ink">the ink only</option></select></label>
+  </div>
+  <div class="row">
+    <button id="loop-play" type="button">Pause</button>
+    <label>Jump to <select id="loop-section"><option value="0">intro</option><option value="16">build</option><option value="32" selected>drop</option><option value="48">breakdown</option></select></label>
+    <button id="loop-reset" type="button">Clear the picture</button>
+    <button id="loop-defaults" type="button">Tide's numbers</button>
+  </div>
+  <canvas id="loop" height="300" aria-label="The feedback loop running live"></canvas>
+  <div class="readout" id="loop-readout"></div>
+  <figcaption>The synthetic song loops every 64 seconds: intro, build, drop, breakdown. Watch the drop: each kick speeds up the flow and grows the ring. "The ink only" shows what the loop really stores before any color is chosen (section 05 explains why), brightened so that faint ink shows.</figcaption>
+</figure>
+<p>Three numbers set the character of the picture. <b>Zoom</b> carries the past outward, <b>turn</b> and <b>swirl</b> bend it, <b>persistence</b> decides how long it is remembered: the time for paint to fall to about a third of its strength. Push the zoom to zero and the ring just smears in place; push persistence up and the tunnel fills with fog.</p>
+<p>Every motion is set <b>per second</b> and converted to this frame's step, so the picture moves at the same speed at 60, 72 or 75 frames per second: the zoom per frame is e<sup>rate × frame time</sup>, the fade per frame e<sup>−frame time / persistence</sup>.</p>
+<details>
+  <summary>Optional, for the curious: one frame of the loop (<code>crates/render/src/feedback.wgsl</code>)</summary>
+<pre>let p = (position.xy - 0.5 * size) / unit - frame.center;
+// Where was this pixel's paint one frame ago? Undo this frame's step:
+// turn back, and shrink toward the center.
+let turn = frame.rotation + frame.swirl * (1.0 - smoothstep(0.0, 0.7, length(p)));
+let q = rotate(p, -turn) / frame.zoom;
+let uv = ((q + frame.center) * unit + 0.5 * size) / size;
+
+var ink = textureSampleLevel(previous, smooth_sampler, uv, 0.0).rg;
+let inside = all(uv &gt;= vec2f(0.0)) &amp;&amp; all(uv &lt;= vec2f(1.0));
+ink = select(vec2f(0.0), ink, inside);
+ink *= frame.decay;
+ink.y += ink.x * frame.palette_drift;
+
+// New paint goes over the old.
+let paint = sources(p, 1.0 / unit);
+ink = ink * (1.0 - paint.x) + paint.yz;</pre>
+  <p class="src">This runs once for every pixel of the half-size image, on the GPU. The JavaScript on this page runs the same lines in a loop.</p>
+</details>
+<details>
+  <summary>Optional, for the curious: how the music moves Tide (<code>crates/render/src/scene/tide.rs</code>)</summary>
+<pre>self.mood += (s.energy - self.mood) * follow;   // energy over 3 s
+let live = motion * (0.4 + 1.2 * s.intensity.clamp(0.0, 1.0));
+let zoom_per_second = live * (0.5 + 1.4 * s.bass);
+let turn_per_second = live * spin_direction * (0.05 + 0.25 * s.mid);
+let swirl_per_second = live * swirl_direction * (0.1 + 0.6 * s.treble);
+let persistence = 0.22 + 0.22 * self.mood;
+// ...
+zoom: (zoom_per_second * dt).exp(),
+decay: (-dt / persistence).exp(),
+knobs: [
+    0.16 + 0.04 * s.bass,      // ring radius
+    0.05 + 0.07 * s.energy,    // wave height on the ring
+    0.002 + 0.001 * s.treble,  // line half-width
+    0.05 + 0.06 * s.bass,      // how much of the line the trails keep
+    // ...
+],</pre>
+  <p class="src">The page's sliders multiply <code>zoom_per_second</code>, <code>turn_per_second</code>, <code>swirl_per_second</code>, <code>persistence</code> and the fourth knob.</p>
+</details>
+
+<h2><span class="num">02</span>Painting twice</h2>
+<p>Tick "Paint only once" above. The ring is then painted at full strength into the loop every frame, and nothing is drawn on top. Each frame's ring lands almost exactly on the last one's, which has moved by less than a pixel, so it doesn't leave a trail: it leaves a solid band, and in the drop the screen fills with fog. The first version of Tide did exactly that.</p>
+<p>So Juglar paints each shape twice. Into the loop goes a <b>faint</b> copy, 5 to 11% of its paint, where many faint copies add up into trails with structure. And at the very end, at full resolution, a <b>sharp</b> copy goes on top, so the present stays crisp in front of its blurred history (decision D22).</p>
+<details>
+  <summary>Optional, for the curious: the two paintings (<code>crates/render/src/scene/tide.wgsl</code>)</summary>
+<pre>// Paint for the feedback image: (coverage, ink × coverage,
+// ink × palette position × coverage).
+fn sources(p: vec2f, pixel: f32) -&gt; vec3f {
+    let coverage = ring(p, pixel) * knob(3u);
+    return vec3f(coverage, coverage, coverage * (knob(4u) + knob(6u)));
+}
+
+// Paint on top of the final picture, in the same form.
+fn overlay(p: vec2f, pixel: f32) -&gt; vec3f {
+    let coverage = ring(p, pixel);
+    let ink = coverage * knob(5u);
+    return vec3f(coverage, ink, ink * knob(4u));
+}</pre>
+  <p class="src"><code>ring</code> measures how much of the pixel the waveform's line covers, across the curve's slope so steep parts keep their thickness.</p>
+</details>
+
+<h2><span class="num">03</span>The warp works backwards</h2>
+<p>The obvious way to zoom a picture is to take every old pixel and move it outward. On a grid, that fails: spread apart, the moved pixels leave <b>holes</b> between them, and where the picture is squeezed or turned, several land on the same spot.</p>
+<p>So the loop asks the opposite question, once for every <em>new</em> pixel: where was my paint one frame ago? Every new pixel gets exactly one answer, so there are no holes and no collisions. The answer rarely falls on a pixel's center, so the four nearest old pixels are blended (<b>bilinear filtering</b>), which also lets the picture move by a fraction of a pixel per frame.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>Zoom in one step <output id="warp-zoom-out"></output></label><input type="range" id="warp-zoom" min="60" max="160" value="115"></div>
+    <div class="control"><label>Turn in one step <output id="warp-turn-out"></output></label><input type="range" id="warp-turn" min="0" max="45" value="5"></div>
+  </div>
+  <div class="pair">
+    <div><div class="tag">Forward: move every old pixel</div><canvas id="warp-forward" class="pixelated" height="240" aria-label="Image zoomed by pushing pixels forward, with holes"></canvas></div>
+    <div><div class="tag">Backward: ask where each new pixel was</div><canvas id="warp-backward" class="pixelated" height="240" aria-label="Image zoomed by looking backward, without holes"></canvas></div>
+  </div>
+  <div class="readout" id="warp-readout"></div>
+  <figcaption>A 64×64 test image, enlarged so you can see its pixels. Holes on the left are left black; so is everything outside the moved picture, in both. Shrink the picture instead, and pixels collide: several old ones land on the same new one and all but the last are lost. In the loop each step is tiny (a zoom of about 2% per frame), but the holes would be there every frame, and they'd pile up.</figcaption>
+</figure>
+
+<h2><span class="num">04</span>Why the loop stores floats</h2>
+<p>A screen stores 256 levels per color channel, whole numbers from 0 to 255. If the loop's images did too, fading would break. A dim pixel at level 25, multiplied by 0.98, is 24.5, which rounds back to 25. It never gets darker, and a ghost of every trail would stay on screen forever.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>Fade per frame <output id="fade-out"></output></label><input type="range" id="fade" min="900" max="995" value="980"></div>
+    <div class="control"><label>Starting level <output id="start-out"></output></label><input type="range" id="start" min="20" max="255" value="200"></div>
+  </div>
+  <canvas id="floats" height="230" aria-label="A pixel fading in floating point and in 8 bits"></canvas>
+  <div class="readout" id="floats-readout"></div>
+  <figcaption>One pixel, fading for five seconds at 60 frames per second. Bottom strips: what it looks like over time, stored each way.</figcaption>
+</figure>
+<p>Juglar's loop images hold 16-bit <b>floating-point</b> numbers instead. They keep fading smoothly down to nothing, and they can go above 1 where paint piles up. Tick "Store the loop in 8 bits" in section 01 and switch to "the ink only": the faint haze that stays everywhere is the stuck paint (decision D21).</p>
+
+<h2><span class="num">05</span>A palette in twelve numbers</h2>
+<p>The loop stores an amount of <b>ink</b> and a <b>palette position</b> for every pixel, not a color. Colors are chosen at the end, from a <b>cosine palette</b>: for each of red, green and blue,</p>
+<p><code>color(t) = a + b · cos(2π (c · t + d))</code></p>
+<p>Each channel is a wave as <code>t</code> goes from 0 to 1. <code>a</code> sets its middle, <code>b</code> how far it swings, <code>c</code> how many swings, <code>d</code> where it starts. Twelve numbers make a whole smooth palette, the GPU computes it in a few instructions, and changing one number shifts it coherently.</p>
+<figure>
+  <div class="row">
+    <label>Preset <select id="palette-preset"><option value="tide" selected>Tide: sand to steel blue</option><option value="first">First try: blue, teal, sand</option><option value="rainbow">Rainbow</option></select></label>
+  </div>
+  <div class="controls three" id="palette-sliders"></div>
+  <canvas id="palette" height="300" aria-label="The cosine palette, its channels and its red share"></canvas>
+  <div class="readout" id="palette-readout"></div>
+  <figcaption>From the top: the palette from t = 0 to 1; the same colors as dim trails look (a little ink, after tone mapping); each channel's wave; and the share of the light that is red, against Juglar's limit.</figcaption>
+</figure>
+<p>Tide's palette makes only half a swing per channel (<code>c = 0.5</code>), so each channel moves one way the whole time: from sand (#dcc69a) through silver to steel blue (#6f9bd1), never through green. The first try went from blue through teal to sand, the colors of these pages brightened. On screen its yellow-greens turned to <b>mud</b> when dim, and trails are dim almost everywhere. Compare the second strip of the two presets. (The first try's exact numbers weren't kept; this preset is rebuilt from its description.)</p>
+<p>The last plot is a safety check. A flashing saturated red is the most dangerous kind of flash for photosensitive viewers; a color counts as saturated red when red carries 80% or more of its light. Juglar keeps every animated color at 75% or less, and a test sweeps the whole palette. The rainbow fails it.</p>
+<details>
+  <summary>Optional, for the curious: Tide's palette and its test (<code>crates/render/src/scene/tide.rs</code>)</summary>
+<pre>const PALETTE: Palette = Palette {
+    a: [0.649, 0.692, 0.712],
+    b: [0.214, 0.084, 0.108],
+    c: [0.5, 0.5, 0.5],
+    d: [0.0, 0.0, 0.5],
+};
+
+#[test]
+fn the_palette_never_turns_saturated_red() {
+    // Research policy: animated colors keep red under 75% of the light.
+    for i in 0..=1000 {
+        let c = PALETTE.at(i as f32 / 1000.0);
+        let linear = c.map(|c| if c &lt;= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) });
+        let red_share = linear[0] / linear.iter().sum::&lt;f32&gt;();
+        assert!(red_share &lt;= 0.75, "{red_share} at {i}");
+    }
+}</pre>
+  <p class="src">The palette is computed in sRGB, the screen's encoding, and turned into linear light before measuring how much of it is red.</p>
+</details>
+
+<h2><span class="num">06</span>How bright is ink?</h2>
+<p>Ink has no upper limit; a screen pixel does. Cut ink off at 1 and every dense patch becomes a flat blot with a hard edge. <b>Tone mapping</b> squeezes any amount into 0..1 with a soft shoulder, the way film responds to light:</p>
+<p><code>light = 1 − e<sup>−color × ink × exposure</sup></code></p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>Ink at the center <output id="ink-out"></output></label><input type="range" id="ink" min="10" max="800" value="300"></div>
+    <div class="control"><label>Palette position <output id="tpos-out"></output></label><input type="range" id="tpos" min="0" max="100" value="0"></div>
+  </div>
+  <div class="pair">
+    <div><div class="tag">Cut off at 1</div><canvas id="tone-clip" height="180" aria-label="A blob of ink clipped at 1"></canvas></div>
+    <div><div class="tag">Tone mapped, per channel</div><canvas id="tone-map" height="180" aria-label="The same blob tone mapped"></canvas></div>
+  </div>
+  <canvas id="tone-curve" style="margin-top:16px" height="170" aria-label="Light against ink for each channel"></canvas>
+  <figcaption>A soft blob of ink, densest in the middle, colored with Tide's palette. Below: light for each channel as ink grows, tone mapped (solid) and cut off (dotted).</figcaption>
+</figure>
+<p>Tone mapping works <b>per channel</b>: the palette's strongest channel saturates first and the others catch up, so very dense ink drifts toward white, like an overexposed photograph. The ring's line, painted with the most ink, glows nearly white at its core and keeps its color at the edges. Before that, a gentle contrast curve (ink² / (ink + 0.2)) lowers faint ink more than dense ink, so haze fades into the background and the trails' structure stays.</p>
+
+<h2><span class="num">07</span>Hiding the steps: dithering</h2>
+<p>Fading trails make slow, dark gradients, and a screen has only 256 levels. Across a dark area the color may change by one level every 30 pixels, and the eye sees each step as a <b>band</b>. The fix is to add noise: before rounding, each pixel gets a random nudge of up to one level, different every frame. A pixel whose true value is 3.3 shows 3 most of the time and 4 some of the time; on average, 3.3. The steps dissolve into a grain too fine to notice.</p>
+<figure>
+  <div class="row">
+    <label>Noise <select id="dither-mode"><option value="none">none</option><option value="uniform">one random number</option><option value="triangular" selected>two random numbers (Juglar's)</option></select></label>
+    <label><input type="checkbox" id="dither-boost" checked> Exaggerate contrast ×8</label>
+    <button id="dither-play" type="button">Pause</button>
+  </div>
+  <canvas id="dither" height="120" aria-label="A dark gradient, rounded to the screen's levels"></canvas>
+  <div class="tag" style="font-size:12px;color:var(--muted);margin:10px 0 6px">Enlarged ×8: the left end</div>
+  <canvas id="dither-zoom" class="pixelated" height="120" aria-label="An enlarged piece of the gradient"></canvas>
+  <div class="readout" id="dither-readout"></div>
+  <figcaption>A gradient from Juglar's background, #09090b, to a dim gray: the range most trails live in. It covers only a few levels. "Exaggerate contrast" multiplies the difference from the background after rounding, so the steps show on any screen; untick it to see the real thing.</figcaption>
+</figure>
+<p>Two details. The noise is the sum of <b>two</b> random numbers (triangular noise): with one, the grain is stronger at some brightness levels than at others, and a smooth gradient shows faint stripes of grain. Pick "one random number" and look closely at the enlargement. And the noise is added in the screen's encoding (sRGB), where its 256 levels are evenly spaced.</p>
+<details>
+  <summary>Optional, for the curious: tone mapping and dithering (<code>crates/render/src/composite.wgsl</code>)</summary>
+<pre>let ink = max(stored.x, 0.0) * max(stored.x, 0.0) / (max(stored.x, 0.0) + 0.2);
+let position_on_palette = stored.y / max(stored.x, 1e-4);
+let hue = srgb_to_linear(palette(clamp(position_on_palette + frame.palette_shift, 0.0, 1.0)));
+let light = 1.0 - exp(-hue * ink * frame.exposure);
+let edge = length(uv - 0.5) * 1.4;
+let c = BACKGROUND * (1.0 - 0.5 * edge * edge) + light;
+
+let pixel = vec2u(position.xy);
+let n = (pixel.y * 8192u + pixel.x) * 2u + u32(frame.seed) * 33554432u;
+var encoded = linear_to_srgb(c) + (random(n) + random(n + 1u) - 1.0) / 255.0;</pre>
+  <p class="src"><code>random</code> is a hash of the pixel's position and the frame number, so the noise is different for every pixel and every frame without storing any.</p>
+</details>
+
+<footer>
+  Part of <b>Juglar</b>, a music visualizer that listens like a musician. The JavaScript here mirrors <code>crates/render/src/feedback.wgsl</code>, <code>composite.wgsl</code>, <code>scene/tide.wgsl</code> and <code>scene/tide.rs</code>; the theory is in <code>docs/theory/05-feedback.md</code> and <code>06-color.md</code>. Previous: <a href="02-how-juglar-draws.html">02, how Juglar draws</a>.
+</footer>
+</main>
+
+<script>
+"use strict";
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const TAU = 2 * Math.PI;
+
+function setup(canvas, aspect) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas._h = canvas._h || canvas.height;
+  const w = canvas.clientWidth, h = aspect ? Math.round(w * aspect) : canvas._h;
+  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); canvas.style.height = h + "px";
+  const ctx = canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h, dpr };
+}
+function label(ctx, text, x, y, align = "left", color = css("--muted")) {
+  ctx.fillStyle = color; ctx.font = "10px " + css("--mono"); ctx.textAlign = align; ctx.fillText(text, x, y);
+}
+// sRGB <-> linear light, as in common.wgsl.
+const toLinear = (c) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+const toSrgb = (c) => c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+// A fine table for linear -> sRGB, so the live loop doesn't call pow per pixel.
+const SRGB_STEPS = 16384, SRGB_TABLE = new Float32Array(SRGB_STEPS + 1);
+for (let i = 0; i <= SRGB_STEPS; i++) SRGB_TABLE[i] = toSrgb(i / SRGB_STEPS);
+const toSrgbFast = (c) => SRGB_TABLE[Math.round(clamp(c, 0, 1) * SRGB_STEPS)];
+
+// ---------- The synthetic song: same as crates/signals/src/synthetic.rs ----------
+function syntheticSong(seed, start = 0) {
+  let time = start, state = BigInt(seed | 1);
+  const flicker = new Float64Array(32).fill(1);
+  const noise = () => { // xorshift64
+    state ^= (state << 13n) & 0xffffffffffffffffn; state ^= state >> 7n; state ^= (state << 17n) & 0xffffffffffffffffn;
+    return Number(state >> 40n) / 16777216;
+  };
+  const song = function next(dt) {
+    time += dt;
+    const beatLen = 0.5, beats = time / beatLen, sectionLen = beatLen * 4 * 8, inSong = time % (sectionLen * 4);
+    const section = Math.floor(inSong / sectionLen), progress = (inSong % sectionLen) / sectionLen;
+    const sinceBeat = (beats % 1) * beatLen, sinceEighth = ((beats * 2) % 1) * beatLen / 2, barPhase = (beats / 4) % 1;
+    const kickOn = section === 2 || (section === 1 && Math.floor(beats) % 2 === 0);
+    const kick = kickOn ? Math.exp(-sinceBeat / 0.12) : 0, hat = Math.exp(-sinceEighth / 0.035);
+    const swell = 0.5 - 0.5 * Math.cos(barPhase * TAU);
+    const [bass, mid, treble] = [
+      [0.08, 0.25 + 0.3 * swell, 0.05],
+      [0.1 + 0.6 * kick, 0.3 + 0.2 * swell, (0.1 + 0.5 * progress) * (0.4 + 0.6 * hat)],
+      [0.35 + 0.65 * kick, 0.55 + 0.2 * swell, 0.35 + 0.4 * hat],
+      [0.05, 0.2 + 0.35 * swell, 0.04],
+    ][section];
+    const energy = Math.min(1, 0.5 * bass + 0.35 * mid + 0.15 * treble);
+    const beat = kickOn ? Math.exp(-sinceBeat / 0.15) : 0, novelty = Math.exp(-progress * sectionLen / 0.8);
+    const follow = 1 - Math.exp(-dt / 0.08), spectrum = new Float64Array(32);
+    for (let i = 0; i < 32; i++) {
+      flicker[i] += (0.7 + 0.6 * noise() - flicker[i]) * follow;
+      const [level, start, end] = i < 11 ? [bass, 0, 11] : i < 25 ? [mid, 11, 25] : [treble, 25, 32];
+      const x = (i - start) / (end - start - 1);
+      spectrum[i] = clamp(level * (0.35 + 0.65 * Math.sin(x * Math.PI)) * flicker[i], 0, 1);
+    }
+    const waveform = new Float64Array(256), drift = beats * 0.37 * TAU;
+    let peak = 0;
+    for (let i = 0; i < 256; i++) {
+      const x = i / 255;
+      waveform[i] = bass * Math.sin(1.25 * TAU * x) + 0.5 * mid * Math.sin(3.75 * TAU * x) + 0.3 * mid * Math.sin(6.25 * TAU * x + 0.6) + 0.15 * treble * Math.sin(23 * TAU * x + drift);
+      peak = Math.max(peak, Math.abs(waveform[i]));
+    }
+    const loudest = Math.max(bass, mid, treble);
+    const scale = loudest > 0 ? (0.45 + 0.5 * loudest) / Math.max(peak, 1e-6) : 0;
+    for (let i = 0; i < 256; i++) waveform[i] *= scale;
+    return { dt, bass, mid, treble, energy, beat, novelty, spectrum, waveform, section: ["intro", "build", "drop", "breakdown"][section] };
+  };
+  song.seek = (t) => { time = t; };
+  return song;
+}
+
+// ---------- Tide: tide.rs (update) and tide.wgsl (ring, sources, overlay) ----------
+const PALETTES = {
+  tide: { a: [0.649, 0.692, 0.712], b: [0.214, 0.084, 0.108], c: [0.5, 0.5, 0.5], d: [0.0, 0.0, 0.5] },
+  first: { a: [0.672, 0.744, 0.757], b: [0.255, 0.082, 0.127], c: [0.5, 0.5, 0.5], d: [0.384, 0.581, 0.047] },
+  rainbow: { a: [0.5, 0.5, 0.5], b: [0.5, 0.5, 0.5], c: [1, 1, 1], d: [0.0, 0.33, 0.67] },
+};
+// The palette's color at t, in sRGB (common.wgsl `palette`).
+const paletteAt = (pal, t) => [0, 1, 2].map((i) => clamp(pal.a[i] + pal.b[i] * Math.cos(TAU * (pal.c[i] * t + pal.d[i])), 0, 1));
+
+function tide() {
+  let clock = 0, mood = 0;
+  return function update(s, intensity, scale) {
+    const dt = clamp(s.dt, 0, 0.1);
+    mood += (s.energy - mood) * (1 - Math.exp(-dt / 3));
+    clock += dt;
+    const live = 0.4 + 1.2 * intensity;
+    const spin = Math.sin(clock * TAU / 80), swirlDirection = Math.cos(clock * TAU / 53);
+    const zoomPerSecond = live * (0.5 + 1.4 * s.bass) * scale.zoom;
+    const turnPerSecond = live * spin * (0.05 + 0.25 * s.mid) * scale.turn;
+    const swirlPerSecond = live * swirlDirection * (0.1 + 0.6 * s.treble) * scale.swirl;
+    const persistence = (0.22 + 0.22 * mood) * scale.persist;
+    return {
+      center: [0.03 * Math.sin(clock * 0.11), 0.03 * Math.sin(clock * 0.07 + 1)],
+      zoom: Math.exp(zoomPerSecond * dt), rotation: turnPerSecond * dt, swirl: swirlPerSecond * dt,
+      decay: Math.exp(-dt / persistence), paletteDrift: 0.3 * dt,
+      knobs: [0.16 + 0.04 * s.bass, 0.05 + 0.07 * s.energy, 0.002 + 0.001 * s.treble, Math.min(1, (0.05 + 0.06 * s.bass) * scale.deposit), 0, 1.8, 0.25, 0],
+      paletteShift: 0.85 - 0.8 * mood + 0.06 * Math.sin(clock * TAU / 120), exposure: 1.3,
+      mood, zoomPerSecond, turnPerSecond, persistence,
+    };
+  };
+}
+
+// How much of the pixel at p the ring's line covers (tide.wgsl `ring`).
+function ring(px, py, pixel, wave, k) {
+  const r = Math.hypot(px, py);
+  // Cheap early exit: the line never leaves this band (|wave| <= 1).
+  if (Math.abs(r - k[0]) > k[1] + k[2] + 2 * pixel) return 0;
+  const t = Math.abs(Math.atan2(px, -py)) / Math.PI, x = t * 255, i = Math.min(Math.floor(x), 254);
+  const a = wave[i], b = wave[i + 1];
+  const radius = k[0] + k[1] * (a + (b - a) * (x - i));
+  const radiusPerRadian = (b - a) * 255 * k[1] / Math.PI;
+  const slope = radiusPerRadian / Math.max(radius, pixel);
+  const distance = Math.abs(r - radius) / Math.sqrt(1 + slope * slope);
+  const halfWidth = Math.max(k[2], 0.5 * pixel);
+  return 1 - smoothstep(halfWidth - pixel, halfWidth + pixel, distance);
+}
+
+// ---------- 01: the loop ----------
+const FW = 160, FH = 90, SW = 320, SH = 180; // feedback and screen, as in Juglar: half each way
+let images = [[new Float32Array(FW * FH), new Float32Array(FW * FH)], [new Float32Array(FW * FH), new Float32Array(FW * FH)]];
+let current = 0;
+const loopSong = syntheticSong(1, 32), loopTide = tide();
+let loopLook = null, loopSignals = null, loopPlaying = !reduced, loopVisible = true;
+const screen = new ImageData(SW, SH), screenCanvas = new OffscreenCanvas(SW, SH);
+const inkImage = new ImageData(FW, FH), inkCanvas = new OffscreenCanvas(FW, FH);
+
+// Bilinear sample of a w x h float image at uv, edges repeated (the sampler's default).
+function sample(img, w, h, u, v) {
+  const x = u * w - 0.5, y = v * h - 0.5, x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+  const xa = clamp(x0, 0, w - 1), xb = clamp(x0 + 1, 0, w - 1), ya = clamp(y0, 0, h - 1), yb = clamp(y0 + 1, 0, h - 1);
+  const top = img[ya * w + xa] * (1 - fx) + img[ya * w + xb] * fx, bottom = img[yb * w + xa] * (1 - fx) + img[yb * w + xb] * fx;
+  return top * (1 - fy) + bottom * fy;
+}
+
+const loopScale = () => ({
+  zoom: +document.getElementById("zoom").value / 100, turn: +document.getElementById("turn").value / 100,
+  swirl: +document.getElementById("swirl").value / 100, persist: +document.getElementById("persist").value / 100,
+  deposit: +document.getElementById("deposit").value / 100,
+});
+
+// One frame of feedback.wgsl on the 160 x 90 image.
+function feedbackStep(look, wave, eightBit, paintOnce) {
+  const [prevInk, prevPos] = images[current], [ink, pos] = images[1 - current];
+  const unit = Math.min(FW, FH), pixel = 1 / unit, k = look.knobs;
+  for (let y = 0; y < FH; y++) for (let x = 0; x < FW; x++) {
+    const px = (x + 0.5 - 0.5 * FW) / unit - look.center[0], py = (y + 0.5 - 0.5 * FH) / unit - look.center[1];
+    const turn = look.rotation + look.swirl * (1 - smoothstep(0, 0.7, Math.hypot(px, py)));
+    const c = Math.cos(-turn), s = Math.sin(-turn);
+    const qx = (c * px - s * py) / look.zoom, qy = (s * px + c * py) / look.zoom;
+    const u = ((qx + look.center[0]) * unit + 0.5 * FW) / FW, v = ((qy + look.center[1]) * unit + 0.5 * FH) / FH;
+    let a = 0, b = 0;
+    if (u >= 0 && u <= 1 && v >= 0 && v <= 1) { a = sample(prevInk, FW, FH, u, v); b = sample(prevPos, FW, FH, u, v); }
+    a *= look.decay; b *= look.decay;
+    b += a * look.paletteDrift;
+    // sources(): faint into the loop, or the whole line when painting once.
+    const line = ring(px, py, pixel, wave, k);
+    const coverage = paintOnce ? line : line * k[3], inkAmount = paintOnce ? line * k[5] : coverage;
+    a = a * (1 - coverage) + inkAmount;
+    b = b * (1 - coverage) + inkAmount * (k[4] + (paintOnce ? 0 : k[6]));
+    if (eightBit) { a = Math.round(clamp(a, 0, 1) * 255) / 255; b = Math.round(clamp(b, 0, 1) * 255) / 255; }
+    const o = y * FW + x; ink[o] = a; pos[o] = b;
+  }
+  current = 1 - current;
+}
+
+// composite.wgsl on the 320 x 180 screen.
+const BACKGROUND = [0.0027, 0.0027, 0.0034];
+const HUE_STEPS = 1024;
+function hueTable(pal) {
+  const table = new Float32Array((HUE_STEPS + 1) * 3);
+  for (let i = 0; i <= HUE_STEPS; i++) { const c = paletteAt(pal, i / HUE_STEPS); for (let j = 0; j < 3; j++) table[i * 3 + j] = toLinear(c[j]); }
+  return table;
+}
+const TIDE_HUES = hueTable(PALETTES.tide);
+function composite(look, wave, paintOnce) {
+  const [ink, pos] = images[current], unit = Math.min(SW, SH), pixel = 1 / unit, k = look.knobs, d = screen.data;
+  for (let y = 0; y < SH; y++) for (let x = 0; x < SW; x++) {
+    const u = (x + 0.5) / SW, v = (y + 0.5) / SH;
+    let a = sample(ink, FW, FH, u, v), b = sample(pos, FW, FH, u, v);
+    if (!paintOnce) {
+      const px = (x + 0.5 - 0.5 * SW) / unit - look.center[0], py = (y + 0.5 - 0.5 * SH) / unit - look.center[1];
+      const coverage = ring(px, py, pixel, wave, k), amount = coverage * k[5];
+      a = a * (1 - coverage) + amount; b = b * (1 - coverage) + amount * k[4];
+    }
+    const i0 = Math.max(a, 0), inkC = i0 * i0 / (i0 + 0.2);
+    const t = clamp(b / Math.max(a, 1e-4) + look.paletteShift, 0, 1), h = Math.round(t * HUE_STEPS) * 3;
+    const ex = (u - 0.5) * 1.4, ey = (v - 0.5) * 1.4, vignette = 1 - 0.5 * (ex * ex + ey * ey), o = (y * SW + x) * 4;
+    for (let j = 0; j < 3; j++) {
+      const light = 1 - Math.exp(-TIDE_HUES[h + j] * inkC * look.exposure);
+      const encoded = toSrgbFast(BACKGROUND[j] * vignette + light) + (Math.random() + Math.random() - 1) / 255;
+      d[o + j] = clamp(encoded, 0, 1) * 255;
+    }
+    d[o + 3] = 255;
+  }
+}
+
+function drawLoop() {
+  const canvas = document.getElementById("loop"), { ctx, w, h } = setup(canvas, 9 / 16);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+  if (document.getElementById("loop-view").value === "ink") {
+    const [ink] = images[current], dd = inkImage.data;
+    for (let i = 0; i < FW * FH; i++) { const g = toSrgb(1 - Math.exp(-6 * Math.max(ink[i], 0))) * 255; dd[i * 4] = dd[i * 4 + 1] = dd[i * 4 + 2] = g; dd[i * 4 + 3] = 255; }
+    inkCanvas.getContext("2d").putImageData(inkImage, 0, 0);
+    ctx.imageSmoothingEnabled = false; ctx.drawImage(inkCanvas, 0, 0, w, h);
+  } else {
+    screenCanvas.getContext("2d").putImageData(screen, 0, 0);
+    ctx.drawImage(screenCanvas, 0, 0, w, h);
+  }
+  const L = loopLook, s = loopSignals;
+  if (L) document.getElementById("loop-readout").innerHTML =
+    `<span>section <b>${s.section}</b></span><span>bass <b>${s.bass.toFixed(2)}</b></span><span>mood <b>${L.mood.toFixed(2)}</b></span>` +
+    `<span>grows <b>×${Math.exp(L.zoomPerSecond).toFixed(2)}</b>/s</span><span>turns <b>${(L.turnPerSecond * 180 / Math.PI).toFixed(1)}°</b>/s</span>` +
+    `<span>persistence <b>${L.persistence.toFixed(2)} s</b></span>`;
+}
+function stepLoop(dt) {
+  loopSignals = loopSong(dt);
+  const intensity = +document.getElementById("intensity").value;
+  loopLook = loopTide(loopSignals, intensity, loopScale());
+  const eightBit = document.getElementById("eight-bit").checked, paintOnce = document.getElementById("paint-once").checked;
+  feedbackStep(loopLook, loopSignals.waveform, eightBit, paintOnce);
+  return paintOnce;
+}
+function frameLoop(dt) {
+  const paintOnce = stepLoop(dt);
+  if (document.getElementById("loop-view").value !== "ink") composite(loopLook, loopSignals.waveform, paintOnce);
+  drawLoop();
+}
+function warmUp(seconds) { for (let i = 0; i < seconds * 60; i++) stepLoop(1 / 60); composite(loopLook, loopSignals.waveform, document.getElementById("paint-once").checked); }
+function clearLoop() { for (const pair of images) for (const img of pair) img.fill(0); }
+
+const SLIDERS = [["zoom", "×"], ["turn", "×"], ["swirl", "×"], ["persist", "×"], ["deposit", "×"]];
+function syncLoopLabels() {
+  for (const [id] of SLIDERS) document.getElementById(id + "-out").textContent = "×" + (+document.getElementById(id).value / 100).toFixed(2);
+  document.getElementById("intensity-out").textContent = document.getElementById("intensity").value;
+}
+for (const [id] of SLIDERS) document.getElementById(id).addEventListener("input", () => { syncLoopLabels(); if (!loopPlaying) { frameLoop(1 / 60); } });
+for (const id of ["intensity", "eight-bit", "paint-once"]) document.getElementById(id).addEventListener("change", () => { syncLoopLabels(); if (!loopPlaying) frameLoop(1 / 60); });
+document.getElementById("loop-view").addEventListener("change", () => { composite(loopLook, loopSignals.waveform, document.getElementById("paint-once").checked); drawLoop(); });
+document.getElementById("loop-section").addEventListener("change", (e) => { loopSong.seek(+e.target.value); if (!loopPlaying) warmUp(2); drawLoop(); });
+document.getElementById("loop-reset").addEventListener("click", () => { clearLoop(); if (!loopPlaying) { composite(loopLook, loopSignals.waveform, false); drawLoop(); } });
+document.getElementById("loop-defaults").addEventListener("click", () => {
+  for (const [id] of SLIDERS) document.getElementById(id).value = 100;
+  document.getElementById("intensity").value = "0.5"; document.getElementById("eight-bit").checked = false; document.getElementById("paint-once").checked = false;
+  syncLoopLabels(); if (!loopPlaying) frameLoop(1 / 60);
+});
+const loopButton = document.getElementById("loop-play");
+const syncLoopButton = () => loopButton.textContent = loopPlaying ? "Pause" : "Play";
+loopButton.addEventListener("click", () => { loopPlaying = !loopPlaying; syncLoopButton(); });
+syncLoopLabels(); syncLoopButton(); warmUp(3);
+
+// ---------- 03: forward vs backward warp ----------
+const WN = 64;
+const testImage = (() => { // rings and spokes: something whose holes show
+  const img = new Float32Array(WN * WN);
+  for (let y = 0; y < WN; y++) for (let x = 0; x < WN; x++) {
+    const dx = x + 0.5 - WN / 2, dy = y + 0.5 - WN / 2, r = Math.hypot(dx, dy), a = Math.atan2(dy, dx);
+    const rings = 0.5 + 0.5 * Math.cos(r * 0.9), spokes = 0.5 + 0.5 * Math.cos(a * 6);
+    img[y * WN + x] = 0.25 + 0.55 * Math.max(rings * 0.8, spokes * (r > 6 ? 0.7 : 0));
+  }
+  return img;
+})();
+function drawWarp() {
+  const zoom = +document.getElementById("warp-zoom").value / 100, turn = +document.getElementById("warp-turn").value * Math.PI / 180;
+  document.getElementById("warp-zoom-out").textContent = zoom >= 1 ? `+${Math.round((zoom - 1) * 100)}%` : `${Math.round((zoom - 1) * 100)}% (shrinks)`;
+  document.getElementById("warp-turn-out").textContent = `${document.getElementById("warp-turn").value}°`;
+  const c = Math.cos(turn), s = Math.sin(turn), mid = WN / 2;
+  // Forward: every old pixel center goes to its new place, rounded to a pixel.
+  const forward = new Float32Array(WN * WN), hits = new Uint8Array(WN * WN);
+  for (let y = 0; y < WN; y++) for (let x = 0; x < WN; x++) {
+    const dx = (x + 0.5 - mid) * zoom, dy = (y + 0.5 - mid) * zoom;
+    const nx = Math.floor(c * dx - s * dy + mid), ny = Math.floor(s * dx + c * dy + mid);
+    if (nx >= 0 && nx < WN && ny >= 0 && ny < WN) { forward[ny * WN + nx] = testImage[y * WN + x]; hits[ny * WN + nx]++; }
+  }
+  // Backward: every new pixel looks back, turned back and shrunk, and blends.
+  // Nothing comes in from outside the old image, as in feedback.wgsl.
+  const backward = new Float32Array(WN * WN), covered = new Uint8Array(WN * WN);
+  for (let y = 0; y < WN; y++) for (let x = 0; x < WN; x++) {
+    const px = x + 0.5 - mid, py = y + 0.5 - mid;
+    const qx = (c * px + s * py) / zoom + mid, qy = (-s * px + c * py) / zoom + mid;
+    const inside = qx >= 0 && qx <= WN && qy >= 0 && qy <= WN;
+    covered[y * WN + x] = inside;
+    backward[y * WN + x] = inside ? sample(testImage, WN, WN, qx / WN, qy / WN) : 0;
+  }
+  // Holes count only inside the moved picture, where some old pixel belongs.
+  let holes = 0, doubles = 0, area = 0;
+  for (let i = 0; i < WN * WN; i++) { if (!covered[i]) continue; area++; if (hits[i] === 0) holes++; if (hits[i] > 1) doubles++; }
+  for (const [id, img] of [["warp-forward", forward], ["warp-backward", backward]]) {
+    const canvas = document.getElementById(id), { ctx, w } = setup(canvas, 1);
+    const data = new ImageData(WN, WN);
+    for (let i = 0; i < WN * WN; i++) { const g = toSrgb(img[i]) * 255; data.data[i * 4] = data.data[i * 4 + 1] = data.data[i * 4 + 2] = g; data.data[i * 4 + 3] = 255; }
+    const off = new OffscreenCanvas(WN, WN); off.getContext("2d").putImageData(data, 0, 0);
+    ctx.imageSmoothingEnabled = false; ctx.drawImage(off, 0, 0, w, w);
+  }
+  document.getElementById("warp-readout").innerHTML =
+    `<span>forward: <b>${(holes / area * 100).toFixed(1)}%</b> holes, <b>${(doubles / area * 100).toFixed(1)}%</b> of pixels hit twice or more</span><span>backward: <b>0</b> holes, one answer per pixel</span>`;
+}
+for (const id of ["warp-zoom", "warp-turn"]) document.getElementById(id).addEventListener("input", drawWarp);
+
+// ---------- 04: fading in floats vs 8 bits ----------
+function drawFloats() {
+  const fade = +document.getElementById("fade").value / 1000, startLevel = +document.getElementById("start").value;
+  document.getElementById("fade-out").textContent = fade.toFixed(3);
+  document.getElementById("start-out").textContent = `${startLevel} of 255`;
+  const frames = 300, float = [startLevel], bytes = [startLevel];
+  for (let i = 1; i <= frames; i++) { float.push(float[i - 1] * fade); bytes.push(Math.round(bytes[i - 1] * fade)); }
+  const { ctx, w, h } = setup(document.getElementById("floats"));
+  const plotH = h - 74, xOf = (i) => 34 + i / frames * (w - 40), yOf = (v) => 10 + (1 - v / 255) * (plotH - 20);
+  ctx.strokeStyle = css("--line"); ctx.lineWidth = 1; ctx.beginPath();
+  for (const v of [0, 64, 128, 192, 255]) { ctx.moveTo(34, Math.round(yOf(v)) + 0.5); ctx.lineTo(w, Math.round(yOf(v)) + 0.5); label(ctx, String(v), 28, yOf(v) + 3, "right"); }
+  ctx.stroke();
+  const line = (values, color, width) => { ctx.strokeStyle = color; ctx.lineWidth = width; ctx.beginPath(); values.forEach((v, i) => i ? ctx.lineTo(xOf(i), yOf(v)) : ctx.moveTo(xOf(i), yOf(v))); ctx.stroke(); };
+  line(float, css("--accent"), 1.25); line(bytes, css("--treble"), 1.25);
+  label(ctx, "0 s", xOf(0), plotH, "left"); label(ctx, "5 s", xOf(frames), plotH, "right");
+  label(ctx, "16-bit float", xOf(frames * 0.55), yOf(float[Math.round(frames * 0.55)]) - 8, "left", css("--accent"));
+  label(ctx, "8 bits", xOf(frames * 0.78), yOf(bytes[Math.round(frames * 0.78)]) - 8, "left", css("--treble"));
+  // Strips: what the pixel looks like over time.
+  for (const [row, values, name] of [[plotH + 12, float, "float"], [plotH + 40, bytes, "8 bits"]]) {
+    for (let i = 0; i < frames; i++) { const g = Math.round(values[i]); ctx.fillStyle = `rgb(${g},${g},${g})`; ctx.fillRect(xOf(i), row, Math.ceil(xOf(i + 1) - xOf(i)) + 0.5, 22); }
+    label(ctx, name, 28, row + 15, "right");
+  }
+  const stuck = bytes[frames];
+  document.getElementById("floats-readout").innerHTML =
+    `<span>float after 5 s: <b>${float[frames].toFixed(2)}</b></span><span>8 bits after 5 s: <b>${stuck}</b> ${stuck > 0 && Math.round(stuck * fade) === stuck ? "(stuck: " + stuck + " × " + fade.toFixed(3) + " = " + (stuck * fade).toFixed(2) + " rounds back to " + stuck + ")" : ""}</span>`;
+}
+for (const id of ["fade", "start"]) document.getElementById(id).addEventListener("input", drawFloats);
+
+// ---------- 05: the cosine palette ----------
+let palette = structuredClone(PALETTES.tide);
+const PARAMS = [["a", 0, 1], ["b", 0, 1], ["c", 0, 2], ["d", 0, 1]];
+(function buildPaletteSliders() {
+  const box = document.getElementById("palette-sliders");
+  box.innerHTML = `<div class="head"></div><div class="head">red</div><div class="head">green</div><div class="head">blue</div>`;
+  for (const [p, min, max] of PARAMS) {
+    box.insertAdjacentHTML("beforeend", `<div class="head">${p}</div>`);
+    for (let ch = 0; ch < 3; ch++) {
+      box.insertAdjacentHTML("beforeend", `<div class="control"><label><span></span><output id="pal-${p}${ch}-out"></output></label><input type="range" id="pal-${p}${ch}" min="${min * 1000}" max="${max * 1000}" step="1" aria-label="${p} for ${["red", "green", "blue"][ch]}"></div>`);
+    }
+  }
+  for (const [p] of PARAMS) for (let ch = 0; ch < 3; ch++) document.getElementById(`pal-${p}${ch}`).addEventListener("input", (e) => { palette[p][ch] = e.target.value / 1000; drawPalette(false); });
+})();
+function syncPaletteSliders() {
+  for (const [p] of PARAMS) for (let ch = 0; ch < 3; ch++) document.getElementById(`pal-${p}${ch}`).value = Math.round(palette[p][ch] * 1000);
+}
+const redShare = (srgb) => { const l = srgb.map(toLinear), sum = l[0] + l[1] + l[2]; return sum > 0 ? l[0] / sum : 0; };
+function drawPalette() {
+  for (const [p] of PARAMS) for (let ch = 0; ch < 3; ch++) document.getElementById(`pal-${p}${ch}-out`).textContent = palette[p][ch].toFixed(3);
+  const { ctx, w, h } = setup(document.getElementById("palette")), L = 34, R = w - 6, W = R - L;
+  const xOf = (t) => L + t * W;
+  const hex = (c) => "#" + c.map((v) => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
+  for (let x = 0; x < W; x++) {
+    const c = paletteAt(palette, x / (W - 1));
+    ctx.fillStyle = hex(c); ctx.fillRect(L + x, 0, 1.5, 38);
+    // Dim: a little ink after the contrast curve and tone mapping, over the background.
+    const ink = 0.12, inkC = ink * ink / (ink + 0.2);
+    const dim = c.map((v, j) => toSrgb(BACKGROUND[j] + 1 - Math.exp(-toLinear(v) * inkC * 1.3 * 6)));
+    ctx.fillStyle = hex(dim.map((v) => clamp(v, 0, 1))); ctx.fillRect(L + x, 46, 1.5, 38);
+  }
+  label(ctx, "t=0", L, 98); label(ctx, "1", R, 98, "right");
+  label(ctx, "full", L - 4, 22, "right"); label(ctx, "dim", L - 4, 68, "right");
+  // Channel waves.
+  const top = 108, ch = 90, yOf = (v) => top + (1 - v) * ch;
+  ctx.strokeStyle = css("--line"); ctx.lineWidth = 1; ctx.beginPath();
+  for (const v of [0, 0.5, 1]) { ctx.moveTo(L, Math.round(yOf(v)) + 0.5); ctx.lineTo(R, Math.round(yOf(v)) + 0.5); }
+  ctx.stroke();
+  label(ctx, "1", L - 4, yOf(1) + 3, "right"); label(ctx, "0", L - 4, yOf(0) + 3, "right");
+  ["--red", "--green", "--blue"].forEach((color, j) => {
+    ctx.strokeStyle = css(color); ctx.lineWidth = 1.25; ctx.beginPath();
+    for (let x = 0; x <= W; x += 2) { const v = paletteAt(palette, x / W)[j]; x ? ctx.lineTo(L + x, yOf(v)) : ctx.moveTo(L + x, yOf(v)); }
+    ctx.stroke();
+  });
+  // Red share.
+  const top2 = 214, rh = 76, yR = (v) => top2 + (1 - v) * rh;
+  let worst = 0, worstT = 0;
+  for (let i = 0; i <= 1000; i++) { const r = redShare(paletteAt(palette, i / 1000)); if (r > worst) { worst = r; worstT = i / 1000; } }
+  ctx.strokeStyle = css("--line"); ctx.beginPath(); ctx.moveTo(L, Math.round(yR(0)) + 0.5); ctx.lineTo(R, Math.round(yR(0)) + 0.5); ctx.stroke();
+  for (const [v, name, dy, align] of [[0.75, "Juglar's limit 0.75", 11, "right"], [0.8, "saturated red 0.8", -4, "left"]]) {
+    ctx.setLineDash([3, 3]); ctx.strokeStyle = css("--muted"); ctx.beginPath(); ctx.moveTo(L, Math.round(yR(v)) + 0.5); ctx.lineTo(R, Math.round(yR(v)) + 0.5); ctx.stroke(); ctx.setLineDash([]);
+    label(ctx, name, align === "right" ? R : L + 4, yR(v) + dy, align);
+  }
+  label(ctx, "1", L - 4, yR(1) + 3, "right"); label(ctx, "0", L - 4, yR(0) + 3, "right");
+  ctx.strokeStyle = css("--red"); ctx.lineWidth = 1.25; ctx.beginPath();
+  for (let x = 0; x <= W; x += 2) { const v = redShare(paletteAt(palette, x / W)); x ? ctx.lineTo(L + x, yR(v)) : ctx.moveTo(L + x, yR(v)); }
+  ctx.stroke();
+  label(ctx, "red's share of the light", L, h - 2);
+  const pass = worst <= 0.75;
+  document.getElementById("palette-readout").innerHTML =
+    `<span>t=0 <b>${hex(paletteAt(palette, 0))}</b></span><span>t=0.5 <b>${hex(paletteAt(palette, 0.5))}</b></span><span>t=1 <b>${hex(paletteAt(palette, 1))}</b></span>` +
+    `<span>reddest: <b>${Math.round(worst * 100)}%</b> red at t=${worstT.toFixed(2)}, <b>${pass ? "passes" : "fails"}</b> the test</span>`;
+}
+document.getElementById("palette-preset").addEventListener("change", (e) => { palette = structuredClone(PALETTES[e.target.value]); syncPaletteSliders(); drawPalette(); });
+syncPaletteSliders();
+
+// ---------- 06: tone mapping ----------
+function drawTone() {
+  const peak = +document.getElementById("ink").value / 100, tpos = +document.getElementById("tpos").value / 100;
+  document.getElementById("ink-out").textContent = peak.toFixed(1);
+  document.getElementById("tpos-out").textContent = tpos.toFixed(2);
+  const hue = paletteAt(PALETTES.tide, tpos).map(toLinear), exposure = 1.3;
+  for (const [id, mapped] of [["tone-clip", false], ["tone-map", true]]) {
+    const canvas = document.getElementById(id), { ctx, w, h, dpr } = setup(canvas);
+    const W = Math.round(w * dpr), H = Math.round(h * dpr), img = ctx.createImageData(W, H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const dx = (x - W / 2) / (H * 0.32), dy = (y - H / 2) / (H * 0.32), ink = peak * Math.exp(-(dx * dx + dy * dy));
+      const o = (y * W + x) * 4;
+      for (let j = 0; j < 3; j++) {
+        const light = mapped ? 1 - Math.exp(-hue[j] * ink * exposure) : Math.min(1, hue[j] * ink * exposure);
+        img.data[o + j] = toSrgb(BACKGROUND[j] + light) * 255;
+      }
+      img.data[o + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  const { ctx, w, h } = setup(document.getElementById("tone-curve")), L = 34, R = w - 6, maxInk = 8;
+  const xOf = (i) => L + i / maxInk * (R - L), yOf = (v) => 8 + (1 - v) * (h - 30);
+  ctx.strokeStyle = css("--line"); ctx.lineWidth = 1; ctx.beginPath();
+  for (const v of [0, 1]) { ctx.moveTo(L, Math.round(yOf(v)) + 0.5); ctx.lineTo(R, Math.round(yOf(v)) + 0.5); }
+  ctx.stroke();
+  label(ctx, "1", L - 4, yOf(1) + 3, "right"); label(ctx, "0", L - 4, yOf(0) + 3, "right");
+  for (let i = 0; i <= maxInk; i += 2) label(ctx, `ink ${i}`, xOf(i), h - 6, i === 0 ? "left" : i === maxInk ? "right" : "center");
+  ["--red", "--green", "--blue"].forEach((color, j) => {
+    ctx.strokeStyle = css(color); ctx.lineWidth = 1.25;
+    ctx.beginPath(); for (let x = 0; x <= R - L; x += 2) { const i = x / (R - L) * maxInk, v = 1 - Math.exp(-hue[j] * i * exposure); x ? ctx.lineTo(L + x, yOf(v)) : ctx.moveTo(L + x, yOf(v)); } ctx.stroke();
+    ctx.setLineDash([2, 3]); ctx.beginPath(); for (let x = 0; x <= R - L; x += 2) { const i = x / (R - L) * maxInk, v = Math.min(1, hue[j] * i * exposure); x ? ctx.lineTo(L + x, yOf(v)) : ctx.moveTo(L + x, yOf(v)); } ctx.stroke(); ctx.setLineDash([]);
+  });
+  ctx.strokeStyle = css("--muted"); ctx.beginPath(); ctx.moveTo(Math.round(xOf(Math.min(peak, maxInk))) + 0.5, yOf(1)); ctx.lineTo(Math.round(xOf(Math.min(peak, maxInk))) + 0.5, yOf(0)); ctx.stroke();
+  label(ctx, "center of the blob", xOf(Math.min(peak, maxInk)) + 4, yOf(0.08));
+}
+for (const id of ["ink", "tpos"]) document.getElementById(id).addEventListener("input", drawTone);
+
+// ---------- 07: dithering ----------
+let ditherPlaying = !reduced, ditherVisible = true;
+function drawDither() {
+  const mode = document.getElementById("dither-mode").value, boost = document.getElementById("dither-boost").checked;
+  const canvas = document.getElementById("dither"), { ctx, w, h, dpr } = setup(canvas);
+  const W = Math.round(w * dpr), H = Math.round(h * dpr), img = ctx.createImageData(W, H);
+  const from = toLinear(0x09 / 255), to = toLinear(0x16 / 255), levels = new Set();
+  const noise = mode === "none" ? () => 0 : mode === "uniform" ? () => Math.random() - 0.5 : () => Math.random() + Math.random() - 1;
+  for (let x = 0; x < W; x++) {
+    const linear = from + (to - from) * x / (W - 1), encoded = toSrgb(linear) * 255;
+    for (let y = 0; y < H; y++) {
+      let level = Math.round(clamp(encoded + noise(), 0, 255));
+      levels.add(level);
+      if (boost) level = clamp(9 + (level - 9) * 8, 0, 255);
+      const o = (y * W + x) * 4; img.data[o] = img.data[o + 1] = img.data[o + 2] = level; img.data[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  // The left end, enlarged.
+  const zoomCanvas = document.getElementById("dither-zoom"), z = setup(zoomCanvas), scale = 8;
+  const cw = Math.ceil(z.w / scale), chh = Math.ceil(z.h / scale), off = new OffscreenCanvas(cw, chh);
+  const crop = new ImageData(cw, chh);
+  for (let y = 0; y < chh; y++) crop.data.set(img.data.subarray(y * W * 4, (y * W + cw) * 4), y * cw * 4);
+  off.getContext("2d").putImageData(crop, 0, 0);
+  z.ctx.imageSmoothingEnabled = false; z.ctx.drawImage(off, 0, 0, cw * scale, chh * scale);
+  const toHex = toSrgb(to) * 255;
+  document.getElementById("dither-readout").innerHTML =
+    `<span>the gradient spans <b>${(toHex - 9).toFixed(0)}</b> screen levels over ${W} pixels: one step every <b>${Math.round(W / (toHex - 9))}</b> pixels without noise</span>`;
+}
+document.getElementById("dither-mode").addEventListener("change", drawDither);
+document.getElementById("dither-boost").addEventListener("change", drawDither);
+const ditherButton = document.getElementById("dither-play");
+const syncDitherButton = () => ditherButton.textContent = ditherPlaying ? "Pause" : "Play";
+ditherButton.addEventListener("click", () => { ditherPlaying = !ditherPlaying; syncDitherButton(); });
+syncDitherButton();
+
+// ---------- Animation and layout ----------
+for (const [id, set] of [["loop", (v) => loopVisible = v], ["dither", (v) => ditherVisible = v]]) {
+  new IntersectionObserver(([e]) => set(e.isIntersecting)).observe(document.getElementById(id));
+}
+let last = performance.now(), ditherClock = 0;
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (loopPlaying && loopVisible) frameLoop(dt);
+  ditherClock += dt;
+  // The noise changes every frame in Juglar; ten times a second is enough to see it move here.
+  if (ditherPlaying && ditherVisible && ditherClock > 0.1) { ditherClock = 0; drawDither(); }
+  requestAnimationFrame(frame);
+}
+function drawAll() { drawLoop(); drawWarp(); drawFloats(); drawPalette(); drawTone(); drawDither(); }
+drawAll(); requestAnimationFrame(frame);
+window.addEventListener("resize", drawAll);
+</script>
+</body>
+</html>
