@@ -20,4 +20,14 @@ Windows 10 or 11 with a GPU that supports Vulkan or DirectX 12, and Rust install
 cargo run --release
 ```
 
-Play anything on the system. Juglar listens to what the speakers play, with no setup. `Esc` closes the window. The window title shows the frame rate, frame intervals, and the analysis (CPU) and drawing (GPU) time per frame. `JUGLAR_FPS=36` (or any rate) lowers the target frame rate. `JUGLAR_DEMO=1` plays a silent synthetic song instead of listening, for working on visuals without music.
+Play anything on the system. Juglar listens to what the speakers play, with no setup.
+
+| Key | Does |
+|---|---|
+| `Tab` | switch between the visuals and the analysis view (what Juglar hears) |
+| `1` `2` `3` | intensity: gentle, medium, strong |
+| `Esc` | close |
+
+The window title shows the frame rate, frame intervals, and the analysis (CPU) and drawing (GPU) time per frame.
+
+Environment variables, until there is a settings file: `JUGLAR_FPS=36` (or any rate) lowers the target frame rate; `JUGLAR_INTENSITY=0.3` sets the starting intensity (0 to 1); `JUGLAR_REDUCED_MOTION=1` keeps the picture still (by default Juglar follows Windows' "Show animations" setting); `JUGLAR_DEMO=1` plays a silent synthetic song instead of listening, for working on visuals without music.

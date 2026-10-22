@@ -20,10 +20,11 @@ AudioCapture ──samples──► ring buffer ──► dsp ──► Signals 
   own thread)                  SPSC)           envelopes,       building      ▼
                                                beats, loudness  blocks     render
 NowPlaying ──track info──────────────────────────────────────► hud        passes:
-                                                                           1 warp (feedback, ping-pong, rgba16f, half-res)
-                                                                           2 sources (waveform, shapes, particles)
-                                                                           3 bloom (downsample/upsample chain)
-                                                                           4 composite (palette, tonemap, dither) ─► swapchain
+                                                                           1 feedback (ping-pong, rgba16f, half-res):
+                                                                             warp + fade the last picture, paint sources faintly
+                                                                           2 bloom (downsample/upsample chain, M5)
+                                                                           3 composite (sources sharp on top, palette,
+                                                                             tonemap, dither) ─► swapchain
 ```
 
 ### Threads

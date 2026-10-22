@@ -123,3 +123,37 @@ Every important decision in Juglar, in plain language: what was decided, why, wh
 **Why:** effects need to be worked on, tested and photographed without music playing, and with the same "music" every time. The web demo, the screensaver preview and the npm component will have no system audio either. If the visuals only accepted audio, each of those would need a special case.
 **Considered:** recorded audio files, which would sound real but need a decoder (a library, or a lot of code) and still go through the analysis. The synthetic song skips both, and its numbers are known exactly, which makes tests easy.
 **Cost:** it is a caricature of music: perfectly regular, no melody. Good for development, not for judging how an effect reacts to real songs.
+
+### D21 — The feedback loop stores ink, in half-size 16-bit float images
+
+**Decided:** the feedback loop runs on two images half the window's width and height that take turns (one is read, the other written). Each pixel holds two 16-bit floating-point numbers: an amount of ink, and its palette position weighted by that amount. Colors are chosen only at the end.
+**Why:** half size is a quarter of the pixels for the one step that reads and writes all of them, and trails are soft anyway. Floats let fading reach zero; with the screen's 256 levels, dim pixels round back to themselves and ghosts never leave. Storing ink and palette positions instead of colors lets paint change color as it ages and lets the whole picture's colors move with the music without repainting.
+**Considered:** full-size images (four times the work for detail the trails don't have); 8-bit images (stuck ghosts, visible banding); storing colors, MilkDrop's way (no aging, and every recolor needs new paint).
+**Cost:** half size blurs anything drawn into the loop, so sharp shapes are drawn again on top (D22). Two numbers per pixel cover one palette; a scene that needs two independent colors at once would need the spare channels.
+
+### D22 — A scene paints twice: faintly into the trails, sharply on top
+
+**Decided:** each shape is painted with a small fraction of its ink (5–11% in Tide) into the feedback images, and again in full, at full resolution, over the final picture.
+**Why:** painted fully into the loop every frame, a shape smears into a solid band and loud music turns the screen into fog: the first version of Tide did exactly that. Many faint copies make trails with structure, and the crisp copy on top keeps the present readable.
+**Considered:** lowering the ink of a single painting, which made the shape itself dim; fading faster, which shortened the trails to nothing.
+**Cost:** each shape is computed twice per frame, once per resolution. At 0.1 ms of GPU per frame, that is affordable.
+
+### D23 — Palettes are cosine formulas; Tide's runs from sand to blue
+
+**Decided:** palettes are cosine palettes, color = a + b·cos(2π(c·t + d)) per channel. Tide's makes half a swing per channel, from sand (#dcc69a) to steel blue (#6f9bd1) through silver, and positions are clamped to that range. Present paint is warm in loud music; trails start cooler and keep cooling as they age.
+**Why:** twelve numbers describe a whole smooth palette, cost a few GPU instructions, and can be shifted, mutated or derived from harmony later (Milestones 5.5 and 6). The first palette went through blue, teal and sand, and on screen its yellow-greens turned muddy when dim, which trails always are. The half swing avoids green entirely and reads as warm light leaving cool smoke.
+**Considered:** gradients stored as images (more freedom, harder to generate and to animate); hue rotation (passes through every color, including garish ones).
+**Cost:** a clamped half swing has two ends; a scene that wants a cycling palette sets c = 1 and doesn't clamp.
+
+### D24 — Reduced motion freezes the picture, and follows the OS live
+
+**Decided:** when Windows' "Show animations" setting is off, the scene receives silence and no passing time, so it shows a still ring. Juglar reads the setting once a second, so a change applies while it runs. `JUGLAR_REDUCED_MOTION=1` or `0` overrides it until there is a settings file (Milestone 7).
+**Why:** the research note asks for zero animation and zero audio-driven change with reduced motion, honored before the first frame and during changes. Slower motion is not enough for people who need a static display.
+**Considered:** slowing everything down (not what the setting asks for); a blank screen (allowed, but a still picture tells the user Juglar is running).
+**Cost:** reduced motion shows no reaction to music at all. A still picture that changes once per section might suit some people; that would be a user option, not the default.
+
+### D25 — The analysis view stays, behind Tab
+
+**Decided:** Milestone 3's picture (waveform, spectrum, band levels) is kept as a second view. `Tab` switches between it and the scene. Keys 1, 2 and 3 set the intensity to gentle, medium and strong.
+**Why:** when a scene reacts oddly, the first question is what Juglar heard. The analysis view answers it in the same window, and costs nothing while hidden. The intensity keys arrive before the generator (Milestone 6) because tuning a scene needs them.
+**Cost:** keyboard shortcuts with no visible hint until the HUD exists (Milestone 7); the README lists them.
