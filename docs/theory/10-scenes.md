@@ -61,6 +61,14 @@ The fade and the color change here are per frame, not per second, since each fra
 
 Near the fractal's edge, bands get thinner than a pixel and move fast when c moves. Three things keep that from flickering: c moves slowly and smoothly; the paint fades with every step, so the deepest steps, where bands are thinnest, are dim; and the palette was chosen for colors of similar brightness (linear luminance 0.11 to 0.41), so bands sliding past a point change its hue more than its light. A first version also drew the ring inside the fractal, where its paint circulated through the black interior: beautiful, but it shimmered six to twenty times more (see "Checking for flicker finer than a cell" below).
 
+## Crystal: a fractal of mirrors
+
+*Crystal* uses the same trick as *Julia* with a different step. Each frame, the old picture is turned, folded into five mirrored wedges (as in *Kaleido*), moved out from the middle and shrunk to about half its size. Read backwards, as the warp is (note 05), that puts a small copy of the whole old picture in each of five places around a ring. The next frame copies those copies, and so on: a soft ring drawn by the waveform in the middle comes back as five rings, then twenty-five smaller ones, a hundred and twenty-five smaller still, a snowflake of rings that is a fractal. Mathematicians call a set of shrinking copies like this an *iterated function system*; here the loop runs it, one generation per frame.
+
+Each generation is fainter than the one before (0.8 of its ink) and a step further along the palette, so the crystal is colored by generation: the newest ring in the middle, the oldest copies, smallest and darkest, at the rim. The mids and beats twist the fold, which turns every generation by a little more than the one inside it, so the crystal twists into spirals and back; the bass pushes the copies out and in, and the crystal breathes.
+
+Small copies of a moving shape are where flicker finer than a cell would hide. So the ring is soft and wide, the fold changes slowly, and the generations fade fast: with them fading to 0.86 instead of 0.8, the deeper copies filled the crystal with a carpet of tiny rings and the check below counted four times more.
+
 ## Why nothing here flashes
 
 The lesson of note 09 applies to every scene: a bright, thin shape that trembles makes the pixels along it blink. So the levels that move the lights, the rose and the blobs are smoothed in three stages, like *Tide*'s waveform, and beats push motion (speed, zoom, current) rather than brightness. Colors turn slowly: a looping palette that cycled several times a second would flash.
@@ -82,12 +90,13 @@ It counts too much rather than too little: a thin line that *moves* across a blo
 | Plasma | 0.000% | 0.000% | 0.000% / 0.000% |
 | Harmonograph | 0.95% | 0.77% | 0.17% / 0.14% |
 | Julia | 0.47% | 0.16% | 0.05% / 0.006% |
+| Crystal | 0.38% | 0.000% | 0.08% / 0.000% |
 
 The scenes with thin moving lines (Kaleido's rose, Harmonograph's figure, Julia's ring and its echoes) score highest, the soft ones nothing. The new scenes were tuned to stay at or below the old ones. The cell column should read zero, since the limiter never lets a cell break the rule; the few cells counted are most likely the capture's doing (it misses about two frames in five, and sees the screen after dithering and Windows' compositor), but this hasn't been proved.
 
 ## What they cost
 
-GPU time per frame on the development PC (GTX 1060, release build, music playing, with bloom). The first six were measured once, over 20 to 22 s; the newer ones twice, over 15 s each, the range shown. Every scene costs the CPU the same (handing a frame to the driver costs the same whatever it holds): 7.8% of one core for *Tide* and for *Julia* alike, in the same session.
+GPU time per frame on the development PC (GTX 1060, release build, music playing, with bloom). The first six were measured once, over 20 to 22 s; the newer ones twice, over 15 s each, the range shown. Every scene costs the CPU the same (handing a frame to the driver costs the same whatever it holds): 7.8% of one core for *Tide* and for every new scene alike, measured in the same session.
 
 | Scene | 960×540 | maximized, 1920×1009 |
 |---|---|---|
@@ -98,6 +107,7 @@ GPU time per frame on the development PC (GTX 1060, release build, music playing
 | Plasma | 0.237 ms | |
 | Harmonograph | 0.412 ms | |
 | Julia | 0.242–0.250 ms | 0.796 ms |
+| Crystal | 0.243–0.249 ms | 0.804 ms |
 
 ## Further reading
 

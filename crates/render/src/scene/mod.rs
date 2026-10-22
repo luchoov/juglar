@@ -9,6 +9,7 @@
 //! the scenes are hand-made, each trying a different idea, and the arrow
 //! keys switch between them.
 
+mod crystal;
 mod harmonograph;
 mod julia;
 mod kaleido;
@@ -42,6 +43,7 @@ pub(crate) fn all() -> Vec<Box<dyn Scene>> {
         Box::new(plasma::Plasma::new()),
         Box::new(harmonograph::Harmonograph::new()),
         Box::new(julia::Julia::new()),
+        Box::new(crystal::Crystal::new()),
     ]
 }
 
