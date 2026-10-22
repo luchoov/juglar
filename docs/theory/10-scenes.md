@@ -89,6 +89,12 @@ The spectrum hangs as a band of color across the top of the picture, each point 
 
 Two choices keep it calm where it could flash. The band follows the spectrum smoothed in three stages of 0.3 s, which leaves under a fiftieth of a kick's swing: a band that pulsed with every kick would make every point of every drip below it pulse too. And it is one continuous band: the first version hung a row of 64 separate drops, which painted a comb of regular stripes at the top, the kind of pattern the research warns about.
 
+## Lenses: glass over an oil slick
+
+A thin coat of color is laid over the whole picture every frame, from a marble pattern (noise bent by more noise) that drifts. Four lenses wander over it, each one bending the picture under it, every frame: two magnify it and turn it one way, two shrink it and turn it the other. A lens drawn once would just show a bulge. In the loop, the bend is repeated every frame, so a magnifying lens keeps blowing the marble out from its middle and a shrinking one keeps drawing it in, and the colors stream between them in swirls, like an oil slick stirred under four drops of water. A faint ring marks each lens's glass edge. Each lens bends as hard as its band (bass, mids, treble, overall level), and beats make all four bend harder for a moment; nothing gets brighter.
+
+The marble first showed a straight seam across the picture, which turned out to be in the noise every scene with noise used: a random value per point of a grid, made with the usual shortcut of taking the fraction of sin(x) × 43758.5. The GPU computed some grid points slightly differently depending on which neighboring cell asked, and the huge multiplier turned that rounding difference into a completely different value. The noise is now shared by all scenes and hashes integers instead, so both neighbors agree exactly. It costs *Oil* 0.03 ms more per frame.
+
 ## Why nothing here flashes
 
 The lesson of note 09 applies to every scene: a bright, thin shape that trembles makes the pixels along it blink. So the levels that move the lights, the rose and the blobs are smoothed in three stages, like *Tide*'s waveform, and beats push motion (speed, zoom, current) rather than brightness. Colors turn slowly: a looping palette that cycled several times a second would flash.
@@ -114,6 +120,7 @@ It counts too much rather than too little: a thin line that *moves* across a blo
 | Vortex | 0.08–0.12% | 0.002% | 0.03–0.04% / 0.000% |
 | Corona | 0.000% | 0.000% | 0.000% / 0.000% |
 | Melt | 0.002% | 0.000% | 0.000% / 0.000% |
+| Lenses | 0.003–0.008% | 0.000% | 0.000% / 0.000% |
 
 The scenes with thin moving lines (Kaleido's rose, Harmonograph's figure, Julia's ring and its echoes) score highest, the soft ones nothing. The new scenes were tuned to stay at or below the old ones. The cell column should read zero, since the limiter never lets a cell break the rule; the few cells counted are most likely the capture's doing (it misses about two frames in five, and sees the screen after dithering and Windows' compositor), but this hasn't been proved.
 
@@ -126,7 +133,7 @@ GPU time per frame on the development PC (GTX 1060, release build, music playing
 | Tide | 0.222 ms | 0.722 ms |
 | Orbits | 0.256 ms | |
 | Kaleido | 0.245 ms | |
-| Oil | 0.247 ms | |
+| Oil | 0.247 ms (0.276 ms with the shared noise) | |
 | Plasma | 0.237 ms | |
 | Harmonograph | 0.412 ms | |
 | Julia | 0.242–0.250 ms | 0.796 ms |
@@ -134,6 +141,7 @@ GPU time per frame on the development PC (GTX 1060, release build, music playing
 | Vortex | 0.245–0.249 ms | 0.830 ms |
 | Corona | 0.260–0.264 ms | 0.926 ms |
 | Melt | 0.241–0.243 ms | 0.829 ms |
+| Lenses | 0.257–0.260 ms | 0.906 ms |
 
 ## Further reading
 
