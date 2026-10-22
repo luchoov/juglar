@@ -17,6 +17,7 @@ mod oil;
 mod orbits;
 mod plasma;
 mod tide;
+mod vortex;
 
 use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
 
@@ -44,6 +45,7 @@ pub(crate) fn all() -> Vec<Box<dyn Scene>> {
         Box::new(harmonograph::Harmonograph::new()),
         Box::new(julia::Julia::new()),
         Box::new(crystal::Crystal::new()),
+        Box::new(vortex::Vortex::new()),
     ]
 }
 

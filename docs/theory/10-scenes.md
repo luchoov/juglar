@@ -69,6 +69,14 @@ Each generation is fainter than the one before (0.8 of its ink) and a step furth
 
 Small copies of a moving shape are where flicker finer than a cell would hide. So the ring is soft and wide, the fold changes slowly, and the generations fade fast: with them fading to 0.86 instead of 0.8, the deeper copies filled the crystal with a carpet of tiny rings and the check below counted four times more.
 
+## Vortex: rings that turn against each other
+
+A tunnel, like *Tide*'s, with two changes to its warp. Every ring of the picture turns by its own amount, set by two slow waves across the distance from the middle: some rings turn one way, others the other, and the pattern drifts. And a ripple of zoom travels outward, pushing each ring a little in, then out. Five lights circle the middle, each one as big as a fifth of the spectrum is loud and each its own color; the tunnel carries their trails outward, so they draw five spiral arms, and the counter-turning rings kink and bend them. A small oscilloscope line turns the other way at the center. Beats surge the flow and strengthen the ripple, the treble spins the lights faster, the mids turn the rings harder.
+
+Five arms and not more: regular stripes of more than five light and dark pairs are on the research's list of patterns to avoid (note 09).
+
+Rings turning against each other stretch whatever lies across them into thin filaments, the way stirring stretches cream in coffee. The first version turned them four times harder and kept the trails longer: the arms were torn into thin bright threads that slid across the pixels, and with music the limiter held up to 0.3% of the screen along them. Turning the rings a third as hard and fading the trails sooner leaves the arms whole, and the limiter holds nothing.
+
 ## Why nothing here flashes
 
 The lesson of note 09 applies to every scene: a bright, thin shape that trembles makes the pixels along it blink. So the levels that move the lights, the rose and the blobs are smoothed in three stages, like *Tide*'s waveform, and beats push motion (speed, zoom, current) rather than brightness. Colors turn slowly: a looping palette that cycled several times a second would flash.
@@ -91,6 +99,7 @@ It counts too much rather than too little: a thin line that *moves* across a blo
 | Harmonograph | 0.95% | 0.77% | 0.17% / 0.14% |
 | Julia | 0.47% | 0.16% | 0.05% / 0.006% |
 | Crystal | 0.38% | 0.000% | 0.08% / 0.000% |
+| Vortex | 0.08–0.12% | 0.002% | 0.03–0.04% / 0.000% |
 
 The scenes with thin moving lines (Kaleido's rose, Harmonograph's figure, Julia's ring and its echoes) score highest, the soft ones nothing. The new scenes were tuned to stay at or below the old ones. The cell column should read zero, since the limiter never lets a cell break the rule; the few cells counted are most likely the capture's doing (it misses about two frames in five, and sees the screen after dithering and Windows' compositor), but this hasn't been proved.
 
@@ -108,6 +117,7 @@ GPU time per frame on the development PC (GTX 1060, release build, music playing
 | Harmonograph | 0.412 ms | |
 | Julia | 0.242–0.250 ms | 0.796 ms |
 | Crystal | 0.243–0.249 ms | 0.804 ms |
+| Vortex | 0.245–0.249 ms | 0.830 ms |
 
 ## Further reading
 
