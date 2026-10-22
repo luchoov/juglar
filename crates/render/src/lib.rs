@@ -79,10 +79,11 @@ impl std::error::Error for RenderError {}
 /// Which GPU and graphics API to prefer; lower is better.
 ///
 /// The integrated GPU comes first: Juglar's work is tiny, and the dedicated
-/// one stays free for whatever game runs next to it. Among APIs, Vulkan first:
-/// measured on a GTX 1060 under Windows, handing a frame to the driver cost
-/// about half the CPU time with Vulkan than with DirectX 12. DirectX 12 stays
-/// as the fallback for machines without a Vulkan driver.
+/// one stays free for whatever game runs next to it. Among APIs, DirectX 12
+/// first on Windows: measured on a GTX 1060, the whole process used about a
+/// fifth less CPU and 20 MB less memory than with Vulkan, whose driver does
+/// part of the work on a thread of its own. Vulkan is the fallback there, and
+/// the only choice on Linux; Metal and WebGPU are the only ones elsewhere.
 fn adapter_rank(device: wgpu::DeviceType, backend: wgpu::Backend) -> (u8, u8) {
     let device = match device {
         wgpu::DeviceType::IntegratedGpu => 0,
@@ -92,8 +93,8 @@ fn adapter_rank(device: wgpu::DeviceType, backend: wgpu::Backend) -> (u8, u8) {
         wgpu::DeviceType::Cpu => 3,
     };
     let backend = match backend {
-        wgpu::Backend::Vulkan | wgpu::Backend::Metal | wgpu::Backend::BrowserWebGpu => 0,
-        wgpu::Backend::Dx12 => 1,
+        wgpu::Backend::Dx12 => 0,
+        wgpu::Backend::Vulkan | wgpu::Backend::Metal | wgpu::Backend::BrowserWebGpu => 1,
         _ => 2,
     };
     (device, backend)
@@ -345,7 +346,7 @@ mod tests {
     use wgpu::{Backend, DeviceType};
 
     #[test]
-    fn integrated_gpu_wins_then_vulkan() {
+    fn integrated_gpu_wins_then_dx12() {
         let mut options = [
             (DeviceType::DiscreteGpu, Backend::Vulkan),
             (DeviceType::IntegratedGpu, Backend::Dx12),
@@ -354,9 +355,9 @@ mod tests {
             (DeviceType::IntegratedGpu, Backend::Vulkan),
         ];
         options.sort_by_key(|&(device, backend)| adapter_rank(device, backend));
-        assert_eq!(options[0], (DeviceType::IntegratedGpu, Backend::Vulkan));
-        assert_eq!(options[1], (DeviceType::IntegratedGpu, Backend::Dx12));
-        assert_eq!(options[2], (DeviceType::DiscreteGpu, Backend::Vulkan));
+        assert_eq!(options[0], (DeviceType::IntegratedGpu, Backend::Dx12));
+        assert_eq!(options[1], (DeviceType::IntegratedGpu, Backend::Vulkan));
+        assert_eq!(options[2], (DeviceType::DiscreteGpu, Backend::Dx12));
         assert_eq!(options[4], (DeviceType::Cpu, Backend::Vulkan));
     }
 

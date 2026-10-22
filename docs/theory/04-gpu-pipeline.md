@@ -71,23 +71,24 @@ The window title shows, once a second: frames per second, the shortest and longe
 
 ## 6. What it costs
 
-Measured on the development PC (GTX 1060 6 GB, 144 Hz display, 8 cores, Windows 11), release build, 72 fps. A heavy test suite was running in another program during all of it, which matters for the CPU numbers below.
+Measured on the development PC (GTX 1060 6 GB, 8 cores, Windows 11), release build, with music playing. The first round ran while a heavy test suite kept the machine busy; the numbers below come from a second round on a quiet machine, with the display at 75 Hz, so Juglar drew 75 frames per second. Each figure is the average of several 15–20 second runs.
 
 | | |
 |---|---|
-| GPU time per frame | **0.029 ms** with Vulkan (0.039 ms with DirectX 12), out of 13.9 ms available: 0.2% of the frame budget |
-| Frame intervals | 13.4–14.4 ms (target 13.9) |
-| Audio analysis | 0.05–0.09 ms CPU per frame |
-| Handing the frame to the driver (submit + present) | ~0.75 ms CPU per frame with DirectX 12, ~0.25 ms with Vulkan |
-| Whole process | from 1.3% to 15% of one core, run to run (see below) |
-| Memory | ~100 MB with DirectX 12, ~120 MB with Vulkan, almost all of it the GPU driver |
+| GPU time per frame | **0.038 ms** with DirectX 12 (0.029 ms with Vulkan), out of 13.3 ms available: 0.3% of the frame budget |
+| Frame intervals | 12.8–13.8 ms (target 13.3) |
+| Audio analysis | 0.05 ms CPU per frame |
+| Whole process | **6.3% of one core** with DirectX 12, 7.7% with Vulkan, which is under 1% of the whole 8-core CPU. 3.1% at half the frame rate |
+| Memory | 100–115 MB with DirectX 12, ~120 MB with Vulkan, almost all of it the GPU driver |
 
 What came out of it:
 
-- **Drawing is nearly free; talking to the driver is not.** The GPU needs 0.03 ms. The CPU needs about ten times that just to submit the work and present the image, whatever is drawn. So the frame rate, not the picture, sets the CPU cost: with DirectX 12, 36 fps cost about half as much as 72. This is why the roadmap pauses rendering on silence and lowers the rate while a game runs.
-- **The graphics API matters.** Timing each step of the frame, in runs alternating between the two, Vulkan's submit and present cost a third to a half of DirectX 12's on this GPU. Juglar therefore prefers Vulkan on Windows and falls back to DirectX 12 where there is no Vulkan driver. It also prefers an integrated GPU when there is one, so a dedicated GPU stays free for games.
-- **Whole-process CPU is not settled yet.** The same build, doing the same work, measured anywhere from 1.3% to 15% of one core, with or without sound, and almost all of it on the main thread. The likely cause is the driver *spinning* (checking in a loop instead of sleeping) while it waits for the GPU or the display, and spinning longer when another program keeps the CPU busy. The best runs (0.2–0.3% of the whole CPU) show what is possible. The number has to be measured again on an idle machine before it can be trusted, and if the spinning is real, avoided.
-- **Memory is the weak spot.** Milestone 2 used 12 MB; opening the GPU adds 90–110 MB, mostly the driver's own allocations, and Vulkan's driver takes about 20 MB more than DirectX 12's. Still far below an Electron app, and worth revisiting.
+- **Drawing is nearly free; talking to the driver is not.** The GPU needs 0.04 ms. The CPU needs about 0.85 ms per frame, almost all of it to submit the work and present the image, whatever is drawn. So the frame rate, not the picture, sets the CPU cost: halving the frame rate halved it. This is why the roadmap pauses rendering on silence and lowers the rate while a game runs.
+- **Measure the whole process, not one thread.** The first round timed each step of the frame on Juglar's own thread, and Vulkan looked two to three times cheaper than DirectX 12. That was true for that thread only. Counting every thread showed that NVIDIA's Vulkan driver runs a helper thread of its own that does the rest of the work, and in total Vulkan cost about a fifth *more* CPU than DirectX 12, in every one of six alternating pairs of runs. Juglar now prefers DirectX 12 on Windows and keeps Vulkan as the fallback (decision D19, which replaces D17). It still prefers an integrated GPU when there is one, so a dedicated GPU stays free for games.
+- **The noise was the other program.** In the first round the same build measured anywhere from 1.3% to 15% of a core. On the quiet machine, runs agreed within about one point. The cost now tracks the frame rate closely and no longer jumps from run to run. Whether a small part of each frame is the driver waiting actively instead of sleeping can't be told from these numbers, but it is not what made the first round so noisy.
+- **Memory is the weak spot.** Milestone 2 used 12 MB; opening the GPU adds 90–110 MB, mostly the driver's own allocations. Still far below an Electron app, and worth revisiting.
+
+All of this is one GPU from one vendor. AMD and Intel drivers split the work differently, so the comparison has to be repeated there.
 
 ## Further reading
 

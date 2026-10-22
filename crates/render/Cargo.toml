@@ -11,9 +11,9 @@ publish.workspace = true
 bytemuck = { version = "1.25", features = ["derive"] }
 wgpu = { version = "30.0", default-features = false, features = ["std", "parking_lot", "wgsl"] }
 
-# Only the graphics APIs each platform needs. Windows gets Vulkan, which costs
-# less CPU per frame on the GPUs measured so far, plus DirectX 12 for machines
-# without a Vulkan driver (see `adapter_rank`). OpenGL is left out everywhere.
+# Only the graphics APIs each platform needs. Windows gets DirectX 12, which
+# cost the least CPU and memory on the GPUs measured so far, plus Vulkan as a
+# fallback (see `adapter_rank`). OpenGL is left out everywhere.
 [target.'cfg(windows)'.dependencies]
 wgpu = { version = "30.0", default-features = false, features = ["vulkan", "dx12"] }
 

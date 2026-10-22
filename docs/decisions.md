@@ -97,6 +97,9 @@ Every important decision in Juglar, in plain language: what was decided, why, wh
 
 ### D17 — Prefer the integrated GPU, and Vulkan on Windows
 
+*Replaced by D19: the Vulkan half of this decision was based on an incomplete measurement.*
+
+
 **Decided:** when a machine has both an integrated and a dedicated GPU, Juglar uses the integrated one. On Windows it prefers Vulkan and falls back to DirectX 12. OpenGL is not included on any platform.
 **Why:** Juglar's drawing is tiny (0.03 ms of GPU per frame), so the integrated GPU easily handles it and the dedicated one stays free for the game. The fixed cost of submitting and presenting a frame turned out to be most of Juglar's CPU work, and on the development GPU (GTX 1060) Vulkan's was a third to a half of DirectX 12's (about 0.25 ms against 0.75 ms per frame).
 **Considered:** DirectX 12 only, as Windows' native API, which would make a smaller binary and use about 20 MB less memory. Measured, it was the more expensive one in CPU, which matters more next to a game. This may differ on other GPUs, so the measurement should be repeated on AMD and Intel hardware.
@@ -106,3 +109,10 @@ Every important decision in Juglar, in plain language: what was decided, why, wh
 **Decided:** the GPU writes its own clock at the start and end of each frame's drawing. Juglar reads the result back a frame or two later, whenever it's ready, and shows it in the window title.
 **Why:** waiting for the GPU to finish would make the CPU idle and couple the two. Measuring on the GPU is the only way to time GPU work at all, because the CPU only records commands. It runs later.
 **Cost:** frames drawn while a measurement is in flight aren't timed. A browser or GPU without timestamp support simply shows no GPU time.
+
+### D19 — Prefer DirectX 12 on Windows (replaces D17)
+
+**Decided:** on Windows, Juglar prefers DirectX 12 and falls back to Vulkan. The rest of D17 stands: the integrated GPU comes first, and OpenGL is not included.
+**Why:** D17 chose Vulkan after timing the steps of each frame on Juglar's own thread, where Vulkan was two to three times cheaper. Measured again on a quiet machine, counting every thread of the process, NVIDIA's Vulkan driver turned out to do the rest of that work on a helper thread of its own. In total, Vulkan used about a fifth more CPU than DirectX 12 (7.7% against 6.3% of one core at 75 fps, six alternating pairs of runs, DirectX 12 lower in all six) and about 20 MB more memory. What matters next to a game is the total.
+**Considered:** keeping Vulkan for its lighter main thread, which would only help if Juglar's own thread were the bottleneck. It isn't: the GPU work is 0.04 ms.
+**Cost:** one GPU from one vendor was measured. AMD and Intel may differ, so the comparison has to be repeated there before this is final.
