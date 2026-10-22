@@ -116,3 +116,10 @@ Every important decision in Juglar, in plain language: what was decided, why, wh
 **Why:** D17 chose Vulkan after timing the steps of each frame on Juglar's own thread, where Vulkan was two to three times cheaper. Measured again on a quiet machine, counting every thread of the process, NVIDIA's Vulkan driver turned out to do the rest of that work on a helper thread of its own. In total, Vulkan used about a fifth more CPU than DirectX 12 (7.7% against 6.3% of one core at 75 fps, six alternating pairs of runs, DirectX 12 lower in all six) and about 20 MB more memory. What matters next to a game is the total.
 **Considered:** keeping Vulkan for its lighter main thread, which would only help if Juglar's own thread were the bottleneck. It isn't: the GPU work is 0.04 ms.
 **Cost:** one GPU from one vendor was measured. AMD and Intel may differ, so the comparison has to be repeated there before this is final.
+
+### D20 — A synthetic song drives the visuals in silence
+
+**Decided:** `Signals` lives in a crate of its own, `signals`, and the renderer takes nothing else. Besides the levels, it carries the spectrum's 32 bands and the waveform's 256 points, already normalized. The same crate has a second producer, a synthetic song: a 32-bar loop at 120 beats per minute with an intro, a build, a drop and a breakdown. `JUGLAR_DEMO=1` uses it instead of capturing audio (`JUGLAR_DEMO_START=40` starts 40 seconds in, at the drop).
+**Why:** effects need to be worked on, tested and photographed without music playing, and with the same "music" every time. The web demo, the screensaver preview and the npm component will have no system audio either. If the visuals only accepted audio, each of those would need a special case.
+**Considered:** recorded audio files, which would sound real but need a decoder (a library, or a lot of code) and still go through the analysis. The synthetic song skips both, and its numbers are known exactly, which makes tests easy.
+**Cost:** it is a caricature of music: perfectly regular, no melody. Good for development, not for judging how an effect reacts to real songs.

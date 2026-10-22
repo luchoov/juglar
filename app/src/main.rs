@@ -1,12 +1,14 @@
-//! Milestone 3: capture what the system is playing, analyze it, and draw the
-//! waveform, spectrum and bands in a window on the GPU.
+//! Capture what the system is playing, turn it into `Signals`, and draw them
+//! in a window on the GPU. With `JUGLAR_DEMO=1` the signals come from a
+//! synthetic song instead, and nothing is captured.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use juglar_dsp::{Analyzer, Consumer, FFT_SIZE, SCOPE_POINTS, Scope, ring};
-use juglar_platform::{AudioCapture, SystemAudio};
-use juglar_render::{FrameInput, Renderer};
+use juglar_platform::{AudioCapture, PlatformError, SystemAudio};
+use juglar_render::Renderer;
+use juglar_signals::{Signals, Synthetic};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
@@ -14,8 +16,8 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowId};
 
-const _: () = assert!(juglar_dsp::SPECTRUM_BANDS == juglar_render::SPECTRUM_BANDS);
-const _: () = assert!(SCOPE_POINTS == juglar_render::WAVEFORM_POINTS);
+const _: () = assert!(juglar_dsp::SPECTRUM_BANDS == juglar_signals::SPECTRUM_BANDS);
+const _: () = assert!(SCOPE_POINTS == juglar_signals::WAVEFORM_POINTS);
 
 /// Frames per second Juglar aims for. The real rate is the display's refresh
 /// divided by a whole number (see `Pacer`), as close to this as possible.
@@ -24,43 +26,101 @@ const TARGET_FPS: f64 = 60.0;
 const HIDDEN_RETRY: Duration = Duration::from_millis(100);
 
 fn main() {
-    // One second of mono audio at up to 192 kHz. Every frame drains it, so it
-    // never comes close to filling.
-    let (mut producer, consumer) = ring(192_000);
-
-    let mut mono = Vec::new();
-    let capture = SystemAudio::start(Box::new(move |interleaved, channels| {
-        downmix(interleaved, usize::from(channels), &mut mono);
-        producer.push(&mono);
-    }));
-    let capture = match capture {
-        Ok(capture) => capture,
-        Err(e) => {
-            eprintln!("juglar: could not capture system audio: {e}");
-            std::process::exit(1);
+    let source = match std::env::var("JUGLAR_DEMO") {
+        Ok(v) if v != "0" => {
+            let start = std::env::var("JUGLAR_DEMO_START").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0);
+            println!("Demo mode: a synthetic song, nothing is captured.");
+            Source::Demo(Synthetic::starting_at(1, start))
         }
+        _ => match Listening::start() {
+            Ok(listening) => Source::Audio(Box::new(listening)),
+            Err(e) => {
+                eprintln!("juglar: could not capture system audio: {e}");
+                std::process::exit(1);
+            }
+        },
     };
-    let info = capture.info();
-    println!("Capturing {} Hz, {} channels.", info.sample_rate, info.channels);
 
     let event_loop = EventLoop::new().expect("event loop");
     let mut app = App {
-        _capture: capture,
-        consumer,
-        analyzer: Analyzer::new(info.sample_rate),
-        scope: Scope::new(info.sample_rate),
-        block: vec![0.0; info.sample_rate as usize],
-        recent: vec![0.0; FFT_SIZE],
-        input: FrameInput::default(),
+        source,
+        signals: Signals::default(),
         window: None,
         renderer: None,
         pacer: Pacer::new(None, TARGET_FPS),
-        start: Instant::now(),
         last_frame: Instant::now(),
         stats: Stats::new(),
     };
     if let Err(e) = event_loop.run_app(&mut app) {
         eprintln!("juglar: {e}");
+    }
+}
+
+/// Where each frame's signals come from.
+enum Source {
+    /// What the system is playing.
+    Audio(Box<Listening>),
+    /// A synthetic song, for working on visuals in silence.
+    Demo(Synthetic),
+}
+
+impl Source {
+    fn update(&mut self, dt: f32, out: &mut Signals) {
+        match self {
+            Source::Audio(listening) => listening.update(dt, out),
+            Source::Demo(song) => song.next(dt, out),
+        }
+    }
+}
+
+/// System audio capture and its analysis.
+struct Listening {
+    /// Kept alive for as long as the app runs; capture stops when dropped.
+    _capture: SystemAudio,
+    consumer: Consumer,
+    analyzer: Analyzer,
+    scope: Scope,
+    block: Vec<f32>,
+    recent: Vec<f32>,
+}
+
+impl Listening {
+    fn start() -> Result<Self, PlatformError> {
+        // One second of mono audio at up to 192 kHz. Every frame drains it,
+        // so it never comes close to filling.
+        let (mut producer, consumer) = ring(192_000);
+        let mut mono = Vec::new();
+        let capture = SystemAudio::start(Box::new(move |interleaved, channels| {
+            downmix(interleaved, usize::from(channels), &mut mono);
+            producer.push(&mono);
+        }))?;
+        let info = capture.info();
+        println!("Capturing {} Hz, {} channels.", info.sample_rate, info.channels);
+        Ok(Self {
+            _capture: capture,
+            consumer,
+            analyzer: Analyzer::new(info.sample_rate),
+            scope: Scope::new(info.sample_rate),
+            block: vec![0.0; info.sample_rate as usize],
+            recent: vec![0.0; FFT_SIZE],
+        })
+    }
+
+    /// Drains the new audio and analyzes it. Beat and novelty stay 0 until
+    /// Milestone 5 detects them.
+    fn update(&mut self, dt: f32, out: &mut Signals) {
+        let n = self.consumer.pop(&mut self.block);
+        self.analyzer.push(&self.block[..n]);
+        let analysis = self.analyzer.analyze(dt);
+        out.time += dt;
+        out.dt = dt;
+        out.bass = analysis.bass;
+        out.mid = analysis.mid;
+        out.treble = analysis.treble;
+        out.energy = analysis.energy;
+        out.spectrum = analysis.spectrum;
+        self.analyzer.recent(&mut self.recent);
+        out.waveform = *self.scope.update(&self.recent, dt);
     }
 }
 
@@ -79,18 +139,11 @@ fn downmix(interleaved: &[f32], channels: usize, out: &mut Vec<f32>) {
 }
 
 struct App {
-    /// Kept alive for as long as the app runs; capture stops when dropped.
-    _capture: SystemAudio,
-    consumer: Consumer,
-    analyzer: Analyzer,
-    scope: Scope,
-    block: Vec<f32>,
-    recent: Vec<f32>,
-    input: FrameInput,
+    source: Source,
+    signals: Signals,
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
     pacer: Pacer,
-    start: Instant,
     last_frame: Instant,
     stats: Stats,
 }
@@ -162,24 +215,14 @@ impl App {
         let dt = (now - self.last_frame).as_secs_f32();
         self.last_frame = now;
 
-        // Audio analysis runs even when nothing can be drawn, so the ring
+        // Signals keep updating even when nothing can be drawn, so the ring
         // buffer keeps draining and the envelopes stay current.
         let work = Instant::now();
-        let n = self.consumer.pop(&mut self.block);
-        self.analyzer.push(&self.block[..n]);
-        let analysis = self.analyzer.analyze(dt);
-        self.input.bass = analysis.bass;
-        self.input.mid = analysis.mid;
-        self.input.treble = analysis.treble;
-        self.input.energy = analysis.energy;
-        self.input.spectrum = analysis.spectrum;
-        self.analyzer.recent(&mut self.recent);
-        self.input.waveform = *self.scope.update(&self.recent, dt);
-        self.input.time = (now - self.start).as_secs_f32();
+        self.source.update(dt, &mut self.signals);
         let analysis_time = work.elapsed();
 
         let Some(renderer) = &mut self.renderer else { return };
-        let drawn = renderer.render(&self.input);
+        let drawn = renderer.render(&self.signals);
         self.pacer.frame_done(now, drawn);
         if let Some(ms) = renderer.take_gpu_ms() {
             self.stats.gpu_ms.push(ms);

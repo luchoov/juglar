@@ -3,8 +3,8 @@
 //! Plain Rust on top of `wgpu`, which speaks DirectX 12, Vulkan, Metal or
 //! WebGPU depending on where it runs. Nothing here calls the operating system
 //! or a windowing library: the app hands over anything that has a window
-//! handle, then a few hundred plain numbers every frame. Everything else
-//! happens in `frame.wgsl`, once per pixel, on the GPU.
+//! handle, then each frame's `Signals`, a few hundred plain numbers.
+//! Everything else happens in `frame.wgsl`, once per pixel, on the GPU.
 
 mod timer;
 
@@ -14,35 +14,7 @@ use std::num::NonZeroU64;
 use bytemuck::{Pod, Zeroable};
 use timer::GpuTimer;
 
-pub const SPECTRUM_BANDS: usize = 32;
-pub const WAVEFORM_POINTS: usize = 256;
-
-/// Everything one frame shows. Levels are in `0..=1`; the waveform in `-1..=1`.
-#[derive(Clone, Debug)]
-pub struct FrameInput {
-    /// Seconds since start.
-    pub time: f32,
-    pub bass: f32,
-    pub mid: f32,
-    pub treble: f32,
-    pub energy: f32,
-    pub spectrum: [f32; SPECTRUM_BANDS],
-    pub waveform: [f32; WAVEFORM_POINTS],
-}
-
-impl Default for FrameInput {
-    fn default() -> Self {
-        Self {
-            time: 0.0,
-            bass: 0.0,
-            mid: 0.0,
-            treble: 0.0,
-            energy: 0.0,
-            spectrum: [0.0; SPECTRUM_BANDS],
-            waveform: [0.0; WAVEFORM_POINTS],
-        }
-    }
-}
+pub use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
 
 /// The frame's numbers laid out exactly as the shader's `Frame` struct reads
 /// them: GPU uniform memory works in 16-byte rows, so arrays are packed four
@@ -269,7 +241,7 @@ impl Renderer {
     /// window is minimized or hidden), so the caller can slow down.
     ///
     /// With vsync this may wait until the display is ready for a new frame.
-    pub fn render(&mut self, input: &FrameInput) -> bool {
+    pub fn render(&mut self, input: &Signals) -> bool {
         if let Some(timer) = &mut self.timer {
             timer.collect(&self.device);
         }

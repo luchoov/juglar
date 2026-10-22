@@ -58,6 +58,7 @@ juglar/
 ```rust
 /// Everything the generator is allowed to know about the outside world.
 /// All fields are normalized and smoothed; producers own the smoothing.
+/// Lives in `crates/signals`, next to the synthetic song (`JUGLAR_DEMO=1`).
 pub struct Signals {
     pub time: f32,        // seconds since start
     pub dt: f32,          // seconds since last frame
@@ -68,6 +69,8 @@ pub struct Signals {
     pub beat: f32,        // 1.0 on a detected beat, decays to 0
     pub novelty: f32,     // spectral flux, high on drops and section changes
     pub intensity: f32,   // 0..1, fixed by the user or derived from the music (auto mode)
+    pub spectrum: [f32; 32],  // log-spaced bands, 0..1
+    pub waveform: [f32; 256], // a stable (triggered) snapshot of the wave, -1..1
 }
 
 /// One generated effect: which blocks, their parameters, and how signals drive them.

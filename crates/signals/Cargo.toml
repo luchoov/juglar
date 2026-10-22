@@ -1,0 +1,10 @@
+[package]
+name = "juglar-signals"
+description = "The Signals that drive Juglar's visuals, and producers that need no audio. OS-agnostic."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]

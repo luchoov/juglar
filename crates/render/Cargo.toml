@@ -8,6 +8,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+juglar-signals = { path = "../signals" }
 bytemuck = { version = "1.25", features = ["derive"] }
 wgpu = { version = "30.0", default-features = false, features = ["std", "parking_lot", "wgsl"] }
 

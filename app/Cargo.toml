@@ -10,5 +10,6 @@ publish.workspace = true
 juglar-dsp = { path = "../crates/dsp" }
 juglar-platform = { path = "../crates/platform" }
 juglar-render = { path = "../crates/render" }
+juglar-signals = { path = "../crates/signals" }
 pollster = "1.0"
 winit = "0.30.13"

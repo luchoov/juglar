@@ -631,6 +631,7 @@ dependencies = [
  "juglar-dsp",
  "juglar-platform",
  "juglar-render",
+ "juglar-signals",
  "pollster",
  "winit",
 ]
@@ -651,8 +652,13 @@ name = "juglar-render"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "juglar-signals",
  "wgpu",
 ]
+
+[[package]]
+name = "juglar-signals"
+version = "0.1.0"
 
 [[package]]
 name = "libc"
