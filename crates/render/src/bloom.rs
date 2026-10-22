@@ -29,26 +29,24 @@ pub(crate) const LEVELS: usize = 3;
 /// The first size, as a fraction of the window's.
 const FIRST: u32 = 4;
 
+/// The chain's pipeline, shared by every set of images.
 pub(crate) struct Bloom {
     down: wgpu::RenderPipeline,
-    /// Each level's image, largest first, and bindings to read it.
-    views: Vec<wgpu::TextureView>,
-    reads: Vec<wgpu::BindGroup>,
-    /// Binds the top level for the composite step (its group 1).
-    apply: wgpu::BindGroup,
     apply_layout: wgpu::BindGroupLayout,
 }
 
+/// One chain's images: each picture being drawn (two during a transition
+/// between scenes) glows from its own.
+pub(crate) struct Glow {
+    /// Each level's image, largest first, and bindings to read it.
+    views: Vec<wgpu::TextureView>,
+    reads: Vec<wgpu::BindGroup>,
+    /// Binds the three levels for the composite step (its group 1).
+    apply: wgpu::BindGroup,
+}
+
 impl Bloom {
-    pub(crate) fn new(
-        device: &wgpu::Device,
-        image_layout: &wgpu::BindGroupLayout,
-        uniforms: &wgpu::Buffer,
-        sampler: &wgpu::Sampler,
-        common: &str,
-        width: u32,
-        height: u32,
-    ) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, image_layout: &wgpu::BindGroupLayout, common: &str) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("bloom"),
             source: wgpu::ShaderSource::Wgsl([common, include_str!("bloom.wgsl")].concat().into()),
@@ -99,20 +97,20 @@ impl Bloom {
                 count: None,
             }),
         });
-        let (views, reads, apply) = Self::images(device, image_layout, &apply_layout, uniforms, sampler, width, height);
-        Self { down, views, reads, apply, apply_layout }
+        Self { down, apply_layout }
     }
 
-    #[allow(clippy::type_complexity)]
-    fn images(
+    /// Images for a window of `width` × `height` pixels, read with the
+    /// frame numbers in `uniforms`.
+    pub(crate) fn glow(
+        &self,
         device: &wgpu::Device,
         image_layout: &wgpu::BindGroupLayout,
-        apply_layout: &wgpu::BindGroupLayout,
         uniforms: &wgpu::Buffer,
         sampler: &wgpu::Sampler,
         width: u32,
         height: u32,
-    ) -> (Vec<wgpu::TextureView>, Vec<wgpu::BindGroup>, wgpu::BindGroup) {
+    ) -> Glow {
         let mut size = (width.max(1).div_ceil(FIRST) * 2, height.max(1).div_ceil(FIRST) * 2);
         let views: Vec<_> = (0..LEVELS)
             .map(|_| {
@@ -147,43 +145,30 @@ impl Bloom {
             .collect();
         let apply = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("bloom apply"),
-            layout: apply_layout,
+            layout: &self.apply_layout,
             entries: &std::array::from_fn::<_, LEVELS, _>(|level| wgpu::BindGroupEntry {
                 binding: level as u32,
                 resource: wgpu::BindingResource::TextureView(&views[level]),
             }),
         });
-        (views, reads, apply)
+        Glow { views, reads, apply }
     }
 
-    /// Follows a window resize.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn resize(
-        &mut self,
-        device: &wgpu::Device,
-        image_layout: &wgpu::BindGroupLayout,
-        uniforms: &wgpu::Buffer,
-        sampler: &wgpu::Sampler,
-        width: u32,
-        height: u32,
-    ) {
-        (self.views, self.reads, self.apply) =
-            Self::images(device, image_layout, &self.apply_layout, uniforms, sampler, width, height);
-    }
-
-    /// The layout of `apply`, for the composite pipelines.
+    /// The layout of `Glow::apply`, for the composite pipelines.
     pub(crate) fn apply_layout(&self) -> &wgpu::BindGroupLayout {
         &self.apply_layout
     }
 
-    /// The three blurs, to bind as the composite step's group 1.
-    pub(crate) fn apply(&self) -> &wgpu::BindGroup {
-        &self.apply
-    }
-
-    /// Records the chain: the scene's bright parts at a quarter size (with
-    /// `source`, reading the feedback image through `picture`), then down.
-    pub(crate) fn encode(&self, encoder: &mut wgpu::CommandEncoder, source: &wgpu::RenderPipeline, picture: &wgpu::BindGroup) {
+    /// Records the chain into `glow`: the scene's bright parts at a quarter
+    /// size (with `source`, reading the feedback image through `picture`),
+    /// then down.
+    pub(crate) fn encode(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        glow: &Glow,
+        source: &wgpu::RenderPipeline,
+        picture: &wgpu::BindGroup,
+    ) {
         fn pass<'e>(encoder: &'e mut wgpu::CommandEncoder, target: &wgpu::TextureView, load: wgpu::LoadOp<wgpu::Color>) -> wgpu::RenderPass<'e> {
             encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("bloom"),
@@ -198,16 +183,23 @@ impl Bloom {
         }
         let clear = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
         {
-            let mut first = pass(encoder, &self.views[0], clear);
+            let mut first = pass(encoder, &glow.views[0], clear);
             first.set_pipeline(source);
             first.set_bind_group(0, picture, &[]);
             first.draw(0..3, 0..1);
         }
         for level in 1..LEVELS {
-            let mut down = pass(encoder, &self.views[level], clear);
+            let mut down = pass(encoder, &glow.views[level], clear);
             down.set_pipeline(&self.down);
-            down.set_bind_group(0, &self.reads[level - 1], &[]);
+            down.set_bind_group(0, &glow.reads[level - 1], &[]);
             down.draw(0..3, 0..1);
         }
+    }
+}
+
+impl Glow {
+    /// The three blurs, to bind as the composite step's group 1.
+    pub(crate) fn apply(&self) -> &wgpu::BindGroup {
+        &self.apply
     }
 }

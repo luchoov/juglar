@@ -25,7 +25,7 @@ Play anything on the system. Juglar listens to what the speakers play, with no s
 | Key | Does |
 |---|---|
 | `Tab` | switch between the visuals and the analysis view (what Juglar hears) |
-| `←` `→` | previous / next scene: *tide*, *orbits*, *kaleido*, *oil*, *plasma*, *harmonograph*, *julia*, *crystal*, *vortex*, *corona*, *melt*, *lenses* |
+| `←` `→` | previous / next scene, with a short transition: *tide*, *orbits*, *kaleido*, *oil*, *plasma*, *harmonograph*, *julia*, *crystal*, *vortex*, *corona*, *melt*, *lenses* |
 | `A` | natural intensity, read from the music (the default) |
 | `1` `2` `3` | fixed intensity: gentle, medium, strong |
 | `F11`, `Alt`+`Enter` or double click | fullscreen on / off |

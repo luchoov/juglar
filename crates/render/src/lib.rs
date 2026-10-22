@@ -19,6 +19,11 @@
 //! The analysis view (`analysis.wgsl`) replaces the first three with
 //! Milestone 3's waveform and bars, to see what Juglar hears. It goes
 //! through the limiter too: nothing reaches the screen without it.
+//!
+//! During a transition between scenes (`begin_transition`) the first three
+//! steps run twice, once per scene, each in its own feedback loop, and the
+//! composite step draws the old scene over the new one through the
+//! transition's shape (`fs_fade` in `composite.wgsl`).
 
 mod bloom;
 mod feedback;
@@ -30,12 +35,13 @@ use std::fmt;
 use std::num::NonZeroU64;
 
 use bytemuck::{Pod, Zeroable};
-use bloom::Bloom;
+use bloom::{Bloom, Glow};
 use feedback::Feedback;
 use limiter::Limiter;
 use scene::{Look, Scene};
 use timer::GpuTimer;
 
+pub use juglar_director::{Style, Transition};
 pub use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
 
 const COMMON: &str = include_str!("common.wgsl");
@@ -84,6 +90,8 @@ struct Uniforms {
     /// analysis view's timeline.
     beat_history: [[f32; 4]; HISTORY / 4],
     novelty_history: [[f32; 4]; HISTORY / 4],
+    /// The transition: progress, style, edge softness, seed.
+    reveal: [f32; 4],
 }
 
 /// Frames of beat and novelty the analysis view shows: about two seconds.
@@ -130,23 +138,47 @@ fn adapter_rank(device: wgpu::DeviceType, backend: wgpu::Backend) -> (u8, u8) {
     (device, backend)
 }
 
+/// One picture being drawn: its frame numbers, feedback images and glow.
+/// There are two, so that during a transition the old scene and the new
+/// one each keep a loop of their own.
+struct Layer {
+    uniforms: wgpu::Buffer,
+    feedback: Feedback,
+    glow: Glow,
+    analysis: wgpu::BindGroup,
+    /// Which scene this layer draws.
+    scene: usize,
+}
+
+/// A transition under way, from the front layer's scene to the other's.
+struct Crossing {
+    transition: Transition,
+    /// 0 at the start, 1 when only the new scene is left.
+    progress: f32,
+    /// Makes each transition's edge different.
+    seed: f32,
+    /// Whether the new scene has been handed the old picture yet.
+    handed_over: bool,
+}
+
 pub struct Renderer {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    uniform_buffer: wgpu::Buffer,
     /// Uniforms plus an image and how to filter it: feedback and composite.
     image_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     /// Every scene, with its own pipelines: the scene's WGSL is compiled
     /// into each.
     scenes: Vec<(Box<dyn Scene>, ScenePipelines)>,
-    /// Which of `scenes` is showing.
-    scene: usize,
     analysis_pipeline: wgpu::RenderPipeline,
-    analysis_bind_group: wgpu::BindGroup,
-    feedback: Feedback,
+    layers: [Layer; 2],
+    /// The layer whose scene is showing (the old one, during a transition).
+    front: usize,
+    crossing: Option<Crossing>,
+    /// How many transitions have started, for their seeds.
+    crossings: u32,
     bloom: Bloom,
     limiter: Limiter,
     /// The share of the limiter's cells held back, last time it was counted.
@@ -228,12 +260,6 @@ impl Renderer {
         surface.configure(&device, &config);
 
         let uniform_size = size_of::<Uniforms>() as u64;
-        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("frame uniforms"),
-            size: uniform_size,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
         let uniform_entry = wgpu::BindGroupLayoutEntry {
             binding: 0,
             visibility: wgpu::ShaderStages::FRAGMENT,
@@ -270,11 +296,6 @@ impl Renderer {
                 },
             ],
         });
-        let analysis_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("analysis"),
-            layout: &analysis_layout,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: uniform_buffer.as_entire_binding() }],
-        });
         // Blends the four nearest pixels; at the edges, repeats the border.
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("smooth"),
@@ -283,7 +304,7 @@ impl Renderer {
             ..Default::default()
         });
 
-        let pipeline = |label, layouts: &[&wgpu::BindGroupLayout], source: String, entry_point, target| {
+        let pipeline = |label, layouts: &[&wgpu::BindGroupLayout], source: String, entry_point, target, blend| {
             let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some(label),
                 source: wgpu::ShaderSource::Wgsl(source.into()),
@@ -311,7 +332,7 @@ impl Renderer {
                     compilation_options: Default::default(),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: target,
-                        blend: None,
+                        blend,
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
                 }),
@@ -319,7 +340,7 @@ impl Renderer {
                 cache: None,
             })
         };
-        let bloom = Bloom::new(&device, &image_layout, &uniform_buffer, &sampler, COMMON, config.width, config.height);
+        let bloom = Bloom::new(&device, &image_layout, COMMON);
         let scenes = scene::all()
             .into_iter()
             .map(|scene| {
@@ -331,6 +352,7 @@ impl Renderer {
                         [COMMON, scene.shader(), include_str!("feedback.wgsl")].concat(),
                         "fs_feedback",
                         feedback::FORMAT,
+                        None,
                     ),
                     bloom_source: pipeline(
                         "bloom source",
@@ -338,13 +360,23 @@ impl Renderer {
                         composite_source.clone(),
                         "fs_bloom_source",
                         feedback::FORMAT,
+                        None,
                     ),
                     composite: pipeline(
                         "composite",
                         &[&image_layout, bloom.apply_layout()],
-                        composite_source,
+                        composite_source.clone(),
                         "fs_composite",
                         limiter::CANDIDATE_FORMAT,
+                        None,
+                    ),
+                    fade: pipeline(
+                        "fade",
+                        &[&image_layout, bloom.apply_layout()],
+                        composite_source,
+                        "fs_fade",
+                        limiter::CANDIDATE_FORMAT,
+                        Some(wgpu::BlendState::ALPHA_BLENDING),
                     ),
                 };
                 (scene, pipelines)
@@ -357,9 +389,28 @@ impl Renderer {
             [COMMON, include_str!("analysis.wgsl")].concat(),
             "fs_analysis",
             limiter::CANDIDATE_FORMAT,
+            None,
         );
 
-        let feedback = Feedback::new(&device, &image_layout, &uniform_buffer, &sampler, config.width, config.height);
+        let layers = std::array::from_fn(|_| {
+            let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("frame uniforms"),
+                size: uniform_size,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            Layer {
+                feedback: Feedback::new(&device, &image_layout, &uniforms, &sampler, config.width, config.height),
+                glow: bloom.glow(&device, &image_layout, &uniforms, &sampler, config.width, config.height),
+                analysis: device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("analysis"),
+                    layout: &analysis_layout,
+                    entries: &[wgpu::BindGroupEntry { binding: 0, resource: uniforms.as_entire_binding() }],
+                }),
+                uniforms,
+                scene: 0,
+            }
+        });
         let limiter = Limiter::new(&device, config.width, config.height, format);
         let timer = timestamps.then(|| GpuTimer::new(&device, queue.get_timestamp_period()));
 
@@ -368,14 +419,14 @@ impl Renderer {
             device,
             queue,
             config,
-            uniform_buffer,
             image_layout,
             sampler,
             scenes,
-            scene: 0,
             analysis_pipeline,
-            analysis_bind_group,
-            feedback,
+            layers,
+            front: 0,
+            crossing: None,
+            crossings: 0,
             bloom,
             limiter,
             held: None,
@@ -404,9 +455,10 @@ impl Renderer {
         self.config.width = width;
         self.config.height = height;
         self.surface.configure(&self.device, &self.config);
-        self.feedback =
-            Feedback::new(&self.device, &self.image_layout, &self.uniform_buffer, &self.sampler, width, height);
-        self.bloom.resize(&self.device, &self.image_layout, &self.uniform_buffer, &self.sampler, width, height);
+        for layer in &mut self.layers {
+            layer.feedback = Feedback::new(&self.device, &self.image_layout, &layer.uniforms, &self.sampler, width, height);
+            layer.glow = self.bloom.glow(&self.device, &self.image_layout, &layer.uniforms, &self.sampler, width, height);
+        }
         self.limiter.resize(&self.device, width, height);
     }
 
@@ -415,15 +467,43 @@ impl Renderer {
         self.scenes.iter().map(|(scene, ..)| scene.name()).collect()
     }
 
-    /// Which scene is showing, as an index into `scene_names`.
+    /// Which scene is showing, as an index into `scene_names`; during a
+    /// transition, the one arriving.
     pub fn scene(&self) -> usize {
-        self.scene
+        match self.crossing {
+            Some(_) => self.layers[1 - self.front].scene,
+            None => self.layers[self.front].scene,
+        }
     }
 
-    /// Switches to scene `index` (wrapping around). The picture carries
-    /// over and the new scene's warp takes it from there.
+    /// Whether a transition is under way.
+    pub fn in_transition(&self) -> bool {
+        self.crossing.is_some()
+    }
+
+    /// Switches to scene `index` (wrapping around) at once, with no
+    /// transition. The picture carries over and the new scene's warp takes
+    /// it from there.
     pub fn set_scene(&mut self, index: usize) {
-        self.scene = index % self.scenes.len();
+        self.crossing = None;
+        self.layers[self.front].scene = index % self.scenes.len();
+    }
+
+    /// Starts a transition to scene `index` (wrapping around). A transition
+    /// already under way ends at once, its new scene taking over.
+    pub fn begin_transition(&mut self, index: usize, transition: Transition) {
+        if self.crossing.take().is_some() {
+            self.front = 1 - self.front;
+        }
+        let index = index % self.scenes.len();
+        if index == self.layers[self.front].scene {
+            return;
+        }
+        self.layers[1 - self.front].scene = index;
+        self.crossings = self.crossings.wrapping_add(1);
+        // Seeds far apart, so no two edges look alike.
+        let seed = (self.crossings % 64) as f32 * 7.31;
+        self.crossing = Some(Crossing { transition, progress: 0.0, seed, handed_over: false });
     }
 
     pub fn view(&self) -> View {
@@ -468,7 +548,17 @@ impl Renderer {
             | wgpu::CurrentSurfaceTexture::Validation => return false,
         };
 
-        // Reduced motion: the scene sees silence and no time passing.
+        // A transition moves on with the clock and the beats; once it is
+        // complete, the new scene is the only one left.
+        if let Some(crossing) = &mut self.crossing {
+            crossing.progress += crossing.transition.step(signals.dt, signals.beat);
+            if crossing.progress >= 1.0 {
+                self.crossing = None;
+                self.front = 1 - self.front;
+            }
+        }
+
+        // Reduced motion: the scenes see silence and no time passing.
         let still;
         let (scene_signals, motion) = if self.reduced_motion {
             still = Signals { dt: signals.dt, intensity: signals.intensity, ..Signals::default() };
@@ -476,11 +566,32 @@ impl Renderer {
         } else {
             (signals, 1.0)
         };
-        let look = self.scenes[self.scene].0.update(scene_signals, motion);
         self.frames = self.frames.wrapping_add(1);
         self.history[self.frames as usize % HISTORY] = [scene_signals.beat, scene_signals.novelty];
-        let uniforms = self.uniforms(scene_signals, &look);
-        self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
+
+        // The layers to draw, the showing one first: with a transition, the
+        // arriving one too.
+        let (front, back) = (self.front, 1 - self.front);
+        let reveal = match &self.crossing {
+            Some(c) => {
+                let (style, soft) = match c.transition.style {
+                    Style::Bloom => (0.0, 0.06),
+                    Style::Iris => (1.0, 0.06),
+                    Style::Seep => (2.0, 0.12),
+                    Style::Spiral => (3.0, 0.04),
+                };
+                [c.progress, style, soft, c.seed]
+            }
+            None => [0.0; 4],
+        };
+        let drawn: &[usize] = if self.crossing.is_some() { &[front, back] } else { &[front] };
+        let mut looks = Vec::with_capacity(2);
+        for &i in drawn {
+            let look = self.scenes[self.layers[i].scene].0.update(scene_signals, motion);
+            let uniforms = self.uniforms(scene_signals, &look, reveal);
+            self.queue.write_buffer(&self.layers[i].uniforms, 0, bytemuck::bytes_of(&uniforms));
+            looks.push(look);
+        }
 
         let screen = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("frame") });
@@ -489,31 +600,49 @@ impl Renderer {
 
         match self.view {
             View::Scene => {
-                let (_, pipelines) = &self.scenes[self.scene];
+                // The arriving scene starts from the old one's picture.
+                if let Some(crossing) = &mut self.crossing
+                    && !crossing.handed_over
                 {
-                    let mut feedback = begin_pass(&mut encoder, "feedback", self.feedback.next(), timestamps(true, false));
-                    feedback.set_pipeline(&pipelines.feedback);
-                    feedback.set_bind_group(0, self.feedback.latest(), &[]);
-                    // One triangle large enough to cover the image; see `vs_main`.
-                    feedback.draw(0..3, 0..1);
+                    self.layers[back].feedback.take_over(&self.layers[front].feedback, &mut encoder);
+                    crossing.handed_over = true;
                 }
-                // The image just written is now the latest picture.
-                self.feedback.swap();
-                // A scene without glow skips the chain; the composite step
-                // multiplies the stale blurs by zero.
-                if look.bloom > 0.0 {
-                    self.bloom.encode(&mut encoder, &pipelines.bloom_source, self.feedback.latest());
+                for (n, (&i, look)) in drawn.iter().zip(&looks).enumerate() {
+                    let layer = &mut self.layers[i];
+                    let pipelines = &self.scenes[layer.scene].1;
+                    {
+                        // The GPU clock starts with the first pass.
+                        let timing = if n == 0 { timestamps(true, false) } else { None };
+                        let mut feedback = begin_pass(&mut encoder, "feedback", layer.feedback.next(), timing);
+                        feedback.set_pipeline(&pipelines.feedback);
+                        feedback.set_bind_group(0, layer.feedback.latest(), &[]);
+                        // One triangle large enough to cover the image; see `vs_main`.
+                        feedback.draw(0..3, 0..1);
+                    }
+                    // The image just written is now the latest picture.
+                    layer.feedback.swap();
+                    // A scene without glow skips the chain; the composite step
+                    // multiplies the stale blurs by zero.
+                    if look.bloom > 0.0 {
+                        self.bloom.encode(&mut encoder, &layer.glow, &pipelines.bloom_source, layer.feedback.latest());
+                    }
                 }
                 let mut composite = begin_pass(&mut encoder, "composite", self.limiter.candidate(), None);
-                composite.set_pipeline(&pipelines.composite);
-                composite.set_bind_group(0, self.feedback.latest(), &[]);
-                composite.set_bind_group(1, self.bloom.apply(), &[]);
-                composite.draw(0..3, 0..1);
+                // With a transition, the new scene whole, then the old one
+                // over it, through the transition's shape.
+                for (n, &i) in drawn.iter().rev().enumerate() {
+                    let layer = &self.layers[i];
+                    let pipelines = &self.scenes[layer.scene].1;
+                    composite.set_pipeline(if n == 0 { &pipelines.composite } else { &pipelines.fade });
+                    composite.set_bind_group(0, layer.feedback.latest(), &[]);
+                    composite.set_bind_group(1, layer.glow.apply(), &[]);
+                    composite.draw(0..3, 0..1);
+                }
             }
             View::Analysis => {
                 let mut analysis = begin_pass(&mut encoder, "analysis", self.limiter.candidate(), timestamps(true, false));
                 analysis.set_pipeline(&self.analysis_pipeline);
-                analysis.set_bind_group(0, &self.analysis_bind_group, &[]);
+                analysis.set_bind_group(0, &self.layers[front].analysis, &[]);
                 analysis.draw(0..3, 0..1);
             }
         }
@@ -531,8 +660,8 @@ impl Renderer {
         true
     }
 
-    fn uniforms(&self, s: &Signals, look: &Look) -> Uniforms {
-        let (feedback_width, feedback_height) = self.feedback.size();
+    fn uniforms(&self, s: &Signals, look: &Look, reveal: [f32; 4]) -> Uniforms {
+        let (feedback_width, feedback_height) = self.layers[self.front].feedback.size();
         let row = |v: [f32; 3]| [v[0], v[1], v[2], 0.0];
         Uniforms {
             resolution: [self.config.width as f32, self.config.height as f32],
@@ -565,6 +694,7 @@ impl Renderer {
             waveform: bytemuck::cast(if self.view == View::Scene { look.waveform } else { s.waveform }),
             beat_history: bytemuck::cast(self.history_of(0)),
             novelty_history: bytemuck::cast(self.history_of(1)),
+            reveal,
         }
     }
 
@@ -587,12 +717,15 @@ impl Renderer {
     }
 }
 
-/// A scene's three pipelines.
+/// A scene's four pipelines.
 struct ScenePipelines {
     feedback: wgpu::RenderPipeline,
     /// The scene's bright parts at half size, to start the bloom chain.
     bloom_source: wgpu::RenderPipeline,
     composite: wgpu::RenderPipeline,
+    /// The composite step as the old scene of a transition: blended over
+    /// the new one, leaving it where the transition has passed.
+    fade: wgpu::RenderPipeline,
 }
 
 /// A pass drawing over all of `target`. Every pass covers every pixel, so
@@ -649,6 +782,7 @@ mod tests {
         assert_eq!(std::mem::offset_of!(Uniforms, waveform), 320);
         assert_eq!(std::mem::offset_of!(Uniforms, beat_history), 1344);
         assert_eq!(std::mem::offset_of!(Uniforms, novelty_history), 1344 + 32 * 16);
-        assert_eq!(size_of::<Uniforms>(), 1344 + 64 * 16);
+        assert_eq!(std::mem::offset_of!(Uniforms, reveal), 1344 + 64 * 16);
+        assert_eq!(size_of::<Uniforms>(), 1344 + 64 * 16 + 16);
     }
 }

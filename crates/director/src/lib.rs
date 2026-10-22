@@ -8,9 +8,11 @@
 
 pub mod feel;
 pub mod intensity;
+pub mod transition;
 
 pub use feel::{Feel, Listener};
 pub use intensity::NaturalIntensity;
+pub use transition::{Style, Transition};
 
 use juglar_signals::Signals;
 

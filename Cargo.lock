@@ -660,6 +660,7 @@ name = "juglar-render"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "juglar-director",
  "juglar-signals",
  "pollster",
  "wgpu",

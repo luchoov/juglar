@@ -68,10 +68,10 @@ fn enlarge(image: texture_2d<f32>, uv: vec2f) -> vec3f {
     return 0.25 * c;
 }
 
-@fragment
-fn fs_composite(@builtin(position) position: vec4f) -> @location(0) vec4f {
-    let uv = position.xy / frame.resolution;
-    let light = shade(position.xy, frame.resolution);
+// The finished picture at a pixel, before the limiter.
+fn composite(position: vec2f) -> vec3f {
+    let uv = position / frame.resolution;
+    let light = shade(position, frame.resolution);
     // The three blurs' average, as much as the scene asks for. Combined
     // like light through two slides ("screen"), so the glow brightens
     // without ever passing white.
@@ -81,5 +81,63 @@ fn fs_composite(@builtin(position) position: vec4f) -> @location(0) vec4f {
     // A faint vignette keeps the eye in the middle.
     let edge = length(uv - 0.5) * 1.4;
     let c = BACKGROUND * (1.0 - 0.5 * edge * edge) + lit;
-    return vec4f(clamp(c, vec3f(0.0), vec3f(1.0)), 1.0);
+    return clamp(c, vec3f(0.0), vec3f(1.0));
+}
+
+@fragment
+fn fs_composite(@builtin(position) position: vec4f) -> @location(0) vec4f {
+    return vec4f(composite(position.xy), 1.0);
+}
+
+// Transitions. The incoming scene is drawn first, whole; the outgoing one
+// is drawn over it with `fs_fade`, whose alpha says how much of it is left
+// at each pixel: what is gone shows the new scene underneath.
+//
+// Each style is a map giving every point a number from 0 to 1: when it
+// turns over. As the transition's progress passes a point's number, that
+// point turns from the old scene to the new, over a soft band. The maps
+// never change during a transition, so every point turns exactly once and
+// nothing flickers back and forth.
+const STYLE_BLOOM: u32 = 0u;
+const STYLE_IRIS: u32 = 1u;
+const STYLE_SEEP: u32 = 2u;
+
+// When `p` (centered on the window, its short side spanning -0.5..0.5)
+// turns over.
+fn turn_over(p: vec2f) -> f32 {
+    let style = u32(frame.reveal.y);
+    let seed = frame.reveal.w;
+    // From the middle to the farthest corner.
+    let reach = 0.5 * length(frame.resolution / min(frame.resolution.x, frame.resolution.y));
+    let wobble = noise(p * 3.0 + vec2f(seed, 2.0 * seed)) - 0.5;
+    switch style {
+        case STYLE_BLOOM: {
+            return clamp(length(p) / reach * 0.85 + 0.15 + 0.25 * wobble, 0.0, 1.0);
+        }
+        case STYLE_IRIS: {
+            return clamp(1.0 - length(p) / reach * 0.85 + 0.25 * wobble, 0.0, 1.0);
+        }
+        case STYLE_SEEP: {
+            let patches = 0.65 * noise(p * 3.5 + vec2f(seed, 0.0)) + 0.35 * noise(p * 8.0 - vec2f(0.0, seed));
+            return smoothstep(0.2, 0.8, patches);
+        }
+        default: {
+            // Two spiral arms sweeping around the middle.
+            let around = atan2(p.y, p.x) / TAU + 0.5;
+            return fract(2.0 * around + 1.6 * length(p) / reach + seed);
+        }
+    }
+}
+
+@fragment
+fn fs_fade(@builtin(position) position: vec4f) -> @location(0) vec4f {
+    let unit = min(frame.resolution.x, frame.resolution.y);
+    let p = (position.xy - 0.5 * frame.resolution) / unit;
+    let soft = frame.reveal.z;
+    // Runs from just before every point's turn to just after, so the first
+    // and last points also turn over smoothly.
+    let edge = frame.reveal.x * (1.0 + 2.0 * soft) - soft;
+    let at = turn_over(p);
+    let gone = smoothstep(at - soft, at + soft, edge);
+    return vec4f(composite(position.xy), 1.0 - gone);
 }

@@ -47,6 +47,11 @@ struct Frame {
     // The last 128 frames of beat and novelty, oldest first.
     beat_history: array<vec4f, 32>,
     novelty_history: array<vec4f, 32>,
+
+    // A transition between two scenes (`composite.wgsl`): x = how far it
+    // has come, 0..1; y = its style; z = how soft its edge is; w = a seed
+    // that makes each one's edge different.
+    reveal: vec4f,
 }
 
 @group(0) @binding(0) var<uniform> frame: Frame;

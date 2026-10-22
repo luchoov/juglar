@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use juglar_director::{Director, Intensity};
+use juglar_director::{Director, Intensity, Style, Transition};
 use juglar_dsp::{Analyzer, Consumer, FFT_SIZE, SCOPE_POINTS, Scope, ring};
 use juglar_platform::{AudioCapture, PlatformError, SystemAudio};
 use juglar_render::{Renderer, View};
@@ -349,7 +349,15 @@ impl App {
                 if let Some(renderer) = &mut self.renderer {
                     let count = renderer.scene_names().len();
                     let back = *step == NamedKey::ArrowLeft;
-                    renderer.set_scene(if back { renderer.scene() + count - 1 } else { renderer.scene() + 1 });
+                    let next = if back { renderer.scene() + count - 1 } else { renderer.scene() + 1 };
+                    // With reduced motion, a slow fade through patches
+                    // instead of an edge sweeping across.
+                    let transition = if reduced_motion() {
+                        Transition { style: Style::Seep, seconds: 3.0, per_beat: 0.0 }
+                    } else {
+                        Transition::asked()
+                    };
+                    renderer.begin_transition(next, transition);
                 }
             }
             Key::Named(NamedKey::Tab) => {

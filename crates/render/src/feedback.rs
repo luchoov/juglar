@@ -18,6 +18,7 @@ pub(crate) const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
 pub(crate) struct Feedback {
     size: (u32, u32),
+    textures: [wgpu::Texture; 2],
     views: [wgpu::TextureView; 2],
     /// `reads[i]` lets a shader read image `i`.
     reads: [wgpu::BindGroup; 2],
@@ -37,20 +38,23 @@ impl Feedback {
         height: u32,
     ) -> Self {
         let size = (width.div_ceil(2).max(1), height.div_ceil(2).max(1));
-        let views = std::array::from_fn(|_| {
-            device
-                .create_texture(&wgpu::TextureDescriptor {
-                    label: Some("feedback"),
-                    size: wgpu::Extent3d { width: size.0, height: size.1, depth_or_array_layers: 1 },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: FORMAT,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-                    view_formats: &[],
-                })
-                .create_view(&wgpu::TextureViewDescriptor::default())
+        let textures: [wgpu::Texture; 2] = std::array::from_fn(|_| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("feedback"),
+                size: wgpu::Extent3d { width: size.0, height: size.1, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: FORMAT,
+                // Copies hand a picture from one scene to the next (`take_over`).
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_SRC
+                    | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            })
         });
+        let views = std::array::from_fn(|i| textures[i].create_view(&wgpu::TextureViewDescriptor::default()));
         let reads = std::array::from_fn(|i| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("feedback"),
@@ -62,7 +66,7 @@ impl Feedback {
                 ],
             })
         });
-        Self { size, views, reads, current: 0 }
+        Self { size, textures, views, reads, current: 0 }
     }
 
     pub(crate) fn size(&self) -> (u32, u32) {
@@ -82,5 +86,16 @@ impl Feedback {
     /// Makes the image just written the latest picture.
     pub(crate) fn swap(&mut self) {
         self.current = 1 - self.current;
+    }
+
+    /// Records a copy of `other`'s latest picture into this one's, so the
+    /// scene drawn here carries on from where `other`'s left off.
+    pub(crate) fn take_over(&self, other: &Feedback, encoder: &mut wgpu::CommandEncoder) {
+        let (width, height) = self.size;
+        encoder.copy_texture_to_texture(
+            other.textures[other.current].as_image_copy(),
+            self.textures[self.current].as_image_copy(),
+            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        );
     }
 }
