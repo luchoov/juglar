@@ -11,6 +11,17 @@ mod win32;
 #[cfg(windows)]
 pub use win32::WasapiLoopback as SystemAudio;
 
+/// Whether the user asked the OS for less motion on screen. Cheap enough to
+/// ask every second, so a change applies while Juglar runs.
+#[cfg(windows)]
+pub use win32::reduced_motion;
+
+/// Without a known OS preference, motion is allowed.
+#[cfg(not(windows))]
+pub fn reduced_motion() -> bool {
+    false
+}
+
 /// Receives interleaved `f32` frames and the channel count on the capture
 /// thread. It must not block or allocate: it runs at the audio engine's pace.
 pub type SampleCallback = Box<dyn FnMut(&[f32], u16) + Send + 'static>;

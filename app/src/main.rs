@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use juglar_dsp::{Analyzer, Consumer, FFT_SIZE, SCOPE_POINTS, Scope, ring};
 use juglar_platform::{AudioCapture, PlatformError, SystemAudio};
-use juglar_render::Renderer;
+use juglar_render::{Renderer, View};
 use juglar_signals::{Signals, Synthetic};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -24,6 +24,8 @@ const _: () = assert!(SCOPE_POINTS == juglar_signals::WAVEFORM_POINTS);
 const TARGET_FPS: f64 = 60.0;
 /// How often to try again while the window is minimized or hidden.
 const HIDDEN_RETRY: Duration = Duration::from_millis(100);
+/// Intensity presets on keys 1, 2 and 3: gentle, medium, strong.
+const INTENSITY_PRESETS: [f32; 3] = [0.2, 0.5, 0.9];
 
 fn main() {
     let source = match std::env::var("JUGLAR_DEMO") {
@@ -42,9 +44,10 @@ fn main() {
     };
 
     let event_loop = EventLoop::new().expect("event loop");
+    let intensity = std::env::var("JUGLAR_INTENSITY").ok().and_then(|v| v.parse().ok()).unwrap_or(INTENSITY_PRESETS[1]);
     let mut app = App {
         source,
-        signals: Signals::default(),
+        signals: Signals { intensity: f32::clamp(intensity, 0.0, 1.0), ..Signals::default() },
         window: None,
         renderer: None,
         pacer: Pacer::new(None, TARGET_FPS),
@@ -124,6 +127,16 @@ impl Listening {
     }
 }
 
+/// Whether to keep the picture still: the OS setting, unless
+/// `JUGLAR_REDUCED_MOTION` is set to 1 or 0 (until the settings file, M7).
+fn reduced_motion() -> bool {
+    match std::env::var("JUGLAR_REDUCED_MOTION").as_deref() {
+        Ok("1") => true,
+        Ok("0") => false,
+        _ => juglar_platform::reduced_motion(),
+    }
+}
+
 /// The target frame rate: `TARGET_FPS`, or the `JUGLAR_FPS` environment
 /// variable until there is a settings file (M7). Fewer frames cost less, for
 /// example while a game is running.
@@ -175,6 +188,11 @@ impl ApplicationHandler for App {
             None => println!("Display refresh rate unknown, drawing at {:.1} fps.", self.pacer.fps()),
         }
 
+        let mut renderer = renderer;
+        renderer.set_reduced_motion(reduced_motion());
+        if reduced_motion() {
+            println!("Reduced motion is on: the picture stays still.");
+        }
         self.renderer = Some(renderer);
         self.window = Some(window);
         self.last_frame = Instant::now();
@@ -187,6 +205,9 @@ impl ApplicationHandler for App {
                 event: KeyEvent { logical_key: Key::Named(NamedKey::Escape), state: ElementState::Pressed, .. },
                 ..
             } => event_loop.exit(),
+            WindowEvent::KeyboardInput { event: KeyEvent { logical_key, state: ElementState::Pressed, repeat: false, .. }, .. } => {
+                self.key(&logical_key)
+            }
             WindowEvent::Resized(size) => {
                 if let Some(renderer) = &mut self.renderer {
                     renderer.resize(size.width, size.height);
@@ -210,6 +231,25 @@ impl ApplicationHandler for App {
 }
 
 impl App {
+    /// Tab switches between the scene and the analysis view; 1, 2 and 3
+    /// set the intensity to gentle, medium or strong.
+    fn key(&mut self, key: &Key) {
+        match key {
+            Key::Named(NamedKey::Tab) => {
+                if let Some(renderer) = &mut self.renderer {
+                    let next = if renderer.view() == View::Scene { View::Analysis } else { View::Scene };
+                    renderer.set_view(next);
+                }
+            }
+            Key::Character(c) => {
+                if let Some(preset) = c.parse::<usize>().ok().and_then(|n| INTENSITY_PRESETS.get(n.wrapping_sub(1))) {
+                    self.signals.intensity = *preset;
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn frame(&mut self) {
         let now = Instant::now();
         let dt = (now - self.last_frame).as_secs_f32();
@@ -230,10 +270,12 @@ impl App {
         if drawn {
             self.stats.frame(dt, analysis_time);
         }
-        if let Some(title) = self.stats.report(now)
-            && let Some(window) = &self.window
-        {
-            window.set_title(&title);
+        if let Some(title) = self.stats.report(now) {
+            // Once a second: cheap enough to follow the OS setting live.
+            renderer.set_reduced_motion(reduced_motion());
+            if let Some(window) = &self.window {
+                window.set_title(&title);
+            }
         }
     }
 }

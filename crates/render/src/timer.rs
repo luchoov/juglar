@@ -2,10 +2,11 @@
 //!
 //! The CPU can't time GPU work with a stopwatch: it only records commands,
 //! and the GPU runs them later. Instead the GPU writes its own clock into a
-//! small buffer at the start and end of the render pass. Reading that buffer
-//! back takes a frame or two, so the timer never waits for it: it starts a
-//! measurement, keeps rendering, and picks the result up once it is ready.
-//! While one measurement is in flight, frames go untimed.
+//! small buffer at the start of the frame's first render pass and the end of
+//! its last. Reading that buffer back takes a frame or two, so the timer
+//! never waits for it: it starts a measurement, keeps rendering, and picks
+//! the result up once it is ready. While one measurement is in flight,
+//! frames go untimed.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -14,7 +15,7 @@ const PENDING: u8 = 0;
 const READY: u8 = 1;
 const FAILED: u8 = 2;
 
-/// Two timestamps of 8 bytes each: start and end of the pass.
+/// Two timestamps of 8 bytes each: start and end of the frame's drawing.
 const BYTES: u64 = 2 * size_of::<u64>() as u64;
 
 enum State {
@@ -67,11 +68,13 @@ impl GpuTimer {
         }
     }
 
-    pub(crate) fn pass_writes(&self) -> wgpu::RenderPassTimestampWrites<'_> {
+    /// Timestamps for a render pass: the frame's start if it is the first
+    /// pass, its end if it is the last.
+    pub(crate) fn pass_writes(&self, first: bool, last: bool) -> wgpu::RenderPassTimestampWrites<'_> {
         wgpu::RenderPassTimestampWrites {
             query_set: &self.queries,
-            beginning_of_pass_write_index: Some(0),
-            end_of_pass_write_index: Some(1),
+            beginning_of_pass_write_index: first.then_some(0),
+            end_of_pass_write_index: last.then_some(1),
         }
     }
 
