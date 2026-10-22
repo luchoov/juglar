@@ -59,7 +59,7 @@ The music moves c, slowly, around a circle where the most intricate Julia sets l
 
 The fade and the color change here are per frame, not per second, since each frame is one step. At a lower frame rate the picture looks the same and settles more slowly.
 
-Near the fractal's edge, bands get thinner than a pixel and move fast when c moves. Three things keep that from flickering: c moves slowly and smoothly; the paint fades with every step, so the deepest steps, where bands are thinnest, are dim; and the palette was chosen for colors of similar brightness (linear luminance 0.11 to 0.41), so bands sliding past a point change its hue more than its light. A first version also drew the ring inside the fractal, where its paint circulated through the black interior: beautiful, but it shimmered six to twenty times more (see "Checking for flicker finer than a cell" below).
+Near the fractal's edge, bands get thinner than a pixel and move fast when c moves. Three things keep that from flickering: c moves slowly and smoothly; the paint fades with every step, so the deepest steps, where bands are thinnest, are dim; and the palette was chosen for a narrow range of brightness (linear luminance 0.11 to 0.41, where *Kaleido*'s spans 0.11 to 0.79), so bands sliding past a point swing its brightness about half as much, and faded bands fall below the flash rule's 0.1 sooner. A first version also drew the ring inside the fractal, where its paint circulated through the black interior: beautiful, but it shimmered six to twenty times more (see "Checking for flicker finer than a cell" below).
 
 ## Crystal: a fractal of mirrors
 

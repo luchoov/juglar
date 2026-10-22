@@ -32,9 +32,10 @@ use juglar_signals::{Signals, WAVEFORM_POINTS};
 use super::{Look, Palette, Scene, smooth3};
 
 /// Leaf green, rose, magenta, violet, blue and teal, all the way around.
-/// Chosen for colors of similar brightness (linear luminance 0.11 to
-/// 0.41): neighboring bands differ in hue more than in light, so bands
-/// sliding past a point barely change how bright it is. Red stays under 64%.
+/// Chosen among looping palettes for a narrow range of brightness (linear
+/// luminance 0.11 to 0.41, where Kaleido's spans 0.11 to 0.79): bands
+/// sliding past a point swing its brightness about half as much, and
+/// faded ones fall below the flash rule's 0.1 sooner. Red stays under 64%.
 const PALETTE: Palette = Palette {
     a: [0.52, 0.32, 0.74],
     b: [0.53, 0.46, 0.49],

@@ -28,9 +28,9 @@ use juglar_signals::{Signals, WAVEFORM_POINTS};
 
 use super::{Look, Palette, Scene, smooth3};
 
-/// Violet, blue, azure, aqua, green, olive and rose, all the way around, in
-/// colors of similar brightness (linear luminance 0.11 to 0.46), like
-/// Julia's. Red stays under 69%.
+/// Violet, blue, azure, aqua, green, olive and rose, all the way around,
+/// chosen like Julia's for a narrow range of brightness (linear luminance
+/// 0.11 to 0.46). Red stays under 69%.
 const PALETTE: Palette = Palette {
     a: [0.35, 0.41, 0.68],
     b: [0.43, 0.40, 0.46],
