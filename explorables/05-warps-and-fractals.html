@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Warps and Fractals</title>
+<meta name="description" content="An interactive explanation of the warp, the one function that gives each of Juglar's scenes its motion, and of two scenes where the feedback loop computes a fractal one step per frame: a Julia set and a snowflake of mirrored copies.">
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #09090b; --surface: #0f0f12; --line: #1c1c21; --line-strong: #2a2a31;
+    --fg: #d4d4d8; --strong: #f4f4f5; --muted: #71717a;
+    --accent: #e4e4e7; --raw: #3a3a42;
+    --a: #5b7fa6; --b: #a39a78;
+    --code-bg: #0c0c0f;
+    --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.75 var(--mono); -webkit-font-smoothing: antialiased; }
+  main { max-width: 720px; margin: 0 auto; padding: 72px 16px 112px; }
+  header .meta { color: var(--muted); margin: 0 0 20px; }
+  h1 { font-size: 28px; line-height: 1.2; font-weight: 600; color: var(--strong); margin: 0 0 20px; letter-spacing: -0.02em; }
+  h2 { font-size: 16px; line-height: 1.4; font-weight: 600; color: var(--strong); margin: 72px 0 14px; }
+  h2 .num { color: var(--muted); font-weight: 400; margin-right: 14px; }
+  p { margin: 0 0 16px; }
+  .lede { color: var(--muted); }
+  b, strong { color: var(--strong); font-weight: 500; }
+  em { font-style: normal; color: var(--strong); }
+  code { font: inherit; color: var(--strong); }
+  a { color: var(--strong); text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+  a:hover { text-decoration-color: var(--strong); }
+  figure { margin: 28px 0; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 2px; }
+  canvas { display: block; width: 100%; }
+  canvas.pick { cursor: crosshair; touch-action: none; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 24px; margin-bottom: 16px; font-size: 12px; }
+  .control label { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 2px; }
+  .control label output { color: var(--fg); font-variant-numeric: tabular-nums; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 16px; background: transparent; margin: 0; }
+  input[type=range]::-webkit-slider-runnable-track { height: 1px; background: var(--line-strong); }
+  input[type=range]::-moz-range-track { height: 1px; background: var(--line-strong); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 9px; margin-top: -4px; background: var(--strong); border: 0; border-radius: 0; }
+  input[type=range]::-moz-range-thumb { width: 9px; height: 9px; background: var(--strong); border: 0; border-radius: 0; }
+  input[type=range]:focus-visible { outline: 1px solid var(--muted); outline-offset: 2px; }
+  input[type=checkbox] { accent-color: var(--strong); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; font-size: 12px; margin-bottom: 16px; color: var(--muted); }
+  .row label { display: flex; gap: 8px; align-items: center; }
+  select, button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 2px; padding: 3px 10px; max-width: 100%; }
+  button { cursor: pointer; }
+  button:hover, select:hover { border-color: var(--muted); }
+  .readout { display: flex; flex-wrap: wrap; gap: 6px 24px; font-size: 12px; margin-top: 12px; color: var(--muted); min-height: 1.6em; }
+  .readout b { font-variant-numeric: tabular-nums; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .tag { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  figcaption { font-size: 12px; line-height: 1.6; color: var(--muted); margin-top: 12px; }
+  details { margin: 16px 0; border: 1px solid var(--line); background: var(--code-bg); }
+  summary { cursor: pointer; padding: 10px 14px; font-size: 12px; color: var(--muted); }
+  summary:hover { color: var(--fg); }
+  pre { margin: 0; padding: 4px 16px 16px; overflow-x: auto; font: 12px/1.6 var(--mono); color: var(--fg); }
+  .src { font-size: 12px; color: var(--muted); padding: 0 16px 12px; margin: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 16px 0; }
+  th, td { text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 400; }
+  .strip { height: 18px; border: 1px solid var(--line-strong); margin-bottom: 8px; }
+  footer { margin-top: 88px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  @media (max-width: 520px) { h1 { font-size: 22px; } body { font-size: 13px; } .pair { grid-template-columns: 1fr; } table { font-size: 11px; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <p class="meta">juglar / explorables / 05</p>
+  <h1>Warps and fractals</h1>
+  <p class="lede">Every one of Juglar's twelve scenes runs on the same loop (explorable 03): each frame starts as a slightly changed copy of the last, and a little paint goes on top. What makes the scenes so different is mostly one small function, the <b>warp</b>, which tells each pixel where its old paint comes from. This page plays with a few warps, then with two that turn the loop into a machine for fractals. The JavaScript mirrors <code>crates/render/src/feedback.wgsl</code>, <code>composite.wgsl</code> and the scenes' shaders in <code>crates/render/src/scene/</code>; the theory is in note 10.</p>
+</header>
+
+<h2><span class="num">01</span>Where does the paint come from?</h2>
+<p>Each frame, every pixel asks one question: <em>where was my paint a moment ago?</em> (Asking it backwards, from the new pixel, leaves no holes; explorable 03 shows why.) The answer is the warp. Below, three soft lights circle the middle and leave trails, and you choose the warp the trails live in. The lights are the same in every case; only the warp changes.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>Warp</label><select id="lab-warp">
+      <option value="tunnel" selected>a tunnel (Tide)</option>
+      <option value="fold">a mirror fold (Kaleido)</option>
+      <option value="vortex">rings turning against each other (Vortex)</option>
+      <option value="melt">paint running down (Melt)</option>
+      <option value="lenses">two lenses (Lenses)</option>
+    </select></div>
+    <div class="control"><label>Strength <output id="lab-strength-out"></output></label><input type="range" id="lab-strength" min="0" max="200" value="100"></div>
+  </div>
+  <div class="row">
+    <button id="lab-play" type="button">Pause</button>
+    <button id="lab-clear" type="button">Start from black</button>
+    <label><input type="checkbox" id="lab-arrows" checked> Show where paint comes from</label>
+  </div>
+  <canvas id="lab" aria-label="Three lights leaving trails in the chosen warp"></canvas>
+  <figcaption>A 240×135 loop, as Juglar's at a quarter of the size, with no bloom. Each arrow runs from where paint was to where it is half a second later: the warp, made visible.</figcaption>
+</figure>
+<p>A <b>tunnel</b> (zoom and turn) sends every trail outward along a spiral. A <b>fold</b> takes each pixel's paint from the matching point of one wedge, reflected, so after a few frames everything is mirrored six ways. <b>Rings that turn against each other</b> shear trails into kinks and whorls. <b>Paint running down</b> takes each pixel's paint from a little above it, faster in some columns than others. A <b>lens</b> magnifies or shrinks what is under it, and since the loop repeats that every frame, a magnifying lens keeps blowing paint out of its middle and a shrinking one keeps swallowing it. Each is the warp of the scene named in the menu, with the same lines of code.</p>
+<details>
+  <summary>Optional, for the curious: Vortex's warp (<code>crates/render/src/scene/vortex.wgsl</code>)</summary>
+<pre>fn warp(p: vec2f, q: vec2f) -&gt; vec2f {
+    let r = length(q);
+    let pattern = knob(3u);
+    let turn = sin(r * 9.0 + pattern) * 0.7 + sin(r * 4.0 - 1.3 * pattern) * 0.3;
+    let edge = 1.0 - smoothstep(0.4, 0.9, r);
+    let turned = rotate(q, knob(0u) * turn * edge);
+    let push = 1.0 - knob(1u) * edge * sin(r * 14.0 - knob(2u));
+    return turned * push;
+}</pre>
+  <p class="src"><code>q</code> is where the usual zoom and turn already point; the scene moves it further. Every scene's <code>warp</code> has this shape, and the JavaScript on this page has one function per scene with the same lines.</p>
+</details>
+
+<h2><span class="num">02</span>A fractal, one step per frame</h2>
+<p>A <b>Julia set</b> comes from one rule. Take a point z of the plane, square it and add a fixed number c, then do it again, and again. (Points are complex numbers here: squaring doubles a point's angle around the middle and squares its distance from it.) Some points fly off to infinity, others stay near the middle forever; the border between the two is the fractal. The usual way to draw one repeats the rule dozens or hundreds of times for every pixel, every frame.</p>
+<p><em>Julia</em> repeats it once. Its warp <b>is</b> the rule: each pixel takes its old paint from z² + c. Pixels whose next step leaves the picture get fresh paint. A pixel one step from leaving shows that paint one frame later; a pixel two steps away, two frames later; and so on. And paint moves along the palette with every step, so the steps come out as bands of color. Points that never escape never get paint: the black heart of the set.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>c</label><select id="julia-preset">
+      <option value="travel" selected>traveling, as in the scene</option>
+      <option value="rabbit">a rabbit: −0.123 + 0.745i</option>
+      <option value="dendrite">a dendrite: i</option>
+      <option value="marco">San Marco: −0.75</option>
+      <option value="dust">dust: 0.3 + 0.5i</option>
+      <option value="picked">picked on the map</option>
+    </select></div>
+    <div class="control"><label>Fade per step <output id="julia-fade-out"></output></label><input type="range" id="julia-fade" min="80" max="100" value="97"></div>
+  </div>
+  <div class="row">
+    <button id="julia-play" type="button">Pause</button>
+    <button id="julia-step" type="button">One step</button>
+    <button id="julia-clear" type="button">Start from black</button>
+    <label><input type="checkbox" id="julia-drift" checked> Color each step</label>
+    <label><input type="checkbox" id="julia-ring" checked> A ring outside</label>
+  </div>
+  <canvas id="julia" aria-label="A Julia set built by the feedback loop, one step per frame"></canvas>
+  <div class="readout" id="julia-readout"></div>
+  <div class="pair">
+    <div><div class="tag">c on the map of all Julia sets: click or drag</div><canvas id="mandel" class="pick" aria-label="The Mandelbrot set, where clicking picks c"></canvas></div>
+    <div><div class="tag">The usual way: every step for every pixel</div><canvas id="direct" aria-label="The same Julia set computed directly, step after step for each pixel"></canvas></div>
+  </div>
+  <figcaption>Top: the loop, 240×135, one step of z² + c per frame. Bottom left: the Mandelbrot set, a map of c: inside it (gray), the Julia set is one connected piece; outside, it breaks into dust. The dotted circle is where the scene's c travels. Bottom right: the same picture computed the usual way, by taking every pixel through as many steps as the loop has done so far, all at once. They agree except close to the fractal's edge, where the loop's blending of neighboring pixels blurs the thinnest bands.</figcaption>
+</figure>
+<p>Press <b>Start from black</b> and watch: the outside lights up first, then each band, one step per frame, closing in on the set. After about a hundred frames the picture has settled, and the loop has done for every pixel what the usual way does: a hundred steps. It spread them over a hundred frames, one step each. Once settled, it keeps up as c moves, since each new frame is one more step of the new rule over a picture that was nearly right already. In Juglar this costs 0.24 to 0.25 ms of GPU time per frame at 960×540, about what a tunnel costs (Tide: 0.22 ms).</p>
+<p>The <b>ring outside</b> shows the other half of the trick. Anything painted into the picture is copied back through the steps too: the ring comes back as nested, ever smaller, ever more crinkled copies hugging the fractal's edge. In the scene the ring is drawn by the waveform, so the music's shape is copied into the fractal.</p>
+<details>
+  <summary>Optional, for the curious: Julia's warp and paint (<code>crates/render/src/scene/julia.wgsl</code>)</summary>
+<pre>fn julia_step(z: vec2f) -&gt; vec2f {
+    return vec2f(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + vec2f(knob(0u), knob(1u));
+}
+
+fn warp(p: vec2f, q: vec2f) -&gt; vec2f {
+    let scale = knob(2u);
+    return julia_step(q * scale) / scale;
+}
+
+fn sources(p: vec2f, pixel: f32) -&gt; vec3f {
+    let scale = knob(2u);
+    let z = p * scale;
+    let next = julia_step(z);
+    let escape = smoothstep(-0.1, 0.0, length(next) - 0.49 * scale);
+    let leaving = 0.12 * sin(2.0 * atan2(next.y, next.x));
+    let ring = julia_ring(z, pixel * scale);
+    let coverage = max(escape, ring);
+    let share = ring / max(coverage, 1e-4);
+    let ink = mix(knob(6u), knob(7u), share) * coverage;
+    return vec3f(coverage, ink, ink * mix(leaving, 0.5, share));
+}</pre>
+  <p class="src">A point counts as escaped when its next step leaves the circle that fits in the picture (of radius 1.52 in the set's units). No point beyond (1 + √(1 + 4|c|)) / 2 ever comes back, which is 1.52 for the scene's usual c; for c further out, like the dendrite's, a few points between 1.52 and that radius may be painted as escaped although they would have stayed.</p>
+</details>
+
+<h2><span class="num">03</span>Copies of copies</h2>
+<p><em>Crystal</em> uses the same trick with a different step: turn the picture, fold it into five mirrored wedges, move it out from the middle, enlarge. Read backwards, as a warp is, that puts a small copy of the whole old picture in each of five places around a ring. The next frame copies the copies. A soft ring in the middle becomes five rings, then twenty-five smaller ones, then a hundred and twenty-five, a snowflake that is a fractal: what mathematicians call an <b>iterated function system</b>, run by the loop one generation per frame.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>Wedges <output id="crystal-wedges-out"></output></label><input type="range" id="crystal-wedges" min="3" max="8" value="5"></div>
+    <div class="control"><label>Turn <output id="crystal-twist-out"></output></label><input type="range" id="crystal-twist" min="0" max="72" value="17"></div>
+    <div class="control"><label>How far out the copies sit <output id="crystal-offset-out"></output></label><input type="range" id="crystal-offset" min="10" max="35" value="27"></div>
+    <div class="control"><label>How much smaller each generation is <output id="crystal-shrink-out"></output></label><input type="range" id="crystal-shrink" min="150" max="300" value="200"></div>
+    <div class="control"><label>Fade per generation <output id="crystal-fade-out"></output></label><input type="range" id="crystal-fade" min="50" max="95" value="76"></div>
+  </div>
+  <div class="row">
+    <button id="crystal-play" type="button">Pause</button>
+    <button id="crystal-step" type="button">One generation</button>
+    <button id="crystal-clear" type="button">Start from black</button>
+    <label><input type="checkbox" id="crystal-turning" checked> Turn slowly</label>
+  </div>
+  <canvas id="crystal" aria-label="A snowflake of mirrored copies grown by the feedback loop"></canvas>
+  <div class="readout" id="crystal-readout"></div>
+  <figcaption>The ring is soft and wide on purpose: its smallest copies would otherwise be specks thinner than a pixel. Each generation is fainter than the one before and a step further along the palette, so the colors count generations, from the newest in the middle to the oldest at the rim.</figcaption>
+</figure>
+<p>Turn the <b>turn</b> slowly and watch the rim: every generation is turned once more than the one inside it, so the smallest copies, at the edge, swing furthest. In the scene that is where the flash limiter first had to step in, when the turn moved twice as fast as it does now. Raise the <b>fade</b> toward 0.95 and the deep generations fill the crystal with a carpet of tiny rings; lower it and only a few generations show.</p>
+<details>
+  <summary>Optional, for the curious: Crystal's warp (<code>crates/render/src/scene/crystal.wgsl</code>)</summary>
+<pre>fn crystal_fold(p: vec2f, wedges: f32) -&gt; vec2f {
+    let wedge = TAU / wedges;
+    var angle = atan2(p.y, p.x);
+    angle = angle - wedge * floor(angle / wedge);
+    angle = abs(angle - 0.5 * wedge);
+    return vec2f(cos(angle), sin(angle)) * length(p);
+}
+
+fn warp(p: vec2f, q: vec2f) -&gt; vec2f {
+    let folded = crystal_fold(rotate(q, knob(0u)), knob(1u));
+    return (folded - vec2f(knob(2u), 0.0)) * knob(3u);
+}</pre>
+</details>
+
+<h2><span class="num">04</span>Wild, but not strobing</h2>
+<p>Fractals are full of small, fast detail, which is exactly what a screen must not flash. The rule (explorable 04) counts a swing of 0.1 in brightness, back and forth, and allows four such swings in any second, anywhere. Bands of color sliding past a point make its brightness rise and fall once per band, so three things keep these scenes inside the rule. Their parameters move slowly, so few bands pass a point each second. Deep steps and generations are faded, and faint paint swings less. And their palettes keep a narrow range of brightness: the colors differ a lot in hue, much less in light.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>Bands passing a point, per second <output id="bands-rate-out"></output></label><input type="range" id="bands-rate" min="2" max="40" value="15"></div>
+    <div class="control"><label>How much ink (deep steps have less) <output id="bands-ink-out"></output></label><input type="range" id="bands-ink" min="5" max="150" value="60"></div>
+  </div>
+  <div class="tag">Julia's palette, at this ink</div>
+  <div class="strip" id="strip-julia"></div>
+  <div class="tag">Kaleido's palette, at this ink</div>
+  <div class="strip" id="strip-kaleido"></div>
+  <canvas id="bands" height="200" aria-label="The brightness of one point over three seconds as bands pass, for two palettes"></canvas>
+  <div class="readout" id="bands-readout"></div>
+  <figcaption>The brightness of one point over three seconds at 60 frames per second, as bands of each palette slide past it, after the same tone mapping as the scene. Marks below each trace are transitions, counted as the flash limiter counts them. Julia's palette spans a linear luminance of 0.11 to 0.41; Kaleido's, 0.11 to 0.79.</figcaption>
+</figure>
+<p>At full ink both palettes swing by more than 0.1, so bands passing faster than two per second would break the rule with either; the limiter would hold them back. With less ink, Julia's palette drops below the 0.1 that counts much sooner than Kaleido's (below about 0.45 of ink, against 0.22). That is why its deep bands, the thinnest and fastest, stay calm.</p>
+
+<footer>
+  Part of <b>Juglar</b>, a music visualizer that listens like a musician. The JavaScript here mirrors <code>crates/render/src/feedback.wgsl</code>, <code>composite.wgsl</code> (without the bloom) and the warps of <code>scene/tide.rs</code>, <code>kaleido.wgsl</code>, <code>vortex.wgsl</code>, <code>melt.wgsl</code>, <code>lenses.wgsl</code>, <code>julia.wgsl</code> and <code>crystal.wgsl</code>; the theory is in <code>docs/theory/05-feedback.md</code> and <code>10-scenes.md</code>. Previous: <a href="04-beats-and-flashes.html">04, beats and flashes</a>.
+</footer>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const TAU = 2 * Math.PI;
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const toLinear = (c) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+const toSrgb = (c) => c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+const rotate = (x, y, a) => { const c = Math.cos(a), s = Math.sin(a); return [c * x - s * y, s * x + c * y]; };
+const fract = (x) => x - Math.floor(x);
+
+function setup(canvas, aspect) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas._h = canvas._h || canvas.height;
+  const w = canvas.clientWidth, h = aspect ? Math.round(w * aspect) : canvas._h;
+  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); canvas.style.height = h + "px";
+  const ctx = canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+function label(ctx, text, x, y, align = "left", color = css("--muted")) {
+  ctx.fillStyle = color; ctx.font = "10px " + css("--mono"); ctx.textAlign = align; ctx.fillText(text, x, y);
+}
+
+// ---------- Palettes: color(t) = a + b cos(2π(c t + d)), as in common.wgsl ----------
+const PALETTES = {
+  vortex: { a: [0.50, 0.71, 0.51], b: [0.52, 0.53, 0.54], d: [0.5, 0.15, 0.7] },
+  julia: { a: [0.52, 0.32, 0.74], b: [0.53, 0.46, 0.49], d: [0.7, 0.1, 0.55] },
+  crystal: { a: [0.35, 0.41, 0.68], b: [0.43, 0.40, 0.46], d: [0.15, 0.55, 0.9] },
+  kaleido: { a: [0.37, 0.66, 0.69], b: [0.50, 0.49, 0.46], d: [0.1, 0.4, 0.7] },
+};
+const paletteAt = (p, t) => [0, 1, 2].map((i) => clamp(p.a[i] + p.b[i] * Math.cos(TAU * (t + p.d[i])), 0, 1));
+const HUE_STEPS = 1024;
+function hueTable(p) {
+  const table = new Float32Array((HUE_STEPS + 1) * 3);
+  for (let i = 0; i <= HUE_STEPS; i++) { const c = paletteAt(p, i / HUE_STEPS); for (let j = 0; j < 3; j++) table[i * 3 + j] = toLinear(c[j]); }
+  return table;
+}
+const HUES = Object.fromEntries(Object.entries(PALETTES).map(([k, p]) => [k, hueTable(p)]));
+const SRGB_STEPS = 4096, SRGB_TABLE = new Uint8ClampedArray(SRGB_STEPS + 1);
+for (let i = 0; i <= SRGB_STEPS; i++) SRGB_TABLE[i] = Math.round(toSrgb(i / SRGB_STEPS) * 255);
+
+// ---------- Noise on an integer grid, as noise() in common.wgsl ----------
+function pcg(n) {
+  const state = (Math.imul(n >>> 0, 747796405) + 2891336453) >>> 0;
+  const word = Math.imul(((state >>> ((state >>> 28) + 4)) ^ state) >>> 0, 277803737) >>> 0;
+  return ((word >>> 22) ^ word) >>> 0;
+}
+const gridRandom = (ix, iy) => pcg((Math.imul(ix, 0x27d4eb2d) + iy) >>> 0) / 4294967296;
+function noise(x, y) {
+  const cx = Math.floor(x), cy = Math.floor(y), fx = x - cx, fy = y - cy;
+  const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+  const bottom = gridRandom(cx, cy) + (gridRandom(cx + 1, cy) - gridRandom(cx, cy)) * ux;
+  const top = gridRandom(cx, cy + 1) + (gridRandom(cx + 1, cy + 1) - gridRandom(cx, cy + 1)) * ux;
+  return bottom + (top - bottom) * uy;
+}
+
+// ---------- The loop: feedback.wgsl and composite.wgsl on a 240 x 135 image ----------
+const FW = 240, FH = 135, UNIT = Math.min(FW, FH), HALF_W = 0.5 * FW / UNIT;
+// Bilinear sample of a float image at uv, edges repeated (the sampler's default).
+function sample(img, u, v) {
+  const x = u * FW - 0.5, y = v * FH - 0.5, x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+  const xa = clamp(x0, 0, FW - 1), xb = clamp(x0 + 1, 0, FW - 1), ya = clamp(y0, 0, FH - 1), yb = clamp(y0 + 1, 0, FH - 1);
+  const top = img[ya * FW + xa] * (1 - fx) + img[ya * FW + xb] * fx, bottom = img[yb * FW + xa] * (1 - fx) + img[yb * FW + xb] * fx;
+  return top * (1 - fy) + bottom * fy;
+}
+class Loop {
+  constructor() { this.images = [[new Float32Array(FW * FH), new Float32Array(FW * FH)], [new Float32Array(FW * FH), new Float32Array(FW * FH)]]; this.current = 0; this.steps = 0; this.out = new ImageData(FW, FH); this.canvas = new OffscreenCanvas(FW, FH); }
+  clear() { for (const pair of this.images) for (const img of pair) img.fill(0); this.steps = 0; }
+  // One frame of fs_feedback: look = { zoom, rotation, swirl, decay, drift },
+  // warp(px, py, qx, qy) -> [x, y], sources(px, py, pixel) -> [coverage, ink, ink × position].
+  step(look, warp, sources) {
+    const [prevInk, prevPos] = this.images[this.current], [ink, pos] = this.images[1 - this.current], pixel = 1 / UNIT;
+    for (let y = 0; y < FH; y++) for (let x = 0; x < FW; x++) {
+      const px = (x + 0.5 - 0.5 * FW) / UNIT, py = (y + 0.5 - 0.5 * FH) / UNIT;
+      const turn = look.rotation + look.swirl * (1 - smoothstep(0, 0.7, Math.hypot(px, py)));
+      const [rx, ry] = rotate(px, py, -turn);
+      const [qx, qy] = warp(px, py, rx / look.zoom, ry / look.zoom);
+      const u = (qx * UNIT + 0.5 * FW) / FW, v = (qy * UNIT + 0.5 * FH) / FH;
+      let a = 0, b = 0;
+      if (u >= 0 && u <= 1 && v >= 0 && v <= 1) { a = sample(prevInk, u, v); b = sample(prevPos, u, v); }
+      a *= look.decay; b *= look.decay;
+      b += a * look.drift;
+      const paint = sources(px, py, pixel);
+      const o = y * FW + x;
+      ink[o] = a * (1 - paint[0]) + paint[1]; pos[o] = b * (1 - paint[0]) + paint[2];
+    }
+    this.current = 1 - this.current; this.steps++;
+  }
+  // composite.wgsl, at the loop's own size: palette, contrast curve, tone
+  // mapping, background and vignette (no overlay, no bloom).
+  render(canvas, hues, shift, exposure, arrows) {
+    const [ink, pos] = this.images[this.current], d = this.out.data;
+    for (let y = 0; y < FH; y++) for (let x = 0; x < FW; x++) {
+      const o = y * FW + x, a = Math.max(ink[o], 0), inkC = a * a / (a + 0.2);
+      const t = fract(pos[o] / Math.max(a, 1e-4) + shift), h = Math.round(t * HUE_STEPS) * 3;
+      const ex = ((x + 0.5) / FW - 0.5) * 1.4, ey = ((y + 0.5) / FH - 0.5) * 1.4, vignette = 1 - 0.5 * (ex * ex + ey * ey);
+      for (let j = 0; j < 3; j++) {
+        const light = 1 - Math.exp(-hues[h + j] * inkC * exposure) + 0.0027 * vignette;
+        d[o * 4 + j] = SRGB_TABLE[Math.round(clamp(light, 0, 1) * SRGB_STEPS)];
+      }
+      d[o * 4 + 3] = 255;
+    }
+    this.canvas.getContext("2d").putImageData(this.out, 0, 0);
+    const { ctx, w, h } = setup(canvas, FH / FW);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(this.canvas, 0, 0, w, h);
+    if (arrows) arrows(ctx, w, h);
+  }
+}
+
+// ---------- 01: the warp lab ----------
+const lab = new Loop();
+let labTime = 0, labPattern = 0, labPhase = 0, labWander = 0;
+// The look and warp of each scene, this frame (dt seconds), at strength k.
+function labScene(kind, k, dt) {
+  const look = { zoom: 1, rotation: 0, swirl: 0, decay: Math.exp(-dt / 1.0), drift: 0.15 * dt };
+  let warp = (px, py, qx, qy) => [qx, qy];
+  if (kind === "tunnel") {
+    // Tide's own warp is the shared zoom, turn and swirl.
+    look.zoom = Math.exp(0.7 * k * dt); look.rotation = 0.25 * k * dt; look.swirl = 0.5 * k * dt;
+  } else if (kind === "fold") {
+    // kaleido.wgsl: fold into a wedge, reflected; the corners read no
+    // further than the side.
+    look.zoom = Math.exp(0.5 * k * dt); look.rotation = 0.15 * k * dt;
+    const wedges = 6, wedge = TAU / wedges;
+    warp = (px, py, qx, qy) => {
+      let angle = Math.atan2(qy, qx); angle -= wedge * Math.floor(angle / wedge); angle = Math.abs(angle - 0.5 * wedge);
+      const r = Math.hypot(qx, qy), fx = Math.cos(angle) * r, fy = Math.sin(angle) * r, reach = Math.min(1, 0.98 * HALF_W / Math.max(r, 1e-4));
+      return [fx * reach, fy * reach];
+    };
+  } else if (kind === "vortex") {
+    // vortex.wgsl
+    look.zoom = Math.exp(0.6 * k * dt);
+    const turnStep = 0.6 * k * dt, pushStep = 0.15 * k * dt, ripple = labPhase * 2.5, pattern = labPattern;
+    warp = (px, py, qx, qy) => {
+      const r = Math.hypot(qx, qy);
+      const turn = Math.sin(r * 9 + pattern) * 0.7 + Math.sin(r * 4 - 1.3 * pattern) * 0.3;
+      const edge = 1 - smoothstep(0.4, 0.9, r);
+      const [tx, ty] = rotate(qx, qy, turnStep * turn * edge);
+      const push = 1 - pushStep * edge * Math.sin(r * 14 - ripple);
+      return [tx * push, ty * push];
+    };
+  } else if (kind === "melt") {
+    // melt.wgsl: y grows downward, as on the GPU.
+    const run = 0.3 * k * dt, sway = 0.08 * k * dt, pattern = labPattern * 0.6, phase = labPhase * 0.8;
+    warp = (px, py, qx, qy) => {
+      const x = Math.abs(qx);
+      const speed = 0.15 + 0.85 * noise(x * 14 + pattern, 0) * noise(x * 5 - 0.5 * pattern + 9, 0);
+      const side = clamp(qx * 8, -1, 1);
+      const s = sway * side * Math.sin(qy * 6 - phase) * noise(x * 3 + 4, 0);
+      return [qx - s, qy - run * speed];
+    };
+  } else {
+    // lenses.wgsl, with two lenses: the first magnifies, the second shrinks.
+    const bend = 0.9 * k * dt, reach = 0.16;
+    const centers = [0, 1].map((i) => [0.45 * Math.sin(labWander * (0.41 + 0.07 * i) + i * 1.7), 0.3 * Math.cos(labWander * (0.33 + 0.05 * i) + i * 2.3)]);
+    warp = (px, py, qx, qy) => {
+      let rx = qx, ry = qy;
+      for (let i = 0; i < 2; i++) {
+        const [cx, cy] = centers[i], dx = rx - cx, dy = ry - cy;
+        const weight = Math.exp(-(dx * dx + dy * dy) / (reach * reach)), sign = i % 2 ? -1 : 1, b = bend * weight;
+        const [tx, ty] = rotate(dx, dy, sign * 1.5 * b);
+        rx = cx + tx * (1 - sign * b); ry = cy + ty * (1 - sign * b);
+      }
+      return [rx, ry];
+    };
+  }
+  return { look, warp };
+}
+// Three soft lights circling the middle, each its own color.
+function labSources(px, py) {
+  let best = [0, 0, 0];
+  for (let i = 0; i < 3; i++) {
+    const angle = labTime * 0.6 + i * TAU / 3, cx = 0.2 * Math.cos(angle), cy = 0.2 * Math.sin(angle);
+    const dx = px - cx, dy = py - cy, coverage = 0.35 * Math.exp(-0.5 * (dx * dx + dy * dy) / (0.02 * 0.02));
+    if (coverage > best[0]) { const ink = 1.4; best = [coverage, ink * coverage, ink * i * 0.33 * coverage]; }
+  }
+  return best;
+}
+function labArrows(ctx, w, h) {
+  const kind = $("lab-warp").value, k = +$("lab-strength").value / 100, { look, warp } = labScene(kind, k, 0.5);
+  ctx.strokeStyle = "rgba(244,244,245,0.55)"; ctx.fillStyle = "rgba(244,244,245,0.75)"; ctx.lineWidth = 1;
+  const sx = w / FW * UNIT, cols = 16, rows = 9;
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const px = ((i + 0.5) / cols - 0.5) * FW / UNIT, py = ((j + 0.5) / rows - 0.5) * FH / UNIT;
+    const turn = look.rotation + look.swirl * (1 - smoothstep(0, 0.7, Math.hypot(px, py)));
+    const [rx, ry] = rotate(px, py, -turn), [qx, qy] = warp(px, py, rx / look.zoom, ry / look.zoom);
+    const x1 = w / 2 + px * sx, y1 = h / 2 + py * sx, x0 = w / 2 + qx * sx, y0 = h / 2 + qy * sx;
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    ctx.fillRect(x1 - 1, y1 - 1, 2, 2);
+  }
+}
+function labStep(dt) {
+  labTime += dt; labPattern += 0.1 * dt; labPhase += dt; labWander += 0.15 * dt;
+  const { look, warp } = labScene($("lab-warp").value, +$("lab-strength").value / 100, dt);
+  lab.step(look, warp, labSources);
+}
+function labDraw() { lab.render($("lab"), HUES.vortex, 0, 1.3, $("lab-arrows").checked ? labArrows : null); }
+
+// ---------- 02: Julia, as julia.rs and julia.wgsl ----------
+const julia = new Loop();
+const JULIA_SCALE = 3.1, JULIA_RADIUS = 0.7885, ESCAPE_INK = 0.5, RING_INK = 1.6;
+const PRESETS = { rabbit: [-0.123, 0.745], dendrite: [0, 1], marco: [-0.75, 0], dust: [0.3, 0.5] };
+let juliaC = [JULIA_RADIUS * Math.cos(2.2), JULIA_RADIUS * Math.sin(2.2)], juliaAngle = 2.2, juliaShift = 0, juliaRingOn = true;
+// A fixed wavy line standing in for the waveform, mirrored as in Tide.
+const WAVE = Float32Array.from({ length: 256 }, (_, i) => { const x = i / 255; return 0.55 * Math.sin(TAU * 3 * x) + 0.3 * Math.sin(TAU * 7.5 * x + 1); });
+function juliaRing(zx, zy, pixel) {
+  const t = Math.abs(Math.atan2(zx, -zy)) / Math.PI, x = t * 255, i = Math.min(Math.floor(x), 254);
+  const radius = 1.0 + 0.25 * (WAVE[i] + (WAVE[i + 1] - WAVE[i]) * (x - i));
+  const halfWidth = Math.max(0.0025 * JULIA_SCALE, 0.5 * pixel);
+  return 1 - smoothstep(halfWidth - pixel, halfWidth + pixel, Math.abs(Math.hypot(zx, zy) - radius));
+}
+function juliaPaint(zx, zy, pixel) {
+  const nx = zx * zx - zy * zy + juliaC[0], ny = 2 * zx * zy + juliaC[1];
+  const escape = smoothstep(-0.1, 0, Math.hypot(nx, ny) - 0.49 * JULIA_SCALE);
+  const leaving = 0.12 * Math.sin(2 * Math.atan2(ny, nx));
+  const ring = juliaRingOn ? juliaRing(zx, zy, pixel) : 0;
+  const coverage = Math.max(escape, ring), share = ring / Math.max(coverage, 1e-4);
+  const ink = (ESCAPE_INK + (RING_INK - ESCAPE_INK) * share) * coverage;
+  return [coverage, ink, ink * (leaving + (0.5 - leaving) * share)];
+}
+const juliaWarp = (px, py, qx, qy) => {
+  const zx = qx * JULIA_SCALE, zy = qy * JULIA_SCALE;
+  return [(zx * zx - zy * zy + juliaC[0]) / JULIA_SCALE, (2 * zx * zy + juliaC[1]) / JULIA_SCALE];
+};
+const juliaSources = (px, py, pixel) => juliaPaint(px * JULIA_SCALE, py * JULIA_SCALE, pixel * JULIA_SCALE);
+function juliaLook() {
+  juliaRingOn = $("julia-ring").checked;
+  return { zoom: 1, rotation: 0, swirl: 0, decay: +$("julia-fade").value / 100, drift: $("julia-drift").checked ? 0.09 : 0 };
+}
+function juliaStep(dt) {
+  if ($("julia-preset").value === "travel") {
+    juliaAngle += 0.06 * dt;
+    juliaC = [JULIA_RADIUS * Math.cos(juliaAngle), JULIA_RADIUS * Math.sin(juliaAngle)];
+  }
+  juliaShift += 0.02 * dt;
+  julia.step(juliaLook(), juliaWarp, juliaSources);
+}
+// The usual way: take each pixel's point through the steps, compositing
+// the paint each step meets front to back, as the loop's steps add up.
+const direct = { out: new ImageData(FW, FH), canvas: new OffscreenCanvas(FW, FH), when: 0, steps: -1, c: null };
+function drawDirect(force) {
+  const now = performance.now(), n = julia.steps;
+  if (!force && (now - direct.when < 250 || (direct.steps === n && direct.c === juliaC))) return;
+  direct.when = now; direct.steps = n; direct.c = juliaC;
+  const look = juliaLook(), d = direct.out.data, hues = HUES.julia, pixel = JULIA_SCALE / UNIT;
+  for (let y = 0; y < FH; y++) for (let x = 0; x < FW; x++) {
+    let zx = (x + 0.5 - 0.5 * FW) / UNIT * JULIA_SCALE, zy = (y + 0.5 - 0.5 * FH) / UNIT * JULIA_SCALE;
+    let ink = 0, pos = 0, through = 1, fade = 1;
+    // Paint deeper than the fade lets through, or 300 steps, adds nothing visible.
+    for (let k = 0; k < Math.min(n, 300) && through * fade > 1e-3; k++) {
+      if (Math.abs(zx) > HALF_W * JULIA_SCALE || Math.abs(zy) > 0.5 * JULIA_SCALE) break;
+      const [coverage, i, ip] = juliaPaint(zx, zy, pixel);
+      ink += through * fade * i; pos += through * fade * (ip + k * look.drift * i);
+      through *= 1 - coverage; fade *= look.decay;
+      const nx = zx * zx - zy * zy + juliaC[0]; zy = 2 * zx * zy + juliaC[1]; zx = nx;
+    }
+    const o = y * FW + x, a = ink, inkC = a * a / (a + 0.2), t = fract(pos / Math.max(a, 1e-4) + juliaShift), h = Math.round(t * HUE_STEPS) * 3;
+    for (let j = 0; j < 3; j++) d[o * 4 + j] = SRGB_TABLE[Math.round(clamp(1 - Math.exp(-hues[h + j] * inkC * 1.3) + 0.0027, 0, 1) * SRGB_STEPS)];
+    d[o * 4 + 3] = 255;
+  }
+  direct.canvas.getContext("2d").putImageData(direct.out, 0, 0);
+  const { ctx, w, h } = setup($("direct"), FH / FW);
+  ctx.imageSmoothingEnabled = true; ctx.drawImage(direct.canvas, 0, 0, w, h);
+}
+// The map of c: the Mandelbrot set, computed once.
+const MAP = { x0: -2.2, x1: 0.8, y0: -1.125, y1: 1.125, image: null };
+function buildMap() {
+  const W = 240, H = 180, img = new ImageData(W, H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const cx = MAP.x0 + (x + 0.5) / W * (MAP.x1 - MAP.x0), cy = MAP.y0 + (y + 0.5) / H * (MAP.y1 - MAP.y0);
+    let zx = 0, zy = 0, k = 0;
+    for (; k < 60 && zx * zx + zy * zy < 4; k++) { const nx = zx * zx - zy * zy + cx; zy = 2 * zx * zy + cy; zx = nx; }
+    const v = k === 60 ? 64 : 12 + 30 * Math.sqrt(k / 60), o = (y * W + x) * 4;
+    img.data[o] = img.data[o + 1] = v; img.data[o + 2] = v + 4; img.data[o + 3] = 255;
+  }
+  MAP.image = new OffscreenCanvas(W, H); MAP.image.getContext("2d").putImageData(img, 0, 0);
+}
+function drawMap() {
+  const canvas = $("mandel"), { ctx, w, h } = setup(canvas, FH / FW);
+  // Keep the map's proportions: fit 3.0 × 2.25 into the canvas.
+  const scale = Math.min(w / (MAP.x1 - MAP.x0), h / (MAP.y1 - MAP.y0)), mw = scale * (MAP.x1 - MAP.x0), mh = scale * (MAP.y1 - MAP.y0);
+  const ox = (w - mw) / 2, oy = (h - mh) / 2;
+  canvas._map = { scale, ox, oy };
+  ctx.imageSmoothingEnabled = true; ctx.drawImage(MAP.image, ox, oy, mw, mh);
+  const toX = (x) => ox + (x - MAP.x0) * scale, toY = (y) => oy + (y - MAP.y0) * scale;
+  ctx.strokeStyle = css("--muted"); ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.arc(toX(0), toY(0), JULIA_RADIUS * scale, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+  const mx = toX(juliaC[0]), my = toY(-juliaC[1]);
+  ctx.strokeStyle = css("--strong"); ctx.beginPath(); ctx.moveTo(mx - 6, my); ctx.lineTo(mx + 6, my); ctx.moveTo(mx, my - 6); ctx.lineTo(mx, my + 6); ctx.stroke();
+}
+function pickC(event) {
+  const canvas = $("mandel"), rect = canvas.getBoundingClientRect(), m = canvas._map;
+  if (!m) return;
+  const x = MAP.x0 + (event.clientX - rect.left - m.ox) / m.scale, y = MAP.y0 + (event.clientY - rect.top - m.oy) / m.scale;
+  juliaC = [clamp(x, MAP.x0, MAP.x1), -clamp(y, MAP.y0, MAP.y1)];
+  $("julia-preset").value = "picked";
+  if (anims.julia.playing) { drawMap(); juliaReadout(); } else settleJulia();
+}
+function juliaReadout() {
+  const [ink] = julia.images[julia.current];
+  let reached = 0; for (let i = 0; i < ink.length; i++) if (ink[i] > 0.01) reached++;
+  const sign = juliaC[1] < 0 ? "−" : "+", re = juliaC[0] < 0 ? "−" + (-juliaC[0]).toFixed(3) : juliaC[0].toFixed(3);
+  $("julia-readout").innerHTML = `<span>steps since black: <b>${julia.steps}</b></span><span>c = <b>${re} ${sign} ${Math.abs(juliaC[1]).toFixed(3)}i</b></span>` +
+    `<span>pixels the paint has reached: <b>${(100 * reached / ink.length).toFixed(0)}%</b></span><span>steps per pixel this frame: <b>1</b>; the usual way: <b>${julia.steps}</b></span>`;
+}
+function juliaDraw() { julia.render($("julia"), HUES.julia, juliaShift, 1.3, null); juliaReadout(); drawMap(); drawDirect(false); }
+
+// ---------- 03: Crystal, as crystal.rs and crystal.wgsl ----------
+const crystal = new Loop();
+let crystalTwist = 0.3, crystalShift = 0;
+const CRYSTAL_WAVE = Float32Array.from({ length: 256 }, (_, i) => { const x = i / 255; return 0.6 * Math.sin(TAU * 2.5 * x) + 0.25 * Math.sin(TAU * 6 * x); });
+let crystalSettings = null;
+function crystalLook() {
+  crystalSettings = { wedge: TAU / +$("crystal-wedges").value, offset: +$("crystal-offset").value / 100, shrink: +$("crystal-shrink").value / 100 };
+  return { zoom: 1, rotation: 0, swirl: 0, decay: +$("crystal-fade").value / 100, drift: 0.13 };
+}
+function crystalWarp(px, py, qx, qy) {
+  const { wedge, offset, shrink } = crystalSettings, [rx, ry] = rotate(qx, qy, crystalTwist);
+  let angle = Math.atan2(ry, rx); angle -= wedge * Math.floor(angle / wedge); angle = Math.abs(angle - 0.5 * wedge);
+  const r = Math.hypot(rx, ry);
+  return [(Math.cos(angle) * r - offset) * shrink, Math.sin(angle) * r * shrink];
+}
+function crystalSources(px, py, pixel) {
+  const t = Math.abs(Math.atan2(px, -py)) / Math.PI, x = t * 255, i = Math.min(Math.floor(x), 254);
+  const radius = 0.1 + 0.03 * (CRYSTAL_WAVE[i] + (CRYSTAL_WAVE[i + 1] - CRYSTAL_WAVE[i]) * (x - i));
+  const d = (Math.hypot(px, py) - radius) / Math.max(0.012, pixel), coverage = Math.exp(-0.5 * d * d), ink = coverage * 1.2;
+  return [coverage, ink, 0];
+}
+function crystalStep(dt) {
+  if ($("crystal-turning").checked) {
+    crystalTwist += 0.05 * dt;
+    const degrees = ((crystalTwist * 180 / Math.PI) % 72 + 72) % 72;
+    $("crystal-twist").value = Math.round(degrees); crystalLabels();
+  }
+  crystalShift += 0.02 * dt;
+  crystal.step(crystalLook(), crystalWarp, crystalSources);
+}
+function crystalLabels() {
+  $("crystal-wedges-out").textContent = $("crystal-wedges").value;
+  $("crystal-twist-out").textContent = $("crystal-twist").value + "°";
+  $("crystal-offset-out").textContent = (+$("crystal-offset").value / 100).toFixed(2);
+  $("crystal-shrink-out").textContent = "×" + (+$("crystal-shrink").value / 100).toFixed(2);
+  $("crystal-fade-out").textContent = (+$("crystal-fade").value / 100).toFixed(2);
+}
+function crystalReadout() {
+  const wedges = +$("crystal-wedges").value, shrink = +$("crystal-shrink").value / 100, n = Math.min(crystal.steps, 99);
+  // The ring is 0.2 of the short side across: 27 of this picture's pixels.
+  const rows = [1, 2, 3, 4, 5].map((g) => `<span>generation ${g}: <b>${Math.pow(wedges, g).toLocaleString("en")}</b> copies, <b>${(0.2 * UNIT / Math.pow(shrink, g)).toFixed(1)} px</b> across</span>`);
+  $("crystal-readout").innerHTML = `<span>generations since black: <b>${n}</b></span>` + rows.join("");
+}
+function crystalDraw() { crystal.render($("crystal"), HUES.crystal, crystalShift, 1.4, null); crystalReadout(); }
+
+// ---------- 04: bands passing a point ----------
+// Counts transitions as the limiter's cells do (limiter.rs): a swing of
+// DELTA back from the last extreme.
+const DELTA = 0.1, WINDOW = 1, MAX_TRANSITIONS = 4;
+function transitions(values, dt) {
+  let extreme = values[0], direction = 0; const at = [];
+  values.forEach((y, i) => {
+    if (direction === 0) { if (Math.abs(y - extreme) >= DELTA) { direction = Math.sign(y - extreme); extreme = y; at.push(i); } }
+    else if (direction > 0) { if (y > extreme) extreme = y; else if (extreme - y >= DELTA) { direction = -1; extreme = y; at.push(i); } }
+    else if (y < extreme) extreme = y; else if (y - extreme >= DELTA) { direction = 1; extreme = y; at.push(i); }
+  });
+  let worst = 0;
+  for (let a = 0; a < at.length; a++) { let b = a; while (b < at.length && (at[b] - at[a]) * dt < WINDOW) b++; worst = Math.max(worst, b - a); }
+  return { at, worst };
+}
+// The brightness the composite step shows for a palette position at this ink.
+function shownLuminance(palette, t, ink, exposure) {
+  const hue = paletteAt(palette, fract(t)).map(toLinear), inkC = ink * ink / (ink + 0.2);
+  const light = hue.map((c) => 1 - Math.exp(-c * inkC * exposure));
+  return 0.2126 * light[0] + 0.7152 * light[1] + 0.0722 * light[2];
+}
+function drawBands() {
+  const rate = +$("bands-rate").value / 10, ink = +$("bands-ink").value / 100;
+  $("bands-rate-out").textContent = rate.toFixed(1); $("bands-ink-out").textContent = ink.toFixed(2);
+  const kinds = [["julia", "Julia's palette", 1.3, css("--a")], ["kaleido", "Kaleido's palette", 1.4, css("--b")]];
+  for (const [kind, , exposure] of kinds) {
+    const stops = Array.from({ length: 33 }, (_, i) => { const t = i / 32, hue = paletteAt(PALETTES[kind], t).map(toLinear), inkC = ink * ink / (ink + 0.2);
+      const c = hue.map((v) => Math.round(toSrgb(1 - Math.exp(-v * inkC * exposure)) * 255)); return `rgb(${c.join(",")}) ${(t * 100).toFixed(1)}%`; });
+    $("strip-" + kind).style.background = `linear-gradient(to right, ${stops.join(", ")})`;
+  }
+  const { ctx, w, h } = setup($("bands")), dt = 1 / 60, n = 180, rowH = (h - 20) / 2;
+  const notes = [];
+  kinds.forEach(([kind, name, exposure, color], row) => {
+    const values = Array.from({ length: n }, (_, i) => shownLuminance(PALETTES[kind], rate * i * dt, ink, exposure));
+    const y0 = row * (rowH + 20), lo = 0, hi = 0.6;
+    ctx.strokeStyle = css("--line"); ctx.strokeRect(0.5, y0 + 0.5, w - 1, rowH - 12);
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath();
+    values.forEach((v, i) => { const x = (i / (n - 1)) * (w - 2) + 1, y = y0 + rowH - 12 - clamp((v - lo) / (hi - lo), 0, 1) * (rowH - 14); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke();
+    const { at, worst } = transitions(values, dt);
+    ctx.fillStyle = css("--strong");
+    for (const i of at) ctx.fillRect((i / (n - 1)) * (w - 2), y0 + rowH - 9, 1.5, 6);
+    label(ctx, name, 6, y0 + 13);
+    const swing = Math.max(...values) - Math.min(...values);
+    notes.push(`<span>${name}: swing <b>${swing.toFixed(3)}</b>, worst second <b>${worst}</b> transitions${worst > MAX_TRANSITIONS ? " (over the limit of 4)" : ""}</span>`);
+  });
+  $("bands-readout").innerHTML = notes.join("");
+}
+for (const id of ["bands-rate", "bands-ink"]) $(id).addEventListener("input", drawBands);
+
+// ---------- Running: each animation pauses off screen and starts paused with reduced motion ----------
+const anims = {
+  lab: { playing: !reduced, visible: true, step: labStep, draw: labDraw, button: "lab-play", canvas: "lab" },
+  julia: { playing: !reduced, visible: true, step: juliaStep, draw: juliaDraw, button: "julia-play", canvas: "julia" },
+  crystal: { playing: !reduced, visible: true, step: crystalStep, draw: crystalDraw, button: "crystal-play", canvas: "crystal" },
+};
+for (const anim of Object.values(anims)) {
+  const button = $(anim.button);
+  button.textContent = anim.playing ? "Pause" : "Play";
+  button.addEventListener("click", () => { anim.playing = !anim.playing; button.textContent = anim.playing ? "Pause" : "Play"; });
+  new IntersectionObserver((entries) => { anim.visible = entries[0].isIntersecting; }).observe($(anim.canvas));
+}
+let lastClock = 0;
+function frame(now) {
+  const dt = lastClock ? Math.min((now - lastClock) / 1000, 0.1) : 1 / 60;
+  lastClock = now;
+  for (const anim of Object.values(anims)) if (anim.playing && anim.visible) { anim.step(dt); anim.draw(); }
+  requestAnimationFrame(frame);
+}
+
+$("lab-strength").addEventListener("input", () => { $("lab-strength-out").textContent = (+$("lab-strength").value / 100).toFixed(2); if (!anims.lab.playing) labDraw(); });
+$("lab-warp").addEventListener("input", () => { lab.clear(); for (let i = 0; i < 90; i++) labStep(1 / 60); labDraw(); });
+$("lab-clear").addEventListener("click", () => { lab.clear(); labDraw(); });
+$("lab-arrows").addEventListener("input", labDraw);
+
+// While paused, a changed setting shows its settled picture straight away.
+function settleJulia() { julia.clear(); for (let i = 0; i < 120; i++) julia.step(juliaLook(), juliaWarp, juliaSources); juliaDraw(); drawDirect(true); }
+function settleCrystal() { crystal.clear(); for (let i = 0; i < 40; i++) crystal.step(crystalLook(), crystalWarp, crystalSources); crystalDraw(); }
+$("julia-fade").addEventListener("input", () => { $("julia-fade-out").textContent = (+$("julia-fade").value / 100).toFixed(2); if (!anims.julia.playing) settleJulia(); });
+$("julia-preset").addEventListener("input", () => {
+  const preset = PRESETS[$("julia-preset").value];
+  if (preset) juliaC = preset;
+  else if ($("julia-preset").value === "travel") juliaC = [JULIA_RADIUS * Math.cos(juliaAngle), JULIA_RADIUS * Math.sin(juliaAngle)];
+  if (anims.julia.playing) juliaDraw(); else settleJulia();
+});
+$("julia-step").addEventListener("click", () => { julia.step(juliaLook(), juliaWarp, juliaSources); juliaDraw(); drawDirect(true); });
+$("julia-clear").addEventListener("click", () => { julia.clear(); juliaDraw(); drawDirect(true); });
+for (const id of ["julia-drift", "julia-ring"]) $(id).addEventListener("input", () => { if (anims.julia.playing) drawDirect(true); else settleJulia(); });
+$("mandel").addEventListener("pointerdown", (e) => { $("mandel").setPointerCapture(e.pointerId); pickC(e); });
+$("mandel").addEventListener("pointermove", (e) => { if (e.buttons) pickC(e); });
+
+$("crystal-step").addEventListener("click", () => { crystal.step(crystalLook(), crystalWarp, crystalSources); crystalDraw(); });
+$("crystal-clear").addEventListener("click", () => { crystal.clear(); crystalDraw(); });
+$("crystal-twist").addEventListener("input", () => { crystalTwist = +$("crystal-twist").value * Math.PI / 180; $("crystal-turning").checked = false; crystalLabels(); if (!anims.crystal.playing) settleCrystal(); });
+for (const id of ["crystal-wedges", "crystal-offset", "crystal-shrink", "crystal-fade"]) $(id).addEventListener("input", () => { crystalLabels(); if (anims.crystal.playing) crystalReadout(); else settleCrystal(); });
+
+let resizeTimer = 0;
+addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { labDraw(); juliaDraw(); drawDirect(true); crystalDraw(); drawBands(); }, 100); });
+
+// A first picture for each, settled, so a paused page isn't black.
+buildMap();
+$("lab-strength-out").textContent = "1.00"; $("julia-fade-out").textContent = "0.97"; crystalLabels();
+for (let i = 0; i < 90; i++) labStep(1 / 60);
+for (let i = 0; i < 120; i++) julia.step(juliaLook(), juliaWarp, juliaSources);
+for (let i = 0; i < 40; i++) crystal.step(crystalLook(), crystalWarp, crystalSources);
+labDraw(); juliaDraw(); drawDirect(true); crystalDraw(); drawBands();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

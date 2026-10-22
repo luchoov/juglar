@@ -30,9 +30,11 @@ fn sources(p: vec2f, pixel: f32) -> vec3f {
     let z = p * scale;
     let next = julia_step(z);
     // Points whose next step leaves the circle that fits in the image never
-    // come back: paint them. (The circle is 1.5 across in fractal units,
-    // just past where any orbit of these sets can return from.) Their color
-    // turns with the direction they leave in, so the outside isn't flat.
+    // come back: paint them. (Its radius, 1.52 in fractal units, is about
+    // the escape radius (1 + sqrt(1 + 4|c|)) / 2 for the scene's c, 1.52 at
+    // |c| = 0.79; a few points near it may be painted a step early when the
+    // bass pushes c further out.) Their color turns with the direction they
+    // leave in, so the outside isn't flat.
     let escape = smoothstep(-0.1, 0.0, length(next) - 0.49 * scale);
     let leaving = 0.12 * sin(2.0 * atan2(next.y, next.x));
     let ring = julia_ring(z, pixel * scale);

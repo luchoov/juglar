@@ -158,3 +158,4 @@ The fractals cost no more than a tunnel: one step of z² + c, or a fold, is a ha
 - Anthony Ashton, *Harmonograph: A Visual Guide to the Mathematics of Music* (2003): the instrument, and why simple ratios draw closed figures.
 - Heinz-Otto Peitgen and Peter Richter, *The Beauty of Fractals* (1986): Julia sets and the Mandelbrot set, escape times and their colors.
 - Michael Barnsley, *Fractals Everywhere* (1988): iterated function systems, the shrinking copies behind *Crystal*.
+- Explorable `05-warps-and-fractals.html`: five warps with arrows showing where the paint comes from, *Julia*'s loop next to the usual way of drawing the same set, *Crystal*'s generations, and bands of two palettes passing a point.
