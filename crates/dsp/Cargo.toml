@@ -1,0 +1,10 @@
+[package]
+name = "juglar-dsp"
+description = "Audio analysis for Juglar: ring buffer, levels, and (soon) FFT and bands. OS-agnostic."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]

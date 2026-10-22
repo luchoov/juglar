@@ -1,0 +1,11 @@
+[package]
+name = "juglar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+juglar-dsp = { path = "../crates/dsp" }
+juglar-platform = { path = "../crates/platform" }

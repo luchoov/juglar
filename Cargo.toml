@@ -1,0 +1,19 @@
+[workspace]
+resolver = "3"
+members = ["app", "crates/*"]
+
+# Audio analysis runs every frame; keep dependencies fast in debug builds.
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/luchoov/juglar"
+publish = false
