@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Juglar Draws</title>
+<meta name="description" content="An interactive explanation of how Juglar puts a frame on screen: one shader for every pixel, linear light, a waveform that holds still, frame pacing and what a frame costs.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #09090b; --surface: #0f0f12; --line: #1c1c21; --line-strong: #2a2a31;
+    --fg: #d4d4d8; --strong: #f4f4f5; --muted: #71717a;
+    --accent: #e4e4e7; --raw: #3a3a42;
+    --bass: #5b7fa6; --mid: #5f9488; --treble: #a39a78;
+    --code-bg: #0c0c0f;
+    --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.75 var(--mono); -webkit-font-smoothing: antialiased; }
+  main { max-width: 720px; margin: 0 auto; padding: 72px 16px 112px; }
+  header .meta { color: var(--muted); margin: 0 0 20px; }
+  h1 { font-size: 28px; line-height: 1.2; font-weight: 600; color: var(--strong); margin: 0 0 20px; letter-spacing: -0.02em; }
+  h2 { font-size: 16px; line-height: 1.4; font-weight: 600; color: var(--strong); margin: 72px 0 14px; }
+  h2 .num { color: var(--muted); font-weight: 400; margin-right: 14px; }
+  p { margin: 0 0 16px; }
+  .lede { color: var(--muted); }
+  b, strong { color: var(--strong); font-weight: 500; }
+  em { font-style: normal; color: var(--strong); }
+  code { font: inherit; color: var(--strong); }
+  a { color: var(--strong); text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+  a:hover { text-decoration-color: var(--strong); }
+  figure { margin: 28px 0; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 2px; }
+  canvas { display: block; width: 100%; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 24px; margin-bottom: 16px; font-size: 12px; }
+  .control label { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 2px; }
+  .control label output { color: var(--fg); font-variant-numeric: tabular-nums; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 16px; background: transparent; margin: 0; }
+  input[type=range]::-webkit-slider-runnable-track { height: 1px; background: var(--line-strong); }
+  input[type=range]::-moz-range-track { height: 1px; background: var(--line-strong); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 9px; margin-top: -4px; background: var(--strong); border: 0; border-radius: 0; }
+  input[type=range]::-moz-range-thumb { width: 9px; height: 9px; background: var(--strong); border: 0; border-radius: 0; }
+  input[type=range]:focus-visible { outline: 1px solid var(--muted); outline-offset: 2px; }
+  input[type=checkbox] { accent-color: var(--strong); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; font-size: 12px; margin-bottom: 16px; color: var(--muted); }
+  .row label { display: flex; gap: 8px; align-items: center; }
+  select, button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 2px; padding: 3px 10px; }
+  button { cursor: pointer; }
+  button:hover, select:hover { border-color: var(--muted); }
+  .readout { display: flex; flex-wrap: wrap; gap: 6px 24px; font-size: 12px; margin-top: 12px; color: var(--muted); min-height: 1.6em; }
+  .readout b { font-variant-numeric: tabular-nums; }
+  .swatch { display: inline-block; width: 8px; height: 8px; margin-right: 8px; vertical-align: 0; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .pair .tag { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  figcaption { font-size: 12px; line-height: 1.6; color: var(--muted); margin-top: 12px; }
+  details { margin: 16px 0; border: 1px solid var(--line); background: var(--code-bg); }
+  summary { cursor: pointer; padding: 10px 14px; font-size: 12px; color: var(--muted); }
+  summary:hover { color: var(--fg); }
+  pre { margin: 0; padding: 4px 16px 16px; overflow-x: auto; font: 12px/1.6 var(--mono); color: var(--fg); }
+  .src { font-size: 12px; color: var(--muted); padding: 0 16px 12px; margin: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 16px 0; }
+  th, td { text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 400; }
+  td.n { font-variant-numeric: tabular-nums; color: var(--strong); white-space: nowrap; }
+  footer { margin-top: 88px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  @media (max-width: 520px) { h1 { font-size: 22px; } body { font-size: 13px; } .pair { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <p class="meta">juglar / explorables / 02</p>
+  <h1>How Juglar draws</h1>
+  <p class="lede">Explorable 01 turned sound into numbers. This page follows those numbers onto the screen: how one small program colors every pixel, why colors are mixed as light, how a waveform is made to hold still, how often frames are drawn, and what each one costs. It mirrors Juglar's <code>render</code> crate and the oscilloscope in <code>dsp</code>.</p>
+</header>
+
+<h2><span class="num">01</span>One small program, every pixel</h2>
+<p>The GPU doesn't draw a waveform or a bar. It runs one tiny program, a <b>shader</b>, once for every pixel of the window, all at the same time, and each run answers a single question: <em>what color am I?</em> The pixel knows only its own position and the frame's numbers (four band levels, 32 spectrum bars, 256 waveform points). From those it works out whether it is on the waveform's line, inside a bar, inside a meter, or background.</p>
+<p>Below, the same logic runs in your browser, on a synthetic song. Make the pixels bigger to see the grid the program fills, and point at any pixel to see the question it answered.</p>
+<figure>
+  <div class="row">
+    <label>Pixel size <select id="pixel-size"><option value="1">1 (real)</option><option value="4" selected>4</option><option value="8">8</option><option value="12">12</option></select></label>
+    <button id="pixels-play" type="button">Pause</button>
+  </div>
+  <canvas id="pixels" height="240" aria-label="The analysis view drawn pixel by pixel"></canvas>
+  <div class="readout" id="pixel-readout">Point at a pixel.</div>
+  <figcaption>Every pixel runs the same program with a different position. There is no loop over bars or points: the pixel finds its bar from its x position, and the two waveform points around it from the same x.</figcaption>
+</figure>
+<p>To run a shader on every pixel, Juglar asks the GPU to draw <b>one triangle twice the size of the window</b>. Its visible part is exactly the window, so every pixel is covered once. Two triangles forming a rectangle would also cover it, but the pixels along their shared diagonal would run twice.</p>
+<details>
+  <summary>Optional, for the curious: the triangle (<code>crates/render/src/common.wgsl</code>)</summary>
+<pre>@vertex
+fn vs_main(@builtin(vertex_index) i: u32) -&gt; @builtin(position) vec4f {
+    // Corners (-1,-1), (3,-1), (-1,3): a triangle twice the size of the
+    // screen, whose visible part is exactly the screen.
+    let corner = vec2f(f32((i &lt;&lt; 1u) &amp; 2u), f32(i &amp; 2u));
+    return vec4f(corner * 2.0 - 1.0, 0.0, 1.0);
+}</pre>
+  <p class="src">The screen spans −1 to 1 in both directions. Vertices 0, 1, 2 become (−1,−1), (3,−1) and (−1,3).</p>
+</details>
+
+<h2><span class="num">02</span>Mixing light, not numbers</h2>
+<p>Screens store colors as numbers from 0 to 255, but those numbers are not amounts of light. They follow a curve called <b>sRGB</b>, which spends more numbers on dark shades, where eyes are sensitive. A pixel at 128, "half", emits only about 21% of white's light.</p>
+<p>This matters wherever colors are mixed: the soft edge of a line, a pixel half covered by a bar. Mixing the numbers makes those edges darker than they should be, and lines look thin and ropey. Juglar converts its colors to <b>linear light</b>, mixes there, and converts back at the end.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>Coverage <output id="mix-out"></output></label><input type="range" id="mix" min="0" max="100" value="50"></div>
+    <div class="control"><label>Line width <output id="width-out"></output></label><input type="range" id="lw" min="5" max="40" value="12"></div>
+  </div>
+  <div class="pair">
+    <div><div class="tag">Mixed as numbers</div><canvas id="mix-numbers" height="150" aria-label="Lines antialiased by mixing sRGB numbers"></canvas></div>
+    <div><div class="tag">Mixed as light</div><canvas id="mix-light" height="150" aria-label="Lines antialiased by mixing linear light"></canvas></div>
+  </div>
+  <div class="readout" id="mix-readout"></div>
+  <figcaption>Top: a swatch a pixel would get when the line covers that fraction of it. Below: thin slanted lines whose edges are mixed each way. Look at how the left ones break into beads.</figcaption>
+</figure>
+
+<h2><span class="num">03</span>Holding the wave still</h2>
+<p>Juglar shows the newest 21 milliseconds of the waveform every frame. Cut at an arbitrary point, a repeating wave starts at a different spot of its cycle each frame and jumps sideways: unreadable. An oscilloscope solves this with a <b>trigger</b>: it always starts drawing where the wave crosses zero going up. A repeating sound then lands in the same place every frame and looks still.</p>
+<p>Real music has hi-hats crossing zero at random, so the trigger watches a <b>low-passed</b> copy of the signal, where only the bass and kick remain. A low-pass filter delays what it lets through, so it runs forward and then backward over the samples, and the two delays cancel.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>Bass note <output id="bass-out"></output></label><input type="range" id="bass-hz" min="45" max="160" value="82"></div>
+    <div class="control"><label>Hi-hat noise <output id="hat-out"></output></label><input type="range" id="hat" min="0" max="100" value="40"></div>
+  </div>
+  <div class="row">
+    <label><input type="checkbox" id="lowpass" checked> Trigger on the low-passed signal</label>
+    <button id="scope-play" type="button">Pause</button>
+  </div>
+  <div class="pair">
+    <div><div class="tag">Newest 21 ms, no trigger</div><canvas id="scope-raw" height="150" aria-label="Waveform without a trigger"></canvas></div>
+    <div><div class="tag">With the trigger</div><canvas id="scope-trig" height="150" aria-label="Waveform with an oscilloscope trigger"></canvas></div>
+  </div>
+  <figcaption>Both views show 1024 samples averaged into 256 points, scaled by a peak follower. Untick the box: the trigger then catches hi-hat crossings and the right view starts to jump too.</figcaption>
+</figure>
+<details>
+  <summary>Optional, for the curious: the trigger (<code>crates/dsp/src/scope.rs</code>)</summary>
+<pre>// The newest upward zero crossing that still leaves a full view after
+// it. Without one (silence, or a bass below 47 Hz), show the newest.
+let last_start = recent.len() - SCOPE_SPAN;
+let start = (1..=last_start)
+    .rev()
+    .find(|&amp;i| self.filtered[i - 1] &lt; 0.0 &amp;&amp; self.filtered[i] &gt;= 0.0)
+    .unwrap_or(last_start);</pre>
+  <p class="src"><code>filtered</code> is the forward-then-backward low-passed copy; <code>recent</code> the newest 2048 samples.</p>
+</details>
+
+<h2><span class="num">04</span>Frames on time</h2>
+<p>A display refreshes at a fixed rate, and a new frame can only appear at a refresh. If frames are ready at a rate unrelated to it, some stay on screen for one refresh and others for two. Motion then stutters, even at a high average frame rate.</p>
+<p>So Juglar aims at 60 frames per second but snaps to the display: it draws on every refresh, or every second, third… refresh, whichever whole number lands closest to 60. Pick a display:</p>
+<figure>
+  <div class="row">
+    <label>Display <select id="refresh"><option>60</option><option selected>75</option><option>120</option><option>144</option><option>165</option></select> Hz</label>
+  </div>
+  <canvas id="pacing" height="190" aria-label="Frame timing against display refreshes"></canvas>
+  <div class="readout" id="pacing-readout"></div>
+  <figcaption>Ticks: display refreshes over a quarter of a second. Each block is one frame, as long as it stays on screen; alternate frames are shaded differently. Top: a frame every 16.7 ms regardless of the display. Bottom: snapped.</figcaption>
+</figure>
+<p>Two more details keep the rhythm. The timer for each frame counts from the previous frame's <b>deadline</b>, not from "now", so small delays don't add up into a slower rate. And Juglar doesn't rely on vsync to set the pace: on the development PC the driver ignored it, and a loop without its own timer drew 1,400 frames per second.</p>
+<details>
+  <summary>Optional, for the curious: the pacer (<code>app/src/main.rs</code>)</summary>
+<pre>fn new(refresh_hz: Option&lt;f64&gt;, target_fps: f64) -&gt; Self {
+    let fps = match refresh_hz {
+        Some(hz) =&gt; hz / (hz / target_fps).round().max(1.0),
+        None =&gt; target_fps,
+    };
+    Self { period: Duration::from_secs_f64(1.0 / fps), next: Instant::now() }
+}
+
+fn frame_done(&amp;mut self, started: Instant, drawn: bool) {
+    self.next = if drawn {
+        let next = self.next + self.period;
+        if next &lt; started { started + self.period } else { next }
+    } else {
+        Instant::now() + HIDDEN_RETRY
+    };
+}</pre>
+  <p class="src">After a long stall (the window was dragged), the deadline starts over instead of rushing out the missed frames.</p>
+</details>
+
+<h2><span class="num">05</span>What a frame costs</h2>
+<p>At 75 frames per second each frame has 13.3 ms. Here is where they go on the development PC (GTX 1060, Windows 11, DirectX 12), measured, not estimated:</p>
+<figure>
+  <canvas id="cost" height="200" aria-label="Where the time of one frame goes"></canvas>
+  <figcaption>Top: the whole 13.3 ms budget, almost all of it idle. Bottom: the busy part, enlarged. The GPU works in parallel with the CPU, on its own row.</figcaption>
+</figure>
+<table>
+  <tr><th>Measured</th><th>Value</th><th>What it shows</th></tr>
+  <tr><td>Drawing, on the GPU</td><td class="n">0.04 ms</td><td>The picture itself is nearly free</td></tr>
+  <tr><td>Submitting + presenting</td><td class="n">0.5 ms</td><td>Talking to the driver costs ten times more than drawing</td></tr>
+  <tr><td>Whole process, DirectX 12</td><td class="n">6.3% of a core</td><td>Under 1% of the 8-core CPU</td></tr>
+  <tr><td>Whole process, Vulkan</td><td class="n">7.7% of a core</td><td>Its driver does part of the work on a thread of its own</td></tr>
+  <tr><td>Half the frame rate</td><td class="n">3.1% of a core</td><td>Cost follows frames, not pictures</td></tr>
+</table>
+<p>The lesson shaped later decisions: drawing more costs little, drawing <em>often</em> costs. So Juglar will lower its frame rate while a game runs and stop drawing in silence. And the first measurement, which timed only Juglar's own thread, picked the wrong graphics API: counting every thread reversed it (decision D19).</p>
+
+<footer>
+  Part of <b>Juglar</b>, a music visualizer that listens like a musician. The JavaScript here mirrors <code>crates/render/src/analysis.wgsl</code>, <code>crates/dsp/src/scope.rs</code> and the pacer in <code>app/src/main.rs</code>; the theory is in <code>docs/theory/04-gpu-pipeline.md</code>. Previous: <a href="01-how-juglar-hears.html">01, how Juglar hears</a>. Next: <a href="03-feedback-and-color.html">03, feedback and color</a>.
+</footer>
+</main>
+
+<script>
+"use strict";
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function setup(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas._h = canvas._h || canvas.height;
+  const w = canvas.clientWidth, h = canvas._h;
+  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); canvas.style.height = h + "px";
+  const ctx = canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h, dpr };
+}
+function label(ctx, text, x, y, align = "left", color = css("--muted")) {
+  ctx.fillStyle = color; ctx.font = "10px " + css("--mono"); ctx.textAlign = align; ctx.fillText(text, x, y);
+}
+// sRGB <-> linear light, as in common.wgsl.
+const toLinear = (c) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+const toSrgb = (c) => c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+const hexLinear = (hex) => [hex >> 16 & 255, hex >> 8 & 255, hex & 255].map((v) => toLinear(v / 255));
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const mixv = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+
+// ---------- The synthetic song: same as crates/signals/src/synthetic.rs ----------
+function syntheticSong(seed) {
+  let time = 0, state = BigInt(seed | 1);
+  const flicker = new Float64Array(32).fill(1);
+  const noise = () => { // xorshift64
+    state ^= (state << 13n) & 0xffffffffffffffffn; state ^= state >> 7n; state ^= (state << 17n) & 0xffffffffffffffffn;
+    return Number(state >> 40n) / 16777216;
+  };
+  return function next(dt) {
+    time += dt;
+    const beatLen = 0.5, beats = time / beatLen, sectionLen = beatLen * 4 * 8, inSong = time % (sectionLen * 4);
+    const section = Math.floor(inSong / sectionLen), progress = (inSong % sectionLen) / sectionLen;
+    const sinceBeat = (beats % 1) * beatLen, sinceEighth = ((beats * 2) % 1) * beatLen / 2, barPhase = (beats / 4) % 1;
+    const kickOn = section === 2 || (section === 1 && Math.floor(beats) % 2 === 0);
+    const kick = kickOn ? Math.exp(-sinceBeat / 0.12) : 0, hat = Math.exp(-sinceEighth / 0.035);
+    const swell = 0.5 - 0.5 * Math.cos(barPhase * 2 * Math.PI);
+    const [bass, mid, treble] = [
+      [0.08, 0.25 + 0.3 * swell, 0.05],
+      [0.1 + 0.6 * kick, 0.3 + 0.2 * swell, (0.1 + 0.5 * progress) * (0.4 + 0.6 * hat)],
+      [0.35 + 0.65 * kick, 0.55 + 0.2 * swell, 0.35 + 0.4 * hat],
+      [0.05, 0.2 + 0.35 * swell, 0.04],
+    ][section];
+    const energy = Math.min(1, 0.5 * bass + 0.35 * mid + 0.15 * treble);
+    const follow = 1 - Math.exp(-dt / 0.08), spectrum = new Float64Array(32);
+    for (let i = 0; i < 32; i++) {
+      flicker[i] += (0.7 + 0.6 * noise() - flicker[i]) * follow;
+      const [level, start, end] = i < 11 ? [bass, 0, 11] : i < 25 ? [mid, 11, 25] : [treble, 25, 32];
+      const x = (i - start) / (end - start - 1);
+      spectrum[i] = clamp(level * (0.35 + 0.65 * Math.sin(x * Math.PI)) * flicker[i], 0, 1);
+    }
+    const waveform = new Float64Array(256), drift = beats * 0.37 * 2 * Math.PI;
+    let peak = 0;
+    for (let i = 0; i < 256; i++) {
+      const x = i / 255, T = 2 * Math.PI;
+      waveform[i] = bass * Math.sin(1.25 * T * x) + 0.5 * mid * Math.sin(3.75 * T * x) + 0.3 * mid * Math.sin(6.25 * T * x + 0.6) + 0.15 * treble * Math.sin(23 * T * x + drift);
+      peak = Math.max(peak, Math.abs(waveform[i]));
+    }
+    const scale = (0.45 + 0.5 * Math.max(bass, mid, treble)) / Math.max(peak, 1e-6);
+    for (let i = 0; i < 256; i++) waveform[i] *= scale;
+    return { bass, mid, treble, energy, spectrum, waveform };
+  };
+}
+
+// ---------- 01: the analysis view, one pixel at a time (analysis.wgsl) ----------
+const COLORS = {
+  BACKGROUND: hexLinear(0x09090b), LINE: hexLinear(0x1c1c21), TRACK: hexLinear(0x131317), FOREGROUND: hexLinear(0xd4d4d8),
+  BASS: hexLinear(0x5b7fa6), MID: hexLinear(0x5f9488), TREBLE: hexLinear(0xa39a78),
+};
+const FIRST_MID_BAR = 11, FIRST_TREBLE_BAR = 25;
+const below = (y, top) => clamp(y + 0.5 - top, 0, 1);
+const barColor = (i) => i < FIRST_MID_BAR ? COLORS.BASS : i < FIRST_TREBLE_BAR ? COLORS.MID : COLORS.TREBLE;
+const BAND_NAMES = ["bass", "mid", "treble", "energy"];
+
+// Returns [color, why] for the pixel centered at (px, py) in a res[0] x res[1] frame.
+function analysisPixel(px, py, res, s) {
+  const margin = Math.floor(Math.min(res[0], res[1]) * 0.07);
+  const left = margin, right = res[0] - margin, top = margin, bottom = res[1] - margin, height = bottom - top;
+  let c = COLORS.BACKGROUND, why = "background";
+  const waveCenter = Math.floor(top + height * 0.2) + 0.5, amp = height * 0.18;
+  if (px >= left && px < right) {
+    if (Math.abs(py - waveCenter) < 0.5) { c = COLORS.LINE; why = "the waveform's axis"; }
+    const step = (right - left) / 255, t = (px - left) / step, i = Math.min(Math.floor(t), 254);
+    const a = s.waveform[i], b = s.waveform[i + 1], y = waveCenter - (a + (b - a) * (t - i)) * amp;
+    const slope = (b - a) * amp / step, distance = Math.abs(py - y) / Math.sqrt(1 + slope * slope);
+    const cover = 1 - smoothstep(0.4, 1.4, distance);
+    c = mixv(c, COLORS.FOREGROUND, cover);
+    if (cover > 0.05) why = `on the waveform: between points ${i} and ${i + 1}, ${distance.toFixed(2)} px from the line`;
+    else if (why === "background" && py < top + height * 0.45) why = `near the waveform: ${distance.toFixed(1)} px from the line, too far to light up`;
+  }
+  const barsTop = top + height * 0.5, barsHeight = bottom - barsTop, metersWidth = Math.floor((right - left) * 0.14);
+  const spectrumRight = right - metersWidth - Math.floor(margin * 0.5);
+  if (py >= barsTop && py < bottom) {
+    if (px >= left && px < spectrumRight) {
+      const step = (spectrumRight - left) / 32, i = Math.min(Math.floor((px - left) / step), 31), gap = Math.max(1, Math.floor(step * 0.25));
+      if (px < Math.floor(left + (i + 1) * step) - gap) {
+        const inside = below(py, bottom - s.spectrum[i] * barsHeight);
+        c = mixv(COLORS.TRACK, barColor(i), inside);
+        why = `bar ${i} (${i < FIRST_MID_BAR ? "bass" : i < FIRST_TREBLE_BAR ? "mid" : "treble"}), level ${s.spectrum[i].toFixed(2)}: ${inside >= 1 ? "inside" : inside <= 0 ? "above its top" : Math.round(inside * 100) + "% covered by its top edge"}`;
+      } else why = "the gap between two bars";
+    }
+    const metersLeft = right - metersWidth;
+    if (px >= metersLeft && px < right) {
+      const step = metersWidth / 4, i = Math.min(Math.floor((px - metersLeft) / step), 3), gap = Math.max(1, Math.floor(step * 0.25));
+      if (px < Math.floor(metersLeft + (i + 1) * step) - gap) {
+        const level = [s.bass, s.mid, s.treble, s.energy][i], inside = below(py, bottom - level * barsHeight);
+        c = mixv(COLORS.TRACK, [COLORS.BASS, COLORS.MID, COLORS.TREBLE, COLORS.FOREGROUND][i], inside);
+        why = `the ${BAND_NAMES[i]} meter, level ${level.toFixed(2)}: ${inside >= 1 ? "inside" : inside <= 0 ? "above its top" : "on its edge"}`;
+      }
+    }
+  }
+  return [c, why];
+}
+
+const pixelsCanvas = document.getElementById("pixels"), pixelSize = document.getElementById("pixel-size");
+const pixelsSong = syntheticSong(1);
+let pixelsSignals = null, pixelsPlaying = !reduced, pixelsVisible = true, pointer = null;
+for (let i = 0; i < 60 * 38; i++) pixelsSignals = pixelsSong(1 / 60); // start in the drop
+function drawPixels() {
+  const { ctx, w, h, dpr } = setup(pixelsCanvas), size = +pixelSize.value;
+  const res = [Math.floor(w * (size === 1 ? dpr : 1) / size), Math.floor(h * (size === 1 ? dpr : 1) / size)];
+  const img = ctx.createImageData(res[0], res[1]);
+  for (let y = 0; y < res[1]; y++) for (let x = 0; x < res[0]; x++) {
+    const [c] = analysisPixel(x + 0.5, y + 0.5, res, pixelsSignals), o = (y * res[0] + x) * 4;
+    img.data[o] = toSrgb(c[0]) * 255; img.data[o + 1] = toSrgb(c[1]) * 255; img.data[o + 2] = toSrgb(c[2]) * 255; img.data[o + 3] = 255;
+  }
+  const off = new OffscreenCanvas(res[0], res[1]); off.getContext("2d").putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false; ctx.drawImage(off, 0, 0, res[0] * size / (size === 1 ? dpr : 1), res[1] * size / (size === 1 ? dpr : 1));
+  if (size > 1) {
+    ctx.strokeStyle = "rgba(9,9,11,0.35)"; ctx.lineWidth = 1; ctx.beginPath();
+    for (let x = 0; x <= res[0]; x++) { ctx.moveTo(x * size + 0.5, 0); ctx.lineTo(x * size + 0.5, res[1] * size); }
+    for (let y = 0; y <= res[1]; y++) { ctx.moveTo(0, y * size + 0.5); ctx.lineTo(res[0] * size, y * size + 0.5); }
+    ctx.stroke();
+  }
+  if (pointer) {
+    const scale = size === 1 ? 1 / dpr : size, px = Math.floor(pointer[0] / scale), py = Math.floor(pointer[1] / scale);
+    if (px < res[0] && py < res[1]) {
+      const [, why] = analysisPixel(px + 0.5, py + 0.5, res, pixelsSignals);
+      ctx.strokeStyle = css("--strong"); ctx.strokeRect(px * scale - 0.5, py * scale - 0.5, Math.max(scale, 3) + 1, Math.max(scale, 3) + 1);
+      document.getElementById("pixel-readout").innerHTML = `<span>pixel <b>(${px}, ${py})</b> of ${res[0]}×${res[1]}</span><span>${why}</span>`;
+    }
+  }
+}
+pixelsCanvas.addEventListener("pointermove", (e) => { const r = pixelsCanvas.getBoundingClientRect(); pointer = [e.clientX - r.left, e.clientY - r.top]; if (!pixelsPlaying) drawPixels(); });
+pixelsCanvas.addEventListener("pointerleave", () => { pointer = null; document.getElementById("pixel-readout").textContent = "Point at a pixel."; if (!pixelsPlaying) drawPixels(); });
+pixelSize.addEventListener("change", drawPixels);
+const pixelsButton = document.getElementById("pixels-play");
+const syncPixelsButton = () => pixelsButton.textContent = pixelsPlaying ? "Pause" : "Play";
+pixelsButton.addEventListener("click", () => { pixelsPlaying = !pixelsPlaying; syncPixelsButton(); });
+syncPixelsButton();
+
+// ---------- 02: mixing as numbers vs as light ----------
+const mixIn = document.getElementById("mix"), lwIn = document.getElementById("lw");
+function drawMix() {
+  const t = mixIn.value / 100, lineWidth = lwIn.value / 10;
+  document.getElementById("mix-out").textContent = `${mixIn.value}%`;
+  document.getElementById("width-out").textContent = `${lineWidth.toFixed(1)} px`;
+  const bg = 0x09 / 255, fg = 0xd4 / 255;
+  const asNumbers = bg + (fg - bg) * t;
+  const asLight = toSrgb(toLinear(bg) + (toLinear(fg) - toLinear(bg)) * t);
+  for (const [id, linear] of [["mix-numbers", false], ["mix-light", true]]) {
+    const { ctx, w, h, dpr } = setup(document.getElementById(id));
+    const v = linear ? asLight : asNumbers, g = Math.round(v * 255);
+    ctx.fillStyle = `rgb(${g},${g},${g})`; ctx.fillRect(0, 0, w, 40);
+    label(ctx, `${g} of 255`, 6, 54);
+    // Slanted lines, antialiased by coverage, with the mix done each way.
+    const W = Math.round(w * dpr), H = Math.round((h - 64) * dpr), img = ctx.createImageData(W, H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      let cover = 0;
+      for (let k = 0; k < 4; k++) {
+        const slope = 0.08 + k * 0.12, x0 = W * (0.1 + k * 0.22), cx = x - (x0 + (y - H / 2) * slope);
+        const d = Math.abs(cx) / Math.sqrt(1 + slope * slope);
+        cover = Math.max(cover, clamp(lineWidth * dpr / 2 + 0.5 - d, 0, 1));
+      }
+      const out = linear ? toSrgb(toLinear(bg) + (toLinear(fg) - toLinear(bg)) * cover) : bg + (fg - bg) * cover;
+      const o = (y * W + x) * 4, b = Math.round(out * 255); img.data[o] = b; img.data[o + 1] = b; img.data[o + 2] = b; img.data[o + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 64 * dpr);
+  }
+  const lightShare = (toLinear(asNumbers) - toLinear(bg)) / (toLinear(fg) - toLinear(bg));
+  document.getElementById("mix-readout").innerHTML =
+    `<span>as numbers: <b>${Math.round(lightShare * 100)}%</b> of the line's light</span><span>as light: <b>${mixIn.value}%</b>, as it should be</span>`;
+}
+mixIn.addEventListener("input", drawMix); lwIn.addEventListener("input", drawMix);
+
+// ---------- 03: the oscilloscope trigger (scope.rs) ----------
+const SR = 48000, SPAN = 1024, DECIMATION = 4, RECENT = 2048;
+const lowpassK = 1 - Math.exp(-(1 / SR) / (1 / (2 * Math.PI * 150)));
+function envelope(attack, release) { // smoothing.rs Envelope
+  let value = 0;
+  return (input, dt) => { const tau = input > value ? attack : release; value += (input - value) * (tau > 0 ? 1 - Math.exp(-dt / tau) : 1); return value; };
+}
+const peakRaw = envelope(0.005, 0.5), peakTrig = envelope(0.005, 0.5);
+let scopeClock = 0, scopePlaying = !reduced, scopeVisible = true;
+function hatNoise(n) { const x = Math.sin(n * 12.9898) * 43758.5453; return (x - Math.floor(x)) * 2 - 1; }
+function recentSamples(endTime) {
+  const bassHz = +document.getElementById("bass-hz").value, hat = document.getElementById("hat").value / 100;
+  const out = new Float64Array(RECENT), end = Math.floor(endTime * SR);
+  for (let k = 0; k < RECENT; k++) {
+    const n = end - RECENT + k, t = n / SR, sinceHat = (t % 0.125);
+    out[k] = 0.5 * Math.sin(2 * Math.PI * bassHz * t) + 0.18 * Math.sin(2 * Math.PI * bassHz * 2 * t + 0.7)
+      + 0.12 * Math.sin(2 * Math.PI * 660 * t) + hat * 0.35 * Math.exp(-sinceHat / 0.02) * hatNoise(n);
+  }
+  return out;
+}
+function scopeView(recent, trigger, filter, peak, dt) {
+  let start = RECENT - SPAN;
+  if (trigger) {
+    let watched = recent;
+    if (filter) {
+      watched = new Float64Array(RECENT); let y = 0;
+      for (let i = 0; i < RECENT; i++) { y += (recent[i] - y) * lowpassK; watched[i] = y; }
+      y = 0; for (let i = RECENT - 1; i >= 0; i--) { y += (watched[i] - y) * lowpassK; watched[i] = y; }
+    }
+    for (let i = RECENT - SPAN; i >= 1; i--) if (watched[i - 1] < 0 && watched[i] >= 0) { start = i; break; }
+  }
+  let loudest = 0; for (let i = start; i < start + SPAN; i++) loudest = Math.max(loudest, Math.abs(recent[i]));
+  const scale = 1 / Math.max(peak(loudest, dt), 0.01), points = new Float64Array(256);
+  for (let p = 0; p < 256; p++) { let sum = 0; for (let k = 0; k < DECIMATION; k++) sum += recent[start + p * DECIMATION + k]; points[p] = clamp(sum / DECIMATION * scale, -1, 1); }
+  return points;
+}
+function drawScope(id, points) {
+  const { ctx, w, h } = setup(document.getElementById(id)), mid = h / 2;
+  ctx.strokeStyle = css("--line"); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
+  ctx.strokeStyle = css("--accent"); ctx.lineWidth = 1.25; ctx.beginPath();
+  points.forEach((v, i) => { const x = i / 255 * w, y = mid - v * (h / 2 - 8); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.stroke();
+}
+function stepScope(dt) {
+  scopeClock += dt;
+  const recent = recentSamples(scopeClock);
+  drawScope("scope-raw", scopeView(recent, false, false, peakRaw, dt));
+  drawScope("scope-trig", scopeView(recent, true, document.getElementById("lowpass").checked, peakTrig, dt));
+}
+const syncScopeLabels = () => {
+  document.getElementById("bass-out").textContent = `${document.getElementById("bass-hz").value} Hz`;
+  document.getElementById("hat-out").textContent = `${document.getElementById("hat").value}%`;
+};
+for (const id of ["bass-hz", "hat"]) document.getElementById(id).addEventListener("input", () => { syncScopeLabels(); if (!scopePlaying) stepScope(0); });
+document.getElementById("lowpass").addEventListener("change", () => { if (!scopePlaying) stepScope(0); });
+syncScopeLabels();
+const scopeButton = document.getElementById("scope-play");
+const syncScopeButton = () => scopeButton.textContent = scopePlaying ? "Pause" : "Play";
+scopeButton.addEventListener("click", () => { scopePlaying = !scopePlaying; syncScopeButton(); });
+syncScopeButton();
+
+// ---------- 04: frame pacing ----------
+function drawPacing() {
+  const hz = +document.getElementById("refresh").value, refresh = 1000 / hz, span = 250;
+  const { ctx, w, h } = setup(document.getElementById("pacing"));
+  const xOf = (ms) => ms / span * w, rows = [{ y: 22, name: "a frame every 16.7 ms" }, { y: 112, name: "snapped" }];
+  const snappedFps = hz / Math.max(1, Math.round(hz / 60));
+  const shown = (period) => { // when each frame appears: the first refresh after it's ready
+    const out = [];
+    for (let ready = 0.3; ready < span + 40; ready += period) out.push(Math.ceil(ready / refresh - 1e-9) * refresh);
+    return [...new Set(out.map((v) => +v.toFixed(4)))];
+  };
+  const summaries = [];
+  rows.forEach((row, r) => {
+    const times = shown(r === 0 ? 1000 / 60 : 1000 / snappedFps);
+    ctx.strokeStyle = css("--line-strong"); ctx.lineWidth = 1; ctx.beginPath();
+    for (let t = 0; t <= span; t += refresh) { ctx.moveTo(Math.round(xOf(t)) + 0.5, row.y + 18); ctx.lineTo(Math.round(xOf(t)) + 0.5, row.y + 58); }
+    ctx.stroke();
+    const holds = [];
+    for (let i = 0; i + 1 < times.length; i++) {
+      const a = times[i], b = times[i + 1]; holds.push(Math.round((b - a) / refresh));
+      if (a > span) break;
+      ctx.fillStyle = i % 2 ? css("--raw") : css("--fg"); ctx.globalAlpha = i % 2 ? 1 : 0.85;
+      ctx.fillRect(xOf(a) + 1, row.y + 26, Math.max(1, xOf(Math.min(b, span)) - xOf(a) - 2), 24);
+    }
+    ctx.globalAlpha = 1;
+    label(ctx, row.name, 0, row.y + 10, "left", css("--fg"));
+    const counts = holds.slice(0, 12);
+    label(ctx, "refreshes per frame: " + counts.join(" "), w, row.y + 10, "right");
+    summaries.push(new Set(counts).size === 1);
+  });
+  document.getElementById("pacing-readout").innerHTML =
+    `<span>snapped rate <b>${snappedFps.toFixed(snappedFps % 1 ? 1 : 0)} fps</b> (every ${Math.round(hz / snappedFps)} refresh${Math.round(hz / snappedFps) > 1 ? "es" : ""})</span>` +
+    `<span>unsnapped: <b>${summaries[0] ? "even" : "uneven"}</b></span><span>snapped: <b>even</b></span>`;
+}
+document.getElementById("refresh").addEventListener("change", drawPacing);
+
+// ---------- 05: what a frame costs ----------
+function drawCost() {
+  const { ctx, w, h } = setup(document.getElementById("cost")), budget = 13.33;
+  const cpu = [["analysis", 0.05, "--mid"], ["submit", 0.25, "--fg"], ["present", 0.24, "--accent"], ["driver threads", 0.31, "--raw"]];
+  const gpu = [["GPU drawing", 0.04, "--bass"]];
+  const bar = (y, items, scale, x0 = 0) => {
+    let x = x0;
+    for (const [name, ms, color] of items) {
+      const bw = ms * scale; ctx.fillStyle = css(color); ctx.fillRect(x, y, Math.max(1, bw - 1), 18);
+      x += bw;
+    }
+    return x;
+  };
+  // Whole budget.
+  const s1 = w / budget;
+  ctx.strokeStyle = css("--line-strong"); ctx.strokeRect(0.5, 18.5, w - 1, 18);
+  const busy = bar(19, cpu, s1);
+  label(ctx, `one frame at 75 fps: ${budget.toFixed(1)} ms`, 0, 10, "left", css("--fg"));
+  label(ctx, "busy", busy + 6, 32); label(ctx, "idle, the program sleeps", w - 6, 32, "right");
+  // Zoomed.
+  const total = cpu.reduce((a, c) => a + c[1], 0), s2 = (w - 120) / total;
+  label(ctx, "the busy part, enlarged", 0, 70, "left", css("--fg"));
+  label(ctx, "CPU", 0, 96); bar(83, cpu, s2, 40);
+  label(ctx, "GPU", 0, 146); bar(133, gpu, s2, 40 + (0.05 + 0.25) * s2);
+  let x = 40;
+  for (const [name, ms] of cpu) { label(ctx, name, x + 2, 116); label(ctx, `${ms} ms`, x + 2, 128); x += ms * s2; }
+  label(ctx, `${gpu[0][1]} ms`, 40 + (0.3 + 0.04) * s2 + 6, 146);
+  label(ctx, "Drawing starts on the GPU once the work is submitted, while the CPU goes on to present.", 0, h - 6);
+}
+
+// ---------- Animation and layout ----------
+for (const [id, set] of [["pixels", (v) => pixelsVisible = v], ["scope-raw", (v) => scopeVisible = v]]) {
+  new IntersectionObserver(([e]) => set(e.isIntersecting)).observe(document.getElementById(id));
+}
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (pixelsPlaying && pixelsVisible) { pixelsSignals = pixelsSong(dt); drawPixels(); }
+  if (scopePlaying && scopeVisible) stepScope(dt);
+  requestAnimationFrame(frame);
+}
+function drawAll() { drawPixels(); drawMix(); stepScope(0); drawPacing(); drawCost(); }
+drawAll(); requestAnimationFrame(frame);
+window.addEventListener("resize", drawAll);
+</script>
+</body>
+</html>

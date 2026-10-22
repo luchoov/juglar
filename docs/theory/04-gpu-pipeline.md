@@ -91,6 +91,8 @@ What came out of it:
 
 Two runs measured only 0.2–0.3% of a core while drawing 72 frames per second. Both windows had opened on the second monitor, where they were probably hidden behind another window, and Windows doesn't compose a window nobody can see. That would make presenting nearly free, but it wasn't verified. A separate test showed why the pacer snaps to the display: forced to draw 72 frames per second on the 75 Hz display, in plain view, Juglar got intervals from 4.8 to 22.7 ms instead of a steady 13.9.
 
+**Caveat:** both monitors were switched off during this second round. Windows still drew the desktop (screenshots were normal), but whether a display is actually showing the picture can change how presenting behaves, and may explain the cheap runs above. The CPU figures need repeating with the monitors on.
+
 All of this is one GPU from one vendor. AMD and Intel drivers split the work differently, so the comparison has to be repeated there.
 
 ## Further reading

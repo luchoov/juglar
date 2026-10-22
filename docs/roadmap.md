@@ -51,7 +51,7 @@ Open: memory went from 12 MB to 100–115 MB, mostly GPU driver allocations. Rep
 
 **Status: done, pending a human verdict on "hypnotic".** Two half-size 16-bit float images take turns; each frame warps (zoom, rotation, swirl, wandering center) and fades the last picture by per-second rates, and the scene paints faintly into it and sharply on top. The composite applies a cosine palette, tone mapping, a contrast curve, dithering and a vignette. First scene: *Tide*, a ring drawn by the waveform whose trails flow outward. `Tab` shows the analysis view, keys 1–3 set the intensity, Windows' reduced-motion setting freezes the picture. GPU 0.095 ms per frame at 960×540 and 0.32 ms at 1920×1009 (GTX 1060); CPU unchanged from M3. Decisions D20–D25.
 
-Open: the flash and pattern limits hold by design but nothing measures the final picture yet (the limiter is M5). Audio `beat` and `novelty` are still 0. The scene was tuned on one evening of music; it needs judging on more genres.
+Open: CPU figures for M3 and M4 were taken with both monitors switched off; repeat them with the monitors on. The flash and pattern limits hold by design but nothing measures the final picture yet (the limiter is M5). Audio `beat` and `novelty` are still 0. The scene was tuned on one evening of music; it needs judging on more genres.
 
 ## M5 — Beats and bloom
 

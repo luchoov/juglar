@@ -113,7 +113,7 @@ Measured on the development PC (GTX 1060, Windows 11, DirectX 12, 75 Hz display)
 | Whole process CPU | 5.8–6.8% of one core | 7.5% of one core |
 | Frame intervals | 12.9–13.8 ms (target 13.3) | 13.0–13.7 ms |
 
-The GPU does three times more than in Milestone 3 and is still busy for under 3% of each frame at full size. The CPU cost didn't change: as note 04 found, it is the fixed cost of handing a frame to the driver, whatever the frame contains.
+Both monitors were switched off during these measurements (see note 04); the GPU times shouldn't depend on it, the CPU figures might. The GPU does three times more than in Milestone 3 and is still busy for under 3% of each frame at full size. The CPU cost didn't change: as note 04 found, it is the fixed cost of handing a frame to the driver, whatever the frame contains.
 
 ## Further reading
 
