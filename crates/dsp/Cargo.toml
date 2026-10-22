@@ -1,6 +1,6 @@
 [package]
 name = "juglar-dsp"
-description = "Audio analysis for Juglar: ring buffer, levels, and (soon) FFT and bands. OS-agnostic."
+description = "Audio analysis for Juglar: ring buffer, levels, FFT, bands and envelopes. OS-agnostic."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

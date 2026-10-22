@@ -13,6 +13,8 @@ The north star is in `docs/vision.md`: a visualizer that listens like a musician
 
 **Done when:** playing music prints a moving level; silence prints ~0; CPU stays under 0.5%.
 
+**Status: done.** 48 kHz stereo, no dropped samples, CPU below what Windows can measure, 12 MB RAM.
+
 ## M2 — Seeing the spectrum
 
 - Own radix-2 FFT (validated against a reference implementation in tests only).
@@ -22,6 +24,8 @@ The north star is in `docs/vision.md`: a visualizer that listens like a musician
 
 **Done when:** terminal bars track the music smoothly, without jitter, at any volume.
 
+**Status: done.** 0.47% of one core, 12 MB RAM.
+
 ## M3 — First pixels
 
 - `winit` window + `wgpu` surface, frame pacing with `dt`, FPS cap.
@@ -29,6 +33,10 @@ The north star is in `docs/vision.md`: a visualizer that listens like a musician
 - Theory: `04-gpu-pipeline.md` (surface, pipeline, uniforms, why WGSL).
 
 **Done when:** bars render at a steady capped frame rate; GPU time is measured and shown in the debug HUD.
+
+**Status: done.** The HUD comes in M7, so stats go to the window title for now. Triggered (stable) waveform, 32 bars and 4 meters from one fragment shader. Own frame pacer snapped to the display refresh (72 fps at 144 Hz, intervals 13.1–14.4 ms). GPU time 0.03 ms per frame on a GTX 1060. Vulkan preferred on Windows after measuring a third to half of DirectX 12's per-frame CPU cost (decisions D14–D18). The core builds for `wasm32-unknown-unknown`.
+
+Open: whole-process CPU varied from 1.3% to 15% of one core between identical runs while another heavy workload ran; re-measure on an idle machine and look for driver spin-waiting. Memory went from 12 MB to ~120 MB, mostly GPU driver allocations. Repeat the Vulkan/DirectX 12 comparison on AMD and Intel GPUs.
 
 ## M4 — The feedback loop
 
@@ -71,7 +79,7 @@ The core innovation (see `docs/vision.md`). Built before the generator so it is 
 
 - Borderless / fullscreen / mini modes, fading HUD with own glyph rendering, tray icon.
 - Now-playing overlay (GSMTC).
-- Pause on silence, hidden window or fullscreen game.
+- Pause on silence, hidden window or fullscreen game; lower frame rate while a game runs (M3 showed that CPU cost follows the frame rate, not the picture).
 - Live wallpaper mode; screensaver build.
 
 ## M8 — Evolution and the web

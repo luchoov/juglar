@@ -9,3 +9,6 @@ publish.workspace = true
 [dependencies]
 juglar-dsp = { path = "../crates/dsp" }
 juglar-platform = { path = "../crates/platform" }
+juglar-render = { path = "../crates/render" }
+pollster = "1.0"
+winit = "0.30.13"

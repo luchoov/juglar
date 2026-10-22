@@ -76,3 +76,33 @@ Every important decision in Juglar, in plain language: what was decided, why, wh
 
 **Decided:** every milestone is explained in plain language: a theory note (`theory/`), entries here, and when worth it an interactive page (`explorables/`). Code excerpts are always optional extras, never required to follow the explanation.
 **Why:** Juglar is built mostly by agents, and its author should be able to understand and defend every idea and decision without reading Rust.
+
+### D14 — A stable waveform, like an oscilloscope
+
+**Decided:** the waveform on screen always starts where the bass crosses zero going up, as an oscilloscope's *trigger* does. To find that point, the sound is passed through a filter that keeps only the low end, run forward and then backward so the filter's delay cancels out.
+**Why:** drawing "the last 21 ms" each frame cuts the wave at a random point of its cycle, so it jitters sideways. With the trigger, repeating sounds land in the same place every frame and look still. Triggering on the bass instead of the full signal keeps hi-hats, which cross zero constantly, from making it jump.
+**Cost:** the newest 21 ms are sometimes skipped to find a crossing. Nobody can see that delay.
+
+### D15 — One shader draws the whole frame
+
+**Decided:** for now, a single fragment shader decides the color of every pixel from about 1 KB of numbers (bands, spectrum, waveform) uploaded each frame. The GPU draws one triangle that covers the window.
+**Why:** it's the smallest possible pipeline: one pass, no geometry, nothing on the CPU beyond copying numbers. Later effects (Milestone 4 onward) add passes in front of it rather than replacing it.
+**Considered:** building the bars and the line out of triangles on the CPU, which means more CPU work and more data for the same picture.
+
+### D16 — Juglar paces its own frames
+
+**Decided:** a timer wakes Juglar for each frame, at the display's refresh rate divided by the whole number that lands closest to 60 fps (72 fps on a 144 Hz display). Vsync is still requested, but never relied on.
+**Why:** frames out of step with the display stutter, so the rate snaps to it. Vsync alone can't set the pace: on the development PC the driver ignored it and the loop ran at 1,400 fps, using 80% of a CPU core. Drivers let users force vsync off, and gamers often do.
+**Cost:** on a 144 Hz display Juglar draws 72 fps rather than exactly 60. The `JUGLAR_FPS` environment variable sets another target until there is a settings file.
+
+### D17 — Prefer the integrated GPU, and Vulkan on Windows
+
+**Decided:** when a machine has both an integrated and a dedicated GPU, Juglar uses the integrated one. On Windows it prefers Vulkan and falls back to DirectX 12. OpenGL is not included on any platform.
+**Why:** Juglar's drawing is tiny (0.03 ms of GPU per frame), so the integrated GPU easily handles it and the dedicated one stays free for the game. The fixed cost of submitting and presenting a frame turned out to be most of Juglar's CPU work, and on the development GPU (GTX 1060) Vulkan's was a third to a half of DirectX 12's (about 0.25 ms against 0.75 ms per frame).
+**Considered:** DirectX 12 only, as Windows' native API, which would make a smaller binary and use about 20 MB less memory. Measured, it was the more expensive one in CPU, which matters more next to a game. This may differ on other GPUs, so the measurement should be repeated on AMD and Intel hardware.
+
+### D18 — Measure GPU time without waiting for it
+
+**Decided:** the GPU writes its own clock at the start and end of each frame's drawing. Juglar reads the result back a frame or two later, whenever it's ready, and shows it in the window title.
+**Why:** waiting for the GPU to finish would make the CPU idle and couple the two. Measuring on the GPU is the only way to time GPU work at all, because the CPU only records commands. It runs later.
+**Cost:** frames drawn while a measurement is in flight aren't timed. A browser or GPU without timestamp support simply shows no GPU time.

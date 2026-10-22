@@ -1,0 +1,27 @@
+[package]
+name = "juglar-render"
+description = "GPU rendering for Juglar on wgpu. OS-agnostic: takes any window handle and plain numbers."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+bytemuck = { version = "1.25", features = ["derive"] }
+wgpu = { version = "30.0", default-features = false, features = ["std", "parking_lot", "wgsl"] }
+
+# Only the graphics APIs each platform needs. Windows gets Vulkan, which costs
+# less CPU per frame on the GPUs measured so far, plus DirectX 12 for machines
+# without a Vulkan driver (see `adapter_rank`). OpenGL is left out everywhere.
+[target.'cfg(windows)'.dependencies]
+wgpu = { version = "30.0", default-features = false, features = ["vulkan", "dx12"] }
+
+[target.'cfg(all(unix, not(target_vendor = "apple")))'.dependencies]
+wgpu = { version = "30.0", default-features = false, features = ["vulkan"] }
+
+[target.'cfg(target_vendor = "apple")'.dependencies]
+wgpu = { version = "30.0", default-features = false, features = ["metal"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wgpu = { version = "30.0", default-features = false, features = ["webgpu"] }

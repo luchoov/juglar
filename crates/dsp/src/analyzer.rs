@@ -198,6 +198,17 @@ impl Analyzer {
 
         &self.output
     }
+
+    /// Copies the newest `out.len()` samples (at most `FFT_SIZE`) into `out`,
+    /// oldest first.
+    pub fn recent(&self, out: &mut [f32]) {
+        assert!(out.len() <= FFT_SIZE, "only the newest {FFT_SIZE} samples are kept");
+        let (newest, oldest) = self.history.split_at(self.write);
+        let samples = oldest.iter().chain(newest).skip(FFT_SIZE - out.len());
+        for (slot, &sample) in out.iter_mut().zip(samples) {
+            *slot = sample;
+        }
+    }
 }
 
 /// Bins covering `low..high` Hz, at least one, never including DC (bin 0).
