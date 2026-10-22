@@ -200,3 +200,10 @@ Every important decision in Juglar, in plain language: what was decided, why, wh
 **Considered:** waiting for the generator (it would be designed blind); separate post effects for the fold and the current (they belong inside the loop, where they compound frame after frame).
 **Cost:** four pipelines more to compile at start. Switching scenes is a cut, not a crossfade. Every number in the sketches is untuned beyond one evening's look.
 
+### D32 — Bloom in three passes, from a quarter of the window
+
+**Decided:** the scene's bright parts (luminance ramping in from 0.2 to 0.8) are drawn again at a quarter of the window's size, halved twice, and the final composite pass reads the three levels, each enlarged with a four-sample tent, averages them, and adds them with a "screen" blend, as much as the scene's `bloom` asks. Before the flash limiter. Skipped when a scene asks for none.
+**Why:** a wide blur is cheapest as a chain of shrinking images. The textbook chain (five levels from half size, down and back up, nine passes) cost the GPU only 0.07 ms but the CPU 0.22 ms per frame (6.8% → 8.4% of a core): each render pass costs about 25 µs to submit, whatever its size. Three passes cost 7.33% of a core, for a halo slightly less wide.
+**Considered:** the full chain (above); a compute shader (dispatches cost the same to submit); blurring in the composite pass alone from the feedback image (dozens of samples per full-size pixel).
+**Cost:** GPU time 0.163 → 0.222 ms at 960×540, 0.529 → 0.73–0.74 ms maximized; CPU about +0.55 points of a core. The glow is made after tone mapping, not from high-dynamic-range values.
+

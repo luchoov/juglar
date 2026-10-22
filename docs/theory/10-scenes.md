@@ -41,12 +41,12 @@ The lesson of note 09 applies to every scene: a bright, thin shape that trembles
 
 The research's settings for focus and relaxation (slow motion, low saturation) are not what these sketches are for. They remain the target for those modes, which arrive with the settings in Milestone 7.
 
-| Scene | GPU time per frame (960×540, with music, one run of 18 s; *Tide* two runs of 15 s) |
+| Scene | GPU time per frame (960×540, with music, with bloom, one run of 20 s) |
 |---|---|
-| Tide | 0.163 ms |
-| Orbits | 0.212 ms |
-| Kaleido | 0.188 ms |
-| Oil | 0.173 ms |
+| Tide | 0.222 ms |
+| Orbits | 0.256 ms |
+| Kaleido | 0.245 ms |
+| Oil | 0.247 ms |
 
 ## Further reading
 

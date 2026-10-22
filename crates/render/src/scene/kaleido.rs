@@ -95,6 +95,7 @@ impl Scene for Kaleido {
             palette_shift: self.hue,
             palette_wrap: true,
             exposure: 1.4,
+            bloom: 0.6,
             waveform: s.waveform,
             spectrum,
         }

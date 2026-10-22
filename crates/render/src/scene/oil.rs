@@ -84,6 +84,7 @@ impl Scene for Oil {
             palette_shift: 0.03 * self.clock,
             palette_wrap: true,
             exposure: 1.2,
+            bloom: 0.4,
             waveform: s.waveform,
             spectrum: s.spectrum,
         }

@@ -99,6 +99,8 @@ pub(crate) struct Look {
     pub palette_wrap: bool,
     /// How bright a given amount of ink looks.
     pub exposure: f32,
+    /// How much the bright parts glow (0 = none, 1 = strong; see `bloom.rs`).
+    pub bloom: f32,
     /// The waveform and spectrum the scene draws, which may be calmer than
     /// the ones heard.
     pub waveform: [f32; WAVEFORM_POINTS],

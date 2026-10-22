@@ -5,20 +5,22 @@
 //! or a windowing library: the app hands over anything that has a window
 //! handle, then each frame's `Signals`, a few hundred plain numbers.
 //!
-//! A frame is three steps on the GPU (see `docs/theory/05-feedback.md`):
+//! A frame is four steps on the GPU (see `docs/theory/05-feedback.md`):
 //!
 //! 1. **Feedback** (`feedback.wgsl`), on a half-size image: copy the last
 //!    picture, warped and faded, and let the scene paint on top.
-//! 2. **Composite** (`composite.wgsl`), at full size: turn that picture's
-//!    ink into colors and tone-map them.
-//! 3. **Limiter** (`limiter.rs`): hold back any flashing beyond two flashes
+//! 2. **Bloom** (`bloom.rs`): the bright parts, blurred ever wider.
+//! 3. **Composite** (`composite.wgsl`), at full size: turn that picture's
+//!    ink into colors, tone-map them and add the glow.
+//! 4. **Limiter** (`limiter.rs`): hold back any flashing beyond two flashes
 //!    a second and any saturated red, then dither onto the screen (see
 //!    `docs/theory/09-photosensitivity.md`).
 //!
-//! The analysis view (`analysis.wgsl`) replaces the first two with
+//! The analysis view (`analysis.wgsl`) replaces the first three with
 //! Milestone 3's waveform and bars, to see what Juglar hears. It goes
 //! through the limiter too: nothing reaches the screen without it.
 
+mod bloom;
 mod feedback;
 pub mod limiter;
 mod scene;
@@ -28,6 +30,7 @@ use std::fmt;
 use std::num::NonZeroU64;
 
 use bytemuck::{Pod, Zeroable};
+use bloom::Bloom;
 use feedback::Feedback;
 use limiter::Limiter;
 use scene::{Look, Scene};
@@ -56,7 +59,7 @@ struct Uniforms {
     feedback_size: [f32; 2],
     time: f32,
     dt: f32,
-    _pad1: f32,
+    bloom: f32,
     seed: f32,
     center: [f32; 2],
     zoom: f32,
@@ -136,14 +139,15 @@ pub struct Renderer {
     /// Uniforms plus an image and how to filter it: feedback and composite.
     image_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
-    /// Every scene, with its own feedback and composite pipelines: the
-    /// scene's WGSL is compiled into both.
-    scenes: Vec<(Box<dyn Scene>, wgpu::RenderPipeline, wgpu::RenderPipeline)>,
+    /// Every scene, with its own pipelines: the scene's WGSL is compiled
+    /// into each.
+    scenes: Vec<(Box<dyn Scene>, ScenePipelines)>,
     /// Which of `scenes` is showing.
     scene: usize,
     analysis_pipeline: wgpu::RenderPipeline,
     analysis_bind_group: wgpu::BindGroup,
     feedback: Feedback,
+    bloom: Bloom,
     limiter: Limiter,
     /// The share of the limiter's cells held back, last time it was counted.
     held: Option<f32>,
@@ -279,14 +283,14 @@ impl Renderer {
             ..Default::default()
         });
 
-        let pipeline = |label, layout: &wgpu::BindGroupLayout, source: String, entry_point, target| {
+        let pipeline = |label, layouts: &[&wgpu::BindGroupLayout], source: String, entry_point, target| {
             let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some(label),
                 source: wgpu::ShaderSource::Wgsl(source.into()),
             });
             let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some(label),
-                bind_group_layouts: &[Some(layout)],
+                bind_group_layouts: &layouts.iter().map(|&layout| Some(layout)).collect::<Vec<_>>(),
                 immediate_size: 0,
             });
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -315,30 +319,41 @@ impl Renderer {
                 cache: None,
             })
         };
+        let bloom = Bloom::new(&device, &image_layout, &uniform_buffer, &sampler, COMMON, config.width, config.height);
         let scenes = scene::all()
             .into_iter()
             .map(|scene| {
-                let feedback = pipeline(
-                    "feedback",
-                    &image_layout,
-                    [COMMON, scene.shader(), include_str!("feedback.wgsl")].concat(),
-                    "fs_feedback",
-                    feedback::FORMAT,
-                );
-                let composite = pipeline(
-                    "composite",
-                    &image_layout,
-                    [COMMON, scene.shader(), include_str!("composite.wgsl")].concat(),
-                    "fs_composite",
-                    limiter::CANDIDATE_FORMAT,
-                );
-                (scene, feedback, composite)
+                let composite_source = [COMMON, scene.shader(), include_str!("composite.wgsl")].concat();
+                let pipelines = ScenePipelines {
+                    feedback: pipeline(
+                        "feedback",
+                        &[&image_layout],
+                        [COMMON, scene.shader(), include_str!("feedback.wgsl")].concat(),
+                        "fs_feedback",
+                        feedback::FORMAT,
+                    ),
+                    bloom_source: pipeline(
+                        "bloom source",
+                        &[&image_layout],
+                        composite_source.clone(),
+                        "fs_bloom_source",
+                        feedback::FORMAT,
+                    ),
+                    composite: pipeline(
+                        "composite",
+                        &[&image_layout, bloom.apply_layout()],
+                        composite_source,
+                        "fs_composite",
+                        limiter::CANDIDATE_FORMAT,
+                    ),
+                };
+                (scene, pipelines)
             })
             .collect();
         let analysis_pipeline =
             pipeline(
             "analysis",
-            &analysis_layout,
+            &[&analysis_layout],
             [COMMON, include_str!("analysis.wgsl")].concat(),
             "fs_analysis",
             limiter::CANDIDATE_FORMAT,
@@ -361,6 +376,7 @@ impl Renderer {
             analysis_pipeline,
             analysis_bind_group,
             feedback,
+            bloom,
             limiter,
             held: None,
             view: View::Scene,
@@ -390,6 +406,7 @@ impl Renderer {
         self.surface.configure(&self.device, &self.config);
         self.feedback =
             Feedback::new(&self.device, &self.image_layout, &self.uniform_buffer, &self.sampler, width, height);
+        self.bloom.resize(&self.device, &self.image_layout, &self.uniform_buffer, &self.sampler, width, height);
         self.limiter.resize(&self.device, width, height);
     }
 
@@ -472,19 +489,25 @@ impl Renderer {
 
         match self.view {
             View::Scene => {
-                let (_, feedback_pipeline, composite_pipeline) = &self.scenes[self.scene];
+                let (_, pipelines) = &self.scenes[self.scene];
                 {
                     let mut feedback = begin_pass(&mut encoder, "feedback", self.feedback.next(), timestamps(true, false));
-                    feedback.set_pipeline(feedback_pipeline);
+                    feedback.set_pipeline(&pipelines.feedback);
                     feedback.set_bind_group(0, self.feedback.latest(), &[]);
                     // One triangle large enough to cover the image; see `vs_main`.
                     feedback.draw(0..3, 0..1);
                 }
                 // The image just written is now the latest picture.
                 self.feedback.swap();
+                // A scene without glow skips the chain; the composite step
+                // multiplies the stale blurs by zero.
+                if look.bloom > 0.0 {
+                    self.bloom.encode(&mut encoder, &pipelines.bloom_source, self.feedback.latest());
+                }
                 let mut composite = begin_pass(&mut encoder, "composite", self.limiter.candidate(), None);
-                composite.set_pipeline(composite_pipeline);
+                composite.set_pipeline(&pipelines.composite);
                 composite.set_bind_group(0, self.feedback.latest(), &[]);
+                composite.set_bind_group(1, self.bloom.apply(), &[]);
                 composite.draw(0..3, 0..1);
             }
             View::Analysis => {
@@ -516,7 +539,7 @@ impl Renderer {
             feedback_size: [feedback_width as f32, feedback_height as f32],
             time: s.time,
             dt: s.dt,
-            _pad1: 0.0,
+            bloom: look.bloom,
             // Exact as a float up to 2^24 frames, then wraps (~60 hours).
             seed: (self.frames % (1 << 24)) as f32,
             center: look.center,
@@ -562,6 +585,14 @@ impl Renderer {
     pub fn take_held(&mut self) -> Option<f32> {
         self.held.take()
     }
+}
+
+/// A scene's three pipelines.
+struct ScenePipelines {
+    feedback: wgpu::RenderPipeline,
+    /// The scene's bright parts at half size, to start the bloom chain.
+    bloom_source: wgpu::RenderPipeline,
+    composite: wgpu::RenderPipeline,
 }
 
 /// A pass drawing over all of `target`. Every pass covers every pixel, so

@@ -136,6 +136,7 @@ impl Scene for Tide {
             palette_shift: 0.85 - 0.8 * self.mood + 0.06 * (self.clock * TAU / 120.0).sin(),
             palette_wrap: false,
             exposure: 1.3,
+            bloom: 0.35,
             waveform,
             spectrum: s.spectrum,
         }

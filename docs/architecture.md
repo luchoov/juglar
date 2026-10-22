@@ -22,9 +22,9 @@ AudioCapture ──samples──► ring buffer ──► dsp ──► Signals 
 NowPlaying ──track info──────────────────────────────────────► hud        passes:
                                                                            1 feedback (ping-pong, rgba16f, half-res):
                                                                              warp + fade the last picture, paint sources faintly
-                                                                           2 bloom (downsample/upsample chain, M5)
+                                                                           2 bloom (bright parts at 1/4 size, halved twice)
                                                                            3 composite (sources sharp on top, palette,
-                                                                             tonemap) ─► candidate (rgba16f, linear)
+                                                                             tonemap, glow) ─► candidate (rgba16f, linear)
                                                                            4 flash limiter (per cell: count flashes,
                                                                              hold back; per pixel: red guard,
                                                                              dither) ─► swapchain

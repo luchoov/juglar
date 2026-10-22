@@ -7,7 +7,8 @@ struct Frame {
     feedback_size: vec2f,
     time: f32,
     dt: f32,
-    _pad1: f32,
+    // How much glow the scene wants (see `bloom.rs`).
+    bloom: f32,
     // Changes every frame, for noise that should too.
     seed: f32,
 

@@ -97,6 +97,7 @@ impl Scene for Orbits {
             palette_shift: self.hue,
             palette_wrap: true,
             exposure: 1.6,
+            bloom: 0.9,
             waveform: s.waveform,
             spectrum: s.spectrum,
         }
