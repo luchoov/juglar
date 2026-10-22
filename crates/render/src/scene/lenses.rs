@@ -22,7 +22,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::Signals;
 
-use super::{Look, Palette, Scene, smooth3};
+use super::{Character, Look, Palette, Scene, smooth3};
 
 /// Teal, sky blue, violet, magenta and lime, all the way around. Red stays
 /// under 72%.
@@ -54,6 +54,11 @@ impl Lenses {
 impl Scene for Lenses {
     fn name(&self) -> &'static str {
         "lenses"
+    }
+
+    /// Lenses slowly stirring a marbled coat.
+    fn character(&self) -> Character {
+        Character { energy: 0.3, pulse: 0.4, flow: false }
     }
 
     fn shader(&self) -> &'static str {

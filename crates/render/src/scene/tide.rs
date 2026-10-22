@@ -32,7 +32,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
-use super::{Look, Palette, Scene, smooth3};
+use super::{Character, Look, Palette, Scene, smooth3};
 
 /// Sand to silver to steel blue: one half-turn of a cosine per channel, so
 /// 0 is #dcc69a and 1 is #6f9bd1, with no green on the way (dim yellows
@@ -82,6 +82,11 @@ impl Tide {
 impl Scene for Tide {
     fn name(&self) -> &'static str {
         "tide"
+    }
+
+    /// A ring flowing outward: medium, follows the beats.
+    fn character(&self) -> Character {
+        Character { energy: 0.5, pulse: 0.6, flow: true }
     }
 
     fn shader(&self) -> &'static str {

@@ -56,7 +56,7 @@ fn main() {
     };
     let mut app = App {
         source,
-        director: Director::new(intensity),
+        director: Director::new(intensity, juglar_render::scene_characters()),
         signals: Signals::default(),
         window: None,
         renderer: None,
@@ -69,6 +69,7 @@ fn main() {
         modifiers: ModifiersState::empty(),
         last_click: None,
         pointer_moved: Instant::now(),
+        still: false,
     };
     if let Err(e) = event_loop.run_app(&mut app) {
         eprintln!("juglar: {e}");
@@ -199,6 +200,8 @@ struct App {
     last_click: Option<Instant>,
     /// When the mouse pointer last moved.
     pointer_moved: Instant,
+    /// Whether reduced motion is on, as last read (once a second).
+    still: bool,
 }
 
 impl ApplicationHandler for App {
@@ -231,12 +234,16 @@ impl ApplicationHandler for App {
         // `JUGLAR_SCENE=oil` (or any scene's name) picks the first scene.
         if let Ok(name) = std::env::var("JUGLAR_SCENE") {
             match renderer.scene_names().iter().position(|&scene| scene == name) {
-                Some(index) => renderer.set_scene(index),
+                Some(index) => {
+                    renderer.set_scene(index);
+                    self.director.chosen(index);
+                }
                 None => eprintln!("juglar: no scene called {name:?}; there are {:?}", renderer.scene_names()),
             }
         }
-        renderer.set_reduced_motion(reduced_motion());
-        if reduced_motion() {
+        self.still = reduced_motion();
+        renderer.set_reduced_motion(self.still);
+        if self.still {
             println!("Reduced motion is on: the picture stays still.");
         }
         self.renderer = Some(renderer);
@@ -338,9 +345,9 @@ impl App {
     }
 
     /// Tab switches between the scene and the analysis view; the left and
-    /// right arrows go through the scenes; 1, 2 and 3 fix the intensity at
-    /// gentle, medium or strong, and A lets the music set it; F11 and
-    /// Alt+Enter switch fullscreen.
+    /// right arrows go through the scenes, and space keeps the one showing;
+    /// 1, 2 and 3 fix the intensity at gentle, medium or strong, and A lets
+    /// the music set it; F11 and Alt+Enter switch fullscreen.
     fn key(&mut self, key: &Key) {
         match key {
             Key::Named(NamedKey::F11) => self.toggle_fullscreen(),
@@ -352,13 +359,18 @@ impl App {
                     let next = if back { renderer.scene() + count - 1 } else { renderer.scene() + 1 };
                     // With reduced motion, a slow fade through patches
                     // instead of an edge sweeping across.
-                    let transition = if reduced_motion() {
+                    let transition = if self.still {
                         Transition { style: Style::Seep, seconds: 3.0, per_beat: 0.0 }
                     } else {
                         Transition::asked()
                     };
                     renderer.begin_transition(next, transition);
+                    self.director.chosen(renderer.scene());
                 }
+            }
+            Key::Named(NamedKey::Space) => {
+                let holding = !self.director.holding();
+                self.director.hold(holding);
             }
             Key::Named(NamedKey::Tab) => {
                 if let Some(renderer) = &mut self.renderer {
@@ -387,10 +399,27 @@ impl App {
         // buffer keeps draining and the envelopes stay current.
         let work = Instant::now();
         self.source.update(dt, &mut self.signals);
-        self.director.update(&mut self.signals);
+        // Nothing to change before there is a picture, and no automatic
+        // changes with reduced motion: the picture stays as it is.
+        let (scene, busy) = match &self.renderer {
+            Some(renderer) => (renderer.scene(), renderer.in_transition() || self.still),
+            None => (0, true),
+        };
+        let change = self.director.update(&mut self.signals, scene, busy);
         let analysis_time = work.elapsed();
 
         let Some(renderer) = &mut self.renderer else { return };
+        if let Some(change) = change {
+            renderer.begin_transition(change.scene, change.transition);
+            if self.print_stats {
+                let name = renderer.scene_names()[change.scene];
+                let feel = self.director.feel();
+                println!(
+                    "Director: {:?} at {:.1} s → {name}, {:?} (pulse {:.2}, brightness {:.2}, swell {:.2})",
+                    change.moment, self.signals.time, change.transition.style, feel.pulse, feel.brightness, feel.swell
+                );
+            }
+        }
         // A minimized window can't be seen, but DirectX 12 still accepts its
         // frames, so drawing them would cost as much as drawing visible ones.
         let minimized = self.window.as_ref().and_then(|w| w.is_minimized()).unwrap_or(false);
@@ -412,9 +441,15 @@ impl App {
                 Intensity::Natural => "natural",
                 Intensity::Fixed(_) => "intensity",
             };
-            let title = format!("{stats} · {intensity} {:.2} · {}", self.signals.intensity, renderer.scene_names()[renderer.scene()]);
+            let kept = if self.director.holding() { " (kept)" } else { "" };
+            let title = format!(
+                "{stats} · {intensity} {:.2} · {}{kept}",
+                self.signals.intensity,
+                renderer.scene_names()[renderer.scene()]
+            );
             // Once a second: cheap enough to follow the OS setting live.
-            renderer.set_reduced_motion(reduced_motion());
+            self.still = reduced_motion();
+            renderer.set_reduced_motion(self.still);
             if let Some(window) = &self.window
                 && window.fullscreen().is_some()
                 && now - self.pointer_moved > POINTER_HIDES

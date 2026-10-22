@@ -20,7 +20,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::{SPECTRUM_BANDS, Signals};
 
-use super::{Look, Palette, Scene, smooth3};
+use super::{Character, Look, Palette, Scene, smooth3};
 
 /// Magenta, blue, aqua and lime, all the way around. Red stays under 73%.
 const PALETTE: Palette = Palette {
@@ -54,6 +54,11 @@ impl Kaleido {
 impl Scene for Kaleido {
     fn name(&self) -> &'static str {
         "kaleido"
+    }
+
+    /// A mirrored tunnel rushing outward: wild.
+    fn character(&self) -> Character {
+        Character { energy: 0.85, pulse: 0.7, flow: true }
     }
 
     fn shader(&self) -> &'static str {

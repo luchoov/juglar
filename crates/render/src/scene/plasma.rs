@@ -21,7 +21,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::Signals;
 
-use super::{Look, Palette, Scene, smooth3};
+use super::{Character, Look, Palette, Scene, smooth3};
 
 /// Hot pink, lavender, aqua, teal and plum, all the way around. Red stays
 /// under 72%.
@@ -52,6 +52,11 @@ impl Plasma {
 impl Scene for Plasma {
     fn name(&self) -> &'static str {
         "plasma"
+    }
+
+    /// Soft waves of color, gently turning.
+    fn character(&self) -> Character {
+        Character { energy: 0.4, pulse: 0.3, flow: true }
     }
 
     fn shader(&self) -> &'static str {

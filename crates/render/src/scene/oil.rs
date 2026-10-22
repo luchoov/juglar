@@ -20,7 +20,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::Signals;
 
-use super::{Look, Palette, Scene, smooth3};
+use super::{Character, Look, Palette, Scene, smooth3};
 
 /// Lime, magenta, blue and mint, all the way around. Red stays under 73%.
 const PALETTE: Palette = Palette {
@@ -53,6 +53,11 @@ impl Oil {
 impl Scene for Oil {
     fn name(&self) -> &'static str {
         "oil"
+    }
+
+    /// Slow liquid light: the calmest.
+    fn character(&self) -> Character {
+        Character { energy: 0.2, pulse: 0.2, flow: false }
     }
 
     fn shader(&self) -> &'static str {

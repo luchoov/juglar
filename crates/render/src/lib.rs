@@ -42,7 +42,7 @@ use limiter::Limiter;
 use scene::{Look, Scene};
 use timer::GpuTimer;
 
-pub use juglar_director::{Style, Transition};
+pub use juglar_director::{Character, Style, Transition};
 pub use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
 
 const COMMON: &str = include_str!("common.wgsl");
@@ -114,6 +114,12 @@ impl fmt::Display for RenderError {
 }
 
 impl std::error::Error for RenderError {}
+
+/// What each scene is like, in the order the renderer has them, for the
+/// director to match them with music. Needs no GPU.
+pub fn scene_characters() -> Vec<Character> {
+    scene::all().iter().map(|scene| scene.character()).collect()
+}
 
 /// Which GPU and graphics API to prefer; lower is better.
 ///
@@ -410,6 +416,7 @@ impl Renderer {
     pub fn scene_names(&self) -> Vec<&'static str> {
         self.scenes.iter().map(|scene| scene.name()).collect()
     }
+
 
     /// Makes sure scene `index`'s pipelines exist: collects what the
     /// background thread has finished, and compiles the scene here if it

@@ -22,6 +22,7 @@ mod plasma;
 mod tide;
 mod vortex;
 
+pub use juglar_director::Character;
 use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
 
 pub(crate) use tide::Tide;
@@ -30,6 +31,8 @@ pub(crate) use tide::Tide;
 pub(crate) trait Scene {
     /// Shown in the window title.
     fn name(&self) -> &'static str;
+    /// What it is like, for the director to match it with music.
+    fn character(&self) -> Character;
     /// WGSL defining `sources`, `overlay` and `warp` (see `tide.wgsl`).
     fn shader(&self) -> &'static str;
     /// This frame's look. `motion` is 1 normally and 0 with reduced motion,

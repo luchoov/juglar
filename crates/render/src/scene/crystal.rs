@@ -26,7 +26,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
-use super::{Look, Palette, Scene, smooth3};
+use super::{Character, Look, Palette, Scene, smooth3};
 
 /// Violet, blue, azure, aqua, green, olive and rose, all the way around,
 /// chosen like Julia's for a narrow range of brightness (linear luminance
@@ -60,6 +60,11 @@ impl Crystal {
 impl Scene for Crystal {
     fn name(&self) -> &'static str {
         "crystal"
+    }
+
+    /// A snowflake of copies, slowly turning.
+    fn character(&self) -> Character {
+        Character { energy: 0.55, pulse: 0.5, flow: false }
     }
 
     fn shader(&self) -> &'static str {

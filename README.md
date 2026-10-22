@@ -20,12 +20,13 @@ Windows 10 or 11 with a GPU that supports Vulkan or DirectX 12, and Rust install
 cargo run --release
 ```
 
-Play anything on the system. Juglar listens to what the speakers play, with no setup.
+Play anything on the system. Juglar listens to what the speakers play, with no setup. It changes scenes by itself when the music turns a corner (a drop, a breakdown, a new song), on the beat, choosing one that suits what is playing.
 
 | Key | Does |
 |---|---|
 | `Tab` | switch between the visuals and the analysis view (what Juglar hears) |
 | `←` `→` | previous / next scene, with a short transition: *tide*, *orbits*, *kaleido*, *oil*, *plasma*, *harmonograph*, *julia*, *crystal*, *vortex*, *corona*, *melt*, *lenses* |
+| `Space` | keep the scene showing (no automatic changes) / let go |
 | `A` | natural intensity, read from the music (the default) |
 | `1` `2` `3` | fixed intensity: gentle, medium, strong |
 | `F11`, `Alt`+`Enter` or double click | fullscreen on / off |
@@ -33,6 +34,6 @@ Play anything on the system. Juglar listens to what the speakers play, with no s
 
 `cargo run --release -- --fullscreen` starts in fullscreen.
 
-The window title shows the frame rate, frame intervals, the analysis (CPU) and drawing (GPU) time per frame, the share of the screen the flash limiter is holding back (`held`), beats per second, and the scene's name.
+The window title shows the frame rate, frame intervals, the analysis (CPU) and drawing (GPU) time per frame, the share of the screen the flash limiter is holding back (`held`), beats per second, the intensity, and the scene's name, marked *(kept)* while `Space` holds it.
 
 Environment variables, until there is a settings file: `JUGLAR_FPS=36` (or any rate) lowers the target frame rate; `JUGLAR_INTENSITY=0.3` fixes the intensity (0 to 1) instead of reading it from the music; `JUGLAR_REDUCED_MOTION=1` keeps the picture still (by default Juglar follows Windows' "Show animations" setting); `JUGLAR_SCENE=oil` (or any scene's name) starts on that scene; `JUGLAR_DEMO=1` plays a silent synthetic song instead of listening, for working on visuals without music; `JUGLAR_STATS=1` also prints the title's numbers to the terminal once a second; `JUGLAR_GPU_API=vulkan` (or `dx12`) forces a graphics API, to compare their cost.

@@ -18,7 +18,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::Signals;
 
-use super::{Look, Palette, Scene, smooth3};
+use super::{Character, Look, Palette, Scene, smooth3};
 
 /// Amber, violet, sky blue and green, all the way around. Its reddest
 /// color keeps red under 72% of the light.
@@ -53,6 +53,11 @@ impl Orbits {
 impl Scene for Orbits {
     fn name(&self) -> &'static str {
         "orbits"
+    }
+
+    /// Small lights circling: gentle, but quick to answer a beat.
+    fn character(&self) -> Character {
+        Character { energy: 0.35, pulse: 0.7, flow: false }
     }
 
     fn shader(&self) -> &'static str {

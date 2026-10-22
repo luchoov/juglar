@@ -26,7 +26,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
 
-use super::{Look, Palette, Scene, smooth3};
+use super::{Character, Look, Palette, Scene, smooth3};
 
 /// Green, teal, violet, orchid, pink, gold and lime, all the way around.
 /// Red stays under 68%.
@@ -75,6 +75,11 @@ impl Vortex {
 impl Scene for Vortex {
     fn name(&self) -> &'static str {
         "vortex"
+    }
+
+    /// A tunnel of rings turning against each other, pushed by every beat.
+    fn character(&self) -> Character {
+        Character { energy: 0.9, pulse: 0.85, flow: true }
     }
 
     fn shader(&self) -> &'static str {

@@ -29,7 +29,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
-use super::{Look, Palette, Scene, smooth3};
+use super::{Character, Look, Palette, Scene, smooth3};
 
 /// Leaf green, rose, magenta, violet, blue and teal, all the way around.
 /// Chosen among looping palettes for a narrow range of brightness (linear
@@ -68,6 +68,11 @@ impl Julia {
 impl Scene for Julia {
     fn name(&self) -> &'static str {
         "julia"
+    }
+
+    /// A fractal whose shape drifts with the bass.
+    fn character(&self) -> Character {
+        Character { energy: 0.6, pulse: 0.5, flow: false }
     }
 
     fn shader(&self) -> &'static str {
