@@ -14,6 +14,7 @@ mod crystal;
 mod harmonograph;
 mod julia;
 mod kaleido;
+mod melt;
 mod oil;
 mod orbits;
 mod plasma;
@@ -48,6 +49,7 @@ pub(crate) fn all() -> Vec<Box<dyn Scene>> {
         Box::new(crystal::Crystal::new()),
         Box::new(vortex::Vortex::new()),
         Box::new(corona::Corona::new()),
+        Box::new(melt::Melt::new()),
     ]
 }
 

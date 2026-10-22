@@ -83,6 +83,12 @@ A dark disc, its rim a thin steady line, and around it a ring that gives off pai
 
 Real flames flicker several times a second, which on a screen would be flashing. These follow the spectrum smoothed in three stages and a turbulence that changes over seconds: they lick, but don't flicker.
 
+## Melt: paint running down
+
+The spectrum hangs as a band of color across the top of the picture, each point as bright as its band, bass in the middle and treble at the sides, mirrored left to right; the waveform draws a thin line along it. Nothing here zooms or turns. The warp pulls paint *down*, at a speed that changes from column to column (two layers of noise across the width, drifting), and sways the columns sideways, mirrored. So the colors run in long, wavering drips, like wax down a candle or wet paint down a wall, and change color as they run. The mirror makes a moving Rorschach blot. The bass and beats make the paint run faster, the mids sway the columns harder, a change of section reshuffles which columns run fast.
+
+Two choices keep it calm where it could flash. The band follows the spectrum smoothed in three stages of 0.3 s, which leaves under a fiftieth of a kick's swing: a band that pulsed with every kick would make every point of every drip below it pulse too. And it is one continuous band: the first version hung a row of 64 separate drops, which painted a comb of regular stripes at the top, the kind of pattern the research warns about.
+
 ## Why nothing here flashes
 
 The lesson of note 09 applies to every scene: a bright, thin shape that trembles makes the pixels along it blink. So the levels that move the lights, the rose and the blobs are smoothed in three stages, like *Tide*'s waveform, and beats push motion (speed, zoom, current) rather than brightness. Colors turn slowly: a looping palette that cycled several times a second would flash.
@@ -107,6 +113,7 @@ It counts too much rather than too little: a thin line that *moves* across a blo
 | Crystal | 0.38% | 0.000% | 0.08% / 0.000% |
 | Vortex | 0.08–0.12% | 0.002% | 0.03–0.04% / 0.000% |
 | Corona | 0.000% | 0.000% | 0.000% / 0.000% |
+| Melt | 0.002% | 0.000% | 0.000% / 0.000% |
 
 The scenes with thin moving lines (Kaleido's rose, Harmonograph's figure, Julia's ring and its echoes) score highest, the soft ones nothing. The new scenes were tuned to stay at or below the old ones. The cell column should read zero, since the limiter never lets a cell break the rule; the few cells counted are most likely the capture's doing (it misses about two frames in five, and sees the screen after dithering and Windows' compositor), but this hasn't been proved.
 
@@ -126,6 +133,7 @@ GPU time per frame on the development PC (GTX 1060, release build, music playing
 | Crystal | 0.243–0.249 ms | 0.804 ms |
 | Vortex | 0.245–0.249 ms | 0.830 ms |
 | Corona | 0.260–0.264 ms | 0.926 ms |
+| Melt | 0.241–0.243 ms | 0.829 ms |
 
 ## Further reading
 
