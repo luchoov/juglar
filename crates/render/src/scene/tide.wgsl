@@ -38,6 +38,12 @@ fn ring(p: vec2f, pixel: f32) -> f32 {
     return 1.0 - smoothstep(half_width - pixel, half_width + pixel, distance);
 }
 
+// Where the paint at `p` came from, given the warp's answer `q`: Tide adds
+// nothing to the warp.
+fn warp(p: vec2f, q: vec2f) -> vec2f {
+    return q;
+}
+
 // Paint for the feedback image: (coverage, ink × coverage, ink × palette
 // position × coverage), see `feedback.wgsl`.
 fn sources(p: vec2f, pixel: f32) -> vec3f {

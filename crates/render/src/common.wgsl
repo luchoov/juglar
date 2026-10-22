@@ -20,7 +20,9 @@ struct Frame {
     decay: f32,
     // How far older ink moves along the palette.
     palette_drift: f32,
-    _pad0: f32,
+    // 1.0 when the palette loops (positions wrap around), 0.0 when it is a
+    // path between two ends (positions are clamped).
+    palette_wrap: f32,
 
     // Eight numbers the scene's sources use as they like.
     knobs: array<vec4f, 2>,

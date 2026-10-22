@@ -202,6 +202,13 @@ impl ApplicationHandler for App {
         self.follow_display();
 
         let mut renderer = renderer;
+        // `JUGLAR_SCENE=oil` (or any scene's name) picks the first scene.
+        if let Ok(name) = std::env::var("JUGLAR_SCENE") {
+            match renderer.scene_names().iter().position(|&scene| scene == name) {
+                Some(index) => renderer.set_scene(index),
+                None => eprintln!("juglar: no scene called {name:?}; there are {:?}", renderer.scene_names()),
+            }
+        }
         renderer.set_reduced_motion(reduced_motion());
         if reduced_motion() {
             println!("Reduced motion is on: the picture stays still.");
@@ -262,10 +269,18 @@ impl App {
         }
     }
 
-    /// Tab switches between the scene and the analysis view; 1, 2 and 3
-    /// set the intensity to gentle, medium or strong.
+    /// Tab switches between the scene and the analysis view; the left and
+    /// right arrows go through the scenes; 1, 2 and 3 set the intensity to
+    /// gentle, medium or strong.
     fn key(&mut self, key: &Key) {
         match key {
+            Key::Named(step @ (NamedKey::ArrowLeft | NamedKey::ArrowRight)) => {
+                if let Some(renderer) = &mut self.renderer {
+                    let count = renderer.scene_names().len();
+                    let back = *step == NamedKey::ArrowLeft;
+                    renderer.set_scene(if back { renderer.scene() + count - 1 } else { renderer.scene() + 1 });
+                }
+            }
             Key::Named(NamedKey::Tab) => {
                 if let Some(renderer) = &mut self.renderer {
                     let next = if renderer.view() == View::Scene { View::Analysis } else { View::Scene };
@@ -309,7 +324,8 @@ impl App {
         if drawn {
             self.stats.frame(dt, analysis_time, draw_time);
         }
-        if let Some(title) = self.stats.report(now, self.source.beats()) {
+        if let Some(stats) = self.stats.report(now, self.source.beats()) {
+            let title = format!("{stats} · {}", renderer.scene_names()[renderer.scene()]);
             // Once a second: cheap enough to follow the OS setting live.
             renderer.set_reduced_motion(reduced_motion());
             if self.print_stats {

@@ -30,7 +30,7 @@ use std::num::NonZeroU64;
 use bytemuck::{Pod, Zeroable};
 use feedback::Feedback;
 use limiter::Limiter;
-use scene::{Look, Tide};
+use scene::{Look, Scene};
 use timer::GpuTimer;
 
 pub use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
@@ -64,7 +64,7 @@ struct Uniforms {
     swirl: f32,
     decay: f32,
     palette_drift: f32,
-    _pad0: f32,
+    palette_wrap: f32,
     knobs: [[f32; 4]; 2],
     palette_a: [f32; 4],
     palette_b: [f32; 4],
@@ -136,15 +136,17 @@ pub struct Renderer {
     /// Uniforms plus an image and how to filter it: feedback and composite.
     image_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
-    feedback_pipeline: wgpu::RenderPipeline,
-    composite_pipeline: wgpu::RenderPipeline,
+    /// Every scene, with its own feedback and composite pipelines: the
+    /// scene's WGSL is compiled into both.
+    scenes: Vec<(Box<dyn Scene>, wgpu::RenderPipeline, wgpu::RenderPipeline)>,
+    /// Which of `scenes` is showing.
+    scene: usize,
     analysis_pipeline: wgpu::RenderPipeline,
     analysis_bind_group: wgpu::BindGroup,
     feedback: Feedback,
     limiter: Limiter,
     /// The share of the limiter's cells held back, last time it was counted.
     held: Option<f32>,
-    scene: Tide,
     view: View,
     reduced_motion: bool,
     frames: u32,
@@ -313,21 +315,26 @@ impl Renderer {
                 cache: None,
             })
         };
-        let feedback_pipeline = pipeline(
-            "feedback",
-            &image_layout,
-            [COMMON, Tide::SHADER, include_str!("feedback.wgsl")].concat(),
-            "fs_feedback",
-            feedback::FORMAT,
-        );
-        let composite_pipeline =
-            pipeline(
-            "composite",
-            &image_layout,
-            [COMMON, Tide::SHADER, include_str!("composite.wgsl")].concat(),
-            "fs_composite",
-            limiter::CANDIDATE_FORMAT,
-        );
+        let scenes = scene::all()
+            .into_iter()
+            .map(|scene| {
+                let feedback = pipeline(
+                    "feedback",
+                    &image_layout,
+                    [COMMON, scene.shader(), include_str!("feedback.wgsl")].concat(),
+                    "fs_feedback",
+                    feedback::FORMAT,
+                );
+                let composite = pipeline(
+                    "composite",
+                    &image_layout,
+                    [COMMON, scene.shader(), include_str!("composite.wgsl")].concat(),
+                    "fs_composite",
+                    limiter::CANDIDATE_FORMAT,
+                );
+                (scene, feedback, composite)
+            })
+            .collect();
         let analysis_pipeline =
             pipeline(
             "analysis",
@@ -349,14 +356,13 @@ impl Renderer {
             uniform_buffer,
             image_layout,
             sampler,
-            feedback_pipeline,
-            composite_pipeline,
+            scenes,
+            scene: 0,
             analysis_pipeline,
             analysis_bind_group,
             feedback,
             limiter,
             held: None,
-            scene: Tide::new(),
             view: View::Scene,
             reduced_motion: false,
             frames: 0,
@@ -385,6 +391,22 @@ impl Renderer {
         self.feedback =
             Feedback::new(&self.device, &self.image_layout, &self.uniform_buffer, &self.sampler, width, height);
         self.limiter.resize(&self.device, width, height);
+    }
+
+    /// The names of the scenes, in order.
+    pub fn scene_names(&self) -> Vec<&'static str> {
+        self.scenes.iter().map(|(scene, ..)| scene.name()).collect()
+    }
+
+    /// Which scene is showing, as an index into `scene_names`.
+    pub fn scene(&self) -> usize {
+        self.scene
+    }
+
+    /// Switches to scene `index` (wrapping around). The picture carries
+    /// over and the new scene's warp takes it from there.
+    pub fn set_scene(&mut self, index: usize) {
+        self.scene = index % self.scenes.len();
     }
 
     pub fn view(&self) -> View {
@@ -437,7 +459,7 @@ impl Renderer {
         } else {
             (signals, 1.0)
         };
-        let look = self.scene.update(scene_signals, motion);
+        let look = self.scenes[self.scene].0.update(scene_signals, motion);
         self.frames = self.frames.wrapping_add(1);
         self.history[self.frames as usize % HISTORY] = [scene_signals.beat, scene_signals.novelty];
         let uniforms = self.uniforms(scene_signals, &look);
@@ -450,9 +472,10 @@ impl Renderer {
 
         match self.view {
             View::Scene => {
+                let (_, feedback_pipeline, composite_pipeline) = &self.scenes[self.scene];
                 {
                     let mut feedback = begin_pass(&mut encoder, "feedback", self.feedback.next(), timestamps(true, false));
-                    feedback.set_pipeline(&self.feedback_pipeline);
+                    feedback.set_pipeline(feedback_pipeline);
                     feedback.set_bind_group(0, self.feedback.latest(), &[]);
                     // One triangle large enough to cover the image; see `vs_main`.
                     feedback.draw(0..3, 0..1);
@@ -460,7 +483,7 @@ impl Renderer {
                 // The image just written is now the latest picture.
                 self.feedback.swap();
                 let mut composite = begin_pass(&mut encoder, "composite", self.limiter.candidate(), None);
-                composite.set_pipeline(&self.composite_pipeline);
+                composite.set_pipeline(composite_pipeline);
                 composite.set_bind_group(0, self.feedback.latest(), &[]);
                 composite.draw(0..3, 0..1);
             }
@@ -502,7 +525,7 @@ impl Renderer {
             swirl: look.swirl,
             decay: look.decay,
             palette_drift: look.palette_drift,
-            _pad0: 0.0,
+            palette_wrap: if look.palette_wrap { 1.0 } else { 0.0 },
             knobs: bytemuck::cast(look.knobs),
             palette_a: row(look.palette.a),
             palette_b: row(look.palette.b),
@@ -513,9 +536,9 @@ impl Renderer {
             beat: s.beat,
             novelty: s.novelty,
             bands: [s.bass, s.mid, s.treble, s.energy],
-            spectrum: bytemuck::cast(s.spectrum),
-            // The analysis view shows the waveform as heard; a scene may
-            // draw a calmer one.
+            spectrum: bytemuck::cast(if self.view == View::Scene { look.spectrum } else { s.spectrum }),
+            // The analysis view shows the waveform and spectrum as heard; a
+            // scene may draw calmer ones.
             waveform: bytemuck::cast(if self.view == View::Scene { look.waveform } else { s.waveform }),
             beat_history: bytemuck::cast(self.history_of(0)),
             novelty_history: bytemuck::cast(self.history_of(1)),

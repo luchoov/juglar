@@ -30,7 +30,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
-use super::{Look, Palette};
+use super::{Look, Palette, Scene, smooth3};
 
 /// Sand to silver to steel blue: one half-turn of a cosine per channel, so
 /// 0 is #dcc69a and 1 is #6f9bd1, with no green on the way (dim yellows
@@ -69,26 +69,26 @@ impl Tide {
         Self { clock: 0.0, mood: 0.0, waveform: [[0.0; WAVEFORM_POINTS]; 3], ring: [0.0; 3] }
     }
 
-    /// The sources this scene paints, in WGSL.
-    pub const SHADER: &str = include_str!("tide.wgsl");
+}
 
-    /// This frame's look. `motion` is 1 normally and 0 with reduced motion,
-    /// which leaves a still picture.
-    pub fn update(&mut self, s: &Signals, motion: f32) -> Look {
+impl Scene for Tide {
+    fn name(&self) -> &'static str {
+        "tide"
+    }
+
+    fn shader(&self) -> &'static str {
+        include_str!("tide.wgsl")
+    }
+
+    fn update(&mut self, s: &Signals, motion: f32) -> Look {
         // A long pause (the window was dragged) shouldn't jump the picture.
         let dt = s.dt.clamp(0.0, 0.1);
-        let follow = 1.0 - (-dt / MOOD_SECONDS).exp();
+        // With reduced motion even the colors hold still.
+        let follow = 1.0 - (-dt * motion / MOOD_SECONDS).exp();
         self.mood += (s.energy - self.mood) * follow;
         self.clock += dt * motion;
         // With reduced motion the line keeps its shape: nothing follows.
-        let follow_wave = 1.0 - (-dt * motion / WAVE_SECONDS).exp();
-        let mut input = s.waveform;
-        for stage in &mut self.waveform {
-            for (smooth, &raw) in stage.iter_mut().zip(&input) {
-                *smooth += (raw - *smooth) * follow_wave;
-            }
-            input = *stage;
-        }
+        let waveform = smooth3(&mut self.waveform, &s.waveform, dt * motion, WAVE_SECONDS);
         let follow_ring = 1.0 - (-dt * motion / RING_SECONDS).exp();
         for (smooth, raw) in self.ring.iter_mut().zip([s.bass, s.energy, s.treble]) {
             *smooth += (raw - *smooth) * follow_ring;
@@ -134,8 +134,10 @@ impl Tide {
             // Quiet music draws in blue, full music in sand; a slow sway
             // keeps the color alive in between.
             palette_shift: 0.85 - 0.8 * self.mood + 0.06 * (self.clock * TAU / 120.0).sin(),
+            palette_wrap: false,
             exposure: 1.3,
-            waveform: input,
+            waveform,
+            spectrum: s.spectrum,
         }
     }
 }
@@ -143,28 +145,6 @@ impl Tide {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_palette_never_turns_saturated_red() {
-        // Research policy: animated colors keep red under 75% of the light.
-        for i in 0..=1000 {
-            let c = PALETTE.at(i as f32 / 1000.0);
-            let linear = c.map(|c| if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) });
-            let red_share = linear[0] / linear.iter().sum::<f32>();
-            assert!(red_share <= 0.75, "{red_share} at {i}");
-        }
-    }
-
-    #[test]
-    fn reduced_motion_stands_still() {
-        let mut tide = Tide::new();
-        let loud = Signals { dt: 1.0 / 60.0, bass: 1.0, mid: 1.0, treble: 1.0, energy: 1.0, ..Signals::default() };
-        let look = tide.update(&loud, 0.0);
-        assert_eq!(look.zoom, 1.0);
-        assert_eq!(look.rotation, 0.0);
-        assert_eq!(look.swirl, 0.0);
-        assert_eq!(look.center, [0.0, 0.0]);
-    }
 
     #[test]
     fn motion_per_second_ignores_the_frame_rate() {

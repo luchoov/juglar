@@ -12,7 +12,8 @@
 // composite step recovers the position as g / r. Storing positions instead
 // of colors lets older paint drift along the palette as it ages.
 //
-// `common.wgsl` and the scene's `sources` function come before this file.
+// `common.wgsl` and the scene's `sources` and `warp` functions come before
+// this file.
 
 @group(0) @binding(1) var previous: texture_2d<f32>;
 @group(0) @binding(2) var smooth_sampler: sampler;
@@ -29,7 +30,8 @@ fn fs_feedback(@builtin(position) position: vec4f) -> @location(0) vec4f {
     // makes its content grow outward). The swirl turns the middle more than
     // the edges, which bends straight trails into spirals.
     let turn = frame.rotation + frame.swirl * (1.0 - smoothstep(0.0, 0.7, length(p)));
-    let q = rotate(p, -turn) / frame.zoom;
+    // The scene may move it further (`warp`): a flow, a mirror fold.
+    let q = warp(p, rotate(p, -turn) / frame.zoom);
     let uv = ((q + frame.center) * unit + 0.5 * size) / size;
 
     // Filtered between the four nearest pixels, so motion of a fraction of

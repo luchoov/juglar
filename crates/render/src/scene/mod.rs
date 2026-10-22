@@ -1,16 +1,55 @@
 //! Scenes: what is drawn, how it moves and which colors it uses.
 //!
 //! The renderer runs the same feedback and composite steps for any scene. A
-//! scene supplies two things: a WGSL `sources` function that paints into the
-//! feedback image, and a `Look` each frame that sets the warp, the knobs its
-//! sources read, and the palette. Milestone 6's generator will compose these
-//! from building blocks; for now there is one hand-made scene, `Tide`.
+//! scene supplies two things: WGSL functions (`sources`, painted faintly into
+//! the feedback image; `overlay`, painted sharply on top; `warp`, which can
+//! bend where each point's old paint comes from), and a `Look` each frame
+//! that sets the warp, the knobs its shader reads, and the palette.
+//! Milestone 6's generator will compose these from building blocks; for now
+//! the scenes are hand-made, each trying a different idea, and the arrow
+//! keys switch between them.
 
+mod kaleido;
+mod oil;
+mod orbits;
 mod tide;
 
-use juglar_signals::WAVEFORM_POINTS;
+use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
 
 pub(crate) use tide::Tide;
+
+/// A scene: its shader and how it follows the music.
+pub(crate) trait Scene {
+    /// Shown in the window title.
+    fn name(&self) -> &'static str;
+    /// WGSL defining `sources`, `overlay` and `warp` (see `tide.wgsl`).
+    fn shader(&self) -> &'static str;
+    /// This frame's look. `motion` is 1 normally and 0 with reduced motion,
+    /// which must leave a still picture.
+    fn update(&mut self, s: &Signals, motion: f32) -> Look;
+}
+
+/// Every scene, in the order the arrow keys go through them.
+pub(crate) fn all() -> Vec<Box<dyn Scene>> {
+    vec![Box::new(Tide::new()), Box::new(orbits::Orbits::new()), Box::new(kaleido::Kaleido::new()), Box::new(oil::Oil::new())]
+}
+
+/// Follows `target` over time in three stages, each a running average
+/// that takes `seconds` to catch up. One stage alone would still take a
+/// small random step every frame when the target is noisy; three leave a
+/// smooth path. A thin bright line drawn from a noisy signal must be
+/// smoothed like this, or the pixels along it blink (see `tide.rs`).
+pub(crate) fn smooth3<const N: usize>(stages: &mut [[f32; N]; 3], target: &[f32; N], dt: f32, seconds: f32) -> [f32; N] {
+    let follow = 1.0 - (-dt / seconds).exp();
+    let mut input = *target;
+    for stage in stages {
+        for (smooth, &raw) in stage.iter_mut().zip(&input) {
+            *smooth += (raw - *smooth) * follow;
+        }
+        input = *stage;
+    }
+    input
+}
 
 /// A cosine palette: `color(t) = a + b·cos(2π(c·t + d))`, per channel, in
 /// sRGB. Four triples describe a smooth loop of colors.
@@ -56,8 +95,49 @@ pub(crate) struct Look {
     pub palette: Palette,
     /// Added to every palette position: turns the whole picture's colors.
     pub palette_shift: f32,
+    /// Whether the palette loops (positions wrap) or runs between two ends.
+    pub palette_wrap: bool,
     /// How bright a given amount of ink looks.
     pub exposure: f32,
-    /// The waveform the scene draws, which may be calmer than the one heard.
+    /// The waveform and spectrum the scene draws, which may be calmer than
+    /// the ones heard.
     pub waveform: [f32; WAVEFORM_POINTS],
+    pub spectrum: [f32; SPECTRUM_BANDS],
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn loud() -> Signals {
+        Signals { dt: 1.0 / 60.0, bass: 1.0, mid: 1.0, treble: 1.0, energy: 1.0, beat: 1.0, novelty: 1.0, intensity: 1.0, ..Signals::default() }
+    }
+
+    #[test]
+    fn no_palette_turns_saturated_red() {
+        // Research policy: animated colors keep red under 75% of the light.
+        for mut scene in all() {
+            let look = scene.update(&loud(), 1.0);
+            for i in 0..=1000 {
+                let c = look.palette.at(i as f32 / 1000.0);
+                let linear = c.map(|c| if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) });
+                let red_share = linear[0] / linear.iter().sum::<f32>();
+                assert!(red_share <= 0.75, "{}: {red_share} at {i}", scene.name());
+            }
+        }
+    }
+
+    #[test]
+    fn reduced_motion_stands_still() {
+        for mut scene in all() {
+            let first = scene.update(&loud(), 0.0);
+            let second = scene.update(&loud(), 0.0);
+            assert_eq!(second.zoom, 1.0, "{}", scene.name());
+            assert_eq!(second.rotation, 0.0, "{}", scene.name());
+            assert_eq!(second.swirl, 0.0, "{}", scene.name());
+            assert_eq!(first.knobs, second.knobs, "{}", scene.name());
+            assert_eq!(first.center, second.center, "{}", scene.name());
+            assert_eq!(first.palette_shift, second.palette_shift, "{}", scene.name());
+        }
+    }
 }
