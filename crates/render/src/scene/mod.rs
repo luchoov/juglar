@@ -9,9 +9,11 @@
 //! the scenes are hand-made, each trying a different idea, and the arrow
 //! keys switch between them.
 
+mod harmonograph;
 mod kaleido;
 mod oil;
 mod orbits;
+mod plasma;
 mod tide;
 
 use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
@@ -31,7 +33,14 @@ pub(crate) trait Scene {
 
 /// Every scene, in the order the arrow keys go through them.
 pub(crate) fn all() -> Vec<Box<dyn Scene>> {
-    vec![Box::new(Tide::new()), Box::new(orbits::Orbits::new()), Box::new(kaleido::Kaleido::new()), Box::new(oil::Oil::new())]
+    vec![
+        Box::new(Tide::new()),
+        Box::new(orbits::Orbits::new()),
+        Box::new(kaleido::Kaleido::new()),
+        Box::new(oil::Oil::new()),
+        Box::new(plasma::Plasma::new()),
+        Box::new(harmonograph::Harmonograph::new()),
+    ]
 }
 
 /// Follows `target` over time in three stages, each a running average
@@ -102,7 +111,8 @@ pub(crate) struct Look {
     /// How much the bright parts glow (0 = none, 1 = strong; see `bloom.rs`).
     pub bloom: f32,
     /// The waveform and spectrum the scene draws, which may be calmer than
-    /// the ones heard.
+    /// the ones heard. A scene that doesn't draw the waveform may fill its
+    /// slots with numbers of its own (Harmonograph: its figure).
     pub waveform: [f32; WAVEFORM_POINTS],
     pub spectrum: [f32; SPECTRUM_BANDS],
 }

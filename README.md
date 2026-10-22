@@ -25,7 +25,7 @@ Play anything on the system. Juglar listens to what the speakers play, with no s
 | Key | Does |
 |---|---|
 | `Tab` | switch between the visuals and the analysis view (what Juglar hears) |
-| `←` `→` | previous / next scene: *tide*, *orbits*, *kaleido*, *oil* |
+| `←` `→` | previous / next scene: *tide*, *orbits*, *kaleido*, *oil*, *plasma*, *harmonograph* |
 | `1` `2` `3` | intensity: gentle, medium, strong |
 | `Esc` | close |
 
