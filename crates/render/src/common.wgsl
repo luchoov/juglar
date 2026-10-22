@@ -52,6 +52,9 @@ struct Frame {
     // has come, 0..1; y = its style; z = how soft its edge is; w = a seed
     // that makes each one's edge different.
     reveal: vec4f,
+    // A calm mode (`composite.wgsl`): x = how much color is kept, y and z =
+    // the luminance floor and ceiling, w = how far it has faded in.
+    calm: vec4f,
 }
 
 @group(0) @binding(0) var<uniform> frame: Frame;

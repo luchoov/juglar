@@ -42,7 +42,7 @@ use limiter::Limiter;
 use scene::{Look, Scene};
 use timer::GpuTimer;
 
-pub use juglar_director::{Character, Style, Transition};
+pub use juglar_director::{Calm, Character, Style, Transition};
 pub use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
 
 const COMMON: &str = include_str!("common.wgsl");
@@ -93,10 +93,14 @@ struct Uniforms {
     novelty_history: [[f32; 4]; HISTORY / 4],
     /// The transition: progress, style, edge softness, seed.
     reveal: [f32; 4],
+    /// A calm mode: saturation, floor, ceiling, how far it has come in.
+    calm: [f32; 4],
 }
 
 /// Frames of beat and novelty the analysis view shows: about two seconds.
 const HISTORY: usize = 128;
+/// Seconds a calm mode takes to fade in or out.
+const CALM_FADE: f32 = 3.0;
 
 #[derive(Debug)]
 pub struct RenderError(String);
@@ -199,6 +203,11 @@ pub struct Renderer {
     held: Option<f32>,
     view: View,
     reduced_motion: bool,
+    /// The calm mode asked for, or the last one while it fades out.
+    calm: Calm,
+    calm_on: bool,
+    /// How far the calm mode has faded in, 0..1.
+    calm_amount: f32,
     frames: u32,
     /// Beat and novelty of the last `HISTORY` frames, circular.
     history: [[f32; 2]; HISTORY],
@@ -382,6 +391,9 @@ impl Renderer {
             held: None,
             view: View::Scene,
             reduced_motion: false,
+            calm: Calm { motion: 1.0, saturation: 1.0, floor: 0.0, ceiling: 1.0 },
+            calm_on: false,
+            calm_amount: 0.0,
             frames: 0,
             history: [[0.0; 2]; HISTORY],
             encode_srgb: !format.is_srgb(),
@@ -494,6 +506,17 @@ impl Renderer {
         self.reduced_motion = reduced;
     }
 
+    /// A calm mode's look (slower, muted, low in contrast, no camera
+    /// flow), or `None` for the scenes as they are. It fades in and out
+    /// over `CALM_FADE` seconds: switching the whole screen's contrast at
+    /// once would be a flash.
+    pub fn set_calm(&mut self, calm: Option<Calm>) {
+        if let Some(calm) = calm {
+            self.calm = calm;
+        }
+        self.calm_on = calm.is_some();
+    }
+
     /// Draws one frame. Returns `false` when nothing could be drawn (the
     /// window is minimized or hidden), so the caller can slow down.
     ///
@@ -535,13 +558,17 @@ impl Renderer {
             }
         }
 
+        let fade = signals.dt / CALM_FADE;
+        self.calm_amount = (self.calm_amount + if self.calm_on { fade } else { -fade }).clamp(0.0, 1.0);
+        let calm = self.calm_amount;
+
         // Reduced motion: the scenes see silence and no time passing.
         let still;
         let (scene_signals, motion) = if self.reduced_motion {
             still = Signals { dt: signals.dt, intensity: signals.intensity, ..Signals::default() };
             (&still, 0.0)
         } else {
-            (signals, 1.0)
+            (signals, 1.0 + (self.calm.motion - 1.0) * calm)
         };
         self.frames = self.frames.wrapping_add(1);
         self.history[self.frames as usize % HISTORY] = [scene_signals.beat, scene_signals.novelty];
@@ -564,7 +591,12 @@ impl Renderer {
         let drawn: &[usize] = if self.crossing.is_some() { &[front, back] } else { &[front] };
         let mut looks = Vec::with_capacity(2);
         for &i in drawn {
-            let look = self.scenes[self.layers[i].scene].update(scene_signals, motion);
+            let mut look = self.scenes[self.layers[i].scene].update(scene_signals, motion);
+            // A calm mode holds the camera still: no zoom, turn or swirl of
+            // the whole picture.
+            look.zoom = look.zoom.powf(1.0 - calm);
+            look.rotation *= 1.0 - calm;
+            look.swirl *= 1.0 - calm;
             let uniforms = self.uniforms(scene_signals, &look, reveal);
             self.queue.write_buffer(&self.layers[i].uniforms, 0, bytemuck::bytes_of(&uniforms));
             looks.push(look);
@@ -672,6 +704,7 @@ impl Renderer {
             beat_history: bytemuck::cast(self.history_of(0)),
             novelty_history: bytemuck::cast(self.history_of(1)),
             reveal,
+            calm: [self.calm.saturation, self.calm.floor, self.calm.ceiling, self.calm_amount],
         }
     }
 
@@ -877,6 +910,7 @@ mod tests {
         assert_eq!(std::mem::offset_of!(Uniforms, beat_history), 1344);
         assert_eq!(std::mem::offset_of!(Uniforms, novelty_history), 1344 + 32 * 16);
         assert_eq!(std::mem::offset_of!(Uniforms, reveal), 1344 + 64 * 16);
-        assert_eq!(size_of::<Uniforms>(), 1344 + 64 * 16 + 16);
+        assert_eq!(std::mem::offset_of!(Uniforms, calm), 1344 + 64 * 16 + 16);
+        assert_eq!(size_of::<Uniforms>(), 1344 + 64 * 16 + 32);
     }
 }

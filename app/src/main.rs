@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use juglar_director::{Director, Intensity, Style, Transition};
+use juglar_director::{Director, Intensity, Mode, Style, Transition};
 use juglar_dsp::{Analyzer, Consumer, FFT_SIZE, SCOPE_POINTS, Scope, ring};
 use juglar_platform::{AudioCapture, PlatformError, SystemAudio};
 use juglar_render::{Renderer, View};
@@ -246,6 +246,13 @@ impl ApplicationHandler for App {
         if self.still {
             println!("Reduced motion is on: the picture stays still.");
         }
+        // `JUGLAR_MODE=focus` (or `relax`) starts in a calm mode.
+        match std::env::var("JUGLAR_MODE").as_deref() {
+            Ok("focus") => self.set_mode(Mode::Focus, &mut renderer),
+            Ok("relax") => self.set_mode(Mode::Relax, &mut renderer),
+            Ok("lively") | Err(_) => {}
+            Ok(other) => eprintln!("juglar: no mode called {other:?}; there are lively, focus and relax"),
+        }
         self.renderer = Some(renderer);
         self.last_frame = Instant::now();
     }
@@ -344,10 +351,16 @@ impl App {
         }
     }
 
+    fn set_mode(&mut self, mode: Mode, renderer: &mut Renderer) {
+        self.director.set_mode(mode);
+        renderer.set_calm(mode.calm());
+    }
+
     /// Tab switches between the scene and the analysis view; the left and
     /// right arrows go through the scenes, and space keeps the one showing;
     /// 1, 2 and 3 fix the intensity at gentle, medium or strong, and A lets
-    /// the music set it; F11 and Alt+Enter switch fullscreen.
+    /// the music set it; M goes through the modes (lively, focus, relax);
+    /// F11 and Alt+Enter switch fullscreen.
     fn key(&mut self, key: &Key) {
         match key {
             Key::Named(NamedKey::F11) => self.toggle_fullscreen(),
@@ -376,6 +389,12 @@ impl App {
                 if let Some(renderer) = &mut self.renderer {
                     let next = if renderer.view() == View::Scene { View::Analysis } else { View::Scene };
                     renderer.set_view(next);
+                }
+            }
+            Key::Character(c) if c.eq_ignore_ascii_case("m") => {
+                if let Some(mut renderer) = self.renderer.take() {
+                    self.set_mode(self.director.mode().next(), &mut renderer);
+                    self.renderer = Some(renderer);
                 }
             }
             Key::Character(c) if c.eq_ignore_ascii_case("a") => {
@@ -442,8 +461,12 @@ impl App {
                 Intensity::Fixed(_) => "intensity",
             };
             let kept = if self.director.holding() { " (kept)" } else { "" };
+            let mode = match self.director.mode() {
+                Mode::Lively => String::new(),
+                calm => format!(" · {}", calm.name()),
+            };
             let title = format!(
-                "{stats} · {intensity} {:.2} · {}{kept}",
+                "{stats}{mode} · {intensity} {:.2} · {}{kept}",
                 self.signals.intensity,
                 renderer.scene_names()[renderer.scene()]
             );

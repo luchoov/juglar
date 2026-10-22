@@ -80,8 +80,21 @@ fn composite(position: vec2f) -> vec3f {
     let lit = 1.0 - (1.0 - light) * (1.0 - glow);
     // A faint vignette keeps the eye in the middle.
     let edge = length(uv - 0.5) * 1.4;
-    let c = BACKGROUND * (1.0 - 0.5 * edge * edge) + lit;
-    return clamp(c, vec3f(0.0), vec3f(1.0));
+    let c = clamp(BACKGROUND * (1.0 - 0.5 * edge * edge) + lit, vec3f(0.0), vec3f(1.0));
+    return calm_look(c);
+}
+
+// The calm modes: colors pulled toward gray, and luminance squeezed between
+// a floor and a ceiling, so nothing is dark against bright anywhere by more
+// than their gap. A floor above black is a cool gray. Mixed in by how far
+// the mode has faded in.
+fn calm_look(c: vec3f) -> vec3f {
+    let luma = dot(c, vec3f(0.2126, 0.7152, 0.0722));
+    let muted = mix(vec3f(luma), c, frame.calm.x);
+    // Same luminance as gray of `floor`, a little cooler.
+    let floor = frame.calm.y * vec3f(0.94, 1.0, 1.1) / dot(vec3f(0.94, 1.0, 1.1), vec3f(0.2126, 0.7152, 0.0722));
+    let squeezed = floor + (frame.calm.z - frame.calm.y) * muted;
+    return mix(c, squeezed, frame.calm.w);
 }
 
 @fragment

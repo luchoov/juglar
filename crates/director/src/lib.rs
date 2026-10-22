@@ -9,11 +9,13 @@
 
 pub mod feel;
 pub mod intensity;
+pub mod mode;
 pub mod schedule;
 pub mod transition;
 
 pub use feel::{Feel, Listener};
 pub use intensity::NaturalIntensity;
+pub use mode::{Calm, Mode, Quieter};
 pub use schedule::{Change, Character, Moment, Pacing, Schedule};
 pub use transition::{Style, Transition};
 
@@ -33,6 +35,8 @@ pub struct Director {
     natural: NaturalIntensity,
     intensity: Intensity,
     schedule: Schedule,
+    mode: Mode,
+    quieter: Quieter,
 }
 
 impl Director {
@@ -47,7 +51,20 @@ impl Director {
             natural: NaturalIntensity::new(start),
             intensity,
             schedule: Schedule::new(characters, Pacing::LIVELY),
+            mode: Mode::Lively,
+            quieter: Quieter::new(),
         }
+    }
+
+    pub fn mode(&self) -> Mode {
+        self.mode
+    }
+
+    /// Switches mode: how scenes change, and how much of the music the
+    /// scenes get to hear.
+    pub fn set_mode(&mut self, mode: Mode) {
+        self.mode = mode;
+        self.schedule.set_pacing(mode.pacing());
     }
 
     pub fn intensity(&self) -> Intensity {
@@ -90,10 +107,15 @@ impl Director {
         let beat = self.listener.is_beat(s);
         let feel = self.listener.update(s);
         let natural = self.natural.update(&feel, s.dt);
-        s.intensity = match self.intensity {
-            Intensity::Natural => natural,
-            Intensity::Fixed(value) => value,
+        s.intensity = match (self.mode.intensity(), self.intensity) {
+            (Some(calm), _) => calm,
+            (None, Intensity::Natural) => natural,
+            (None, Intensity::Fixed(value)) => value,
         };
-        self.schedule.update(s, &feel, beat, scene, busy)
+        let change = self.schedule.update(s, &feel, beat, scene, busy);
+        // The scenes hear the music as faintly as the mode asks; the
+        // decisions above heard all of it.
+        self.quieter.apply(self.mode, s);
+        change
     }
 }

@@ -29,6 +29,7 @@ Play anything on the system. Juglar listens to what the speakers play, with no s
 | `Space` | keep the scene showing (no automatic changes) / let go |
 | `A` | natural intensity, read from the music (the default) |
 | `1` `2` `3` | fixed intensity: gentle, medium, strong |
+| `M` | mode: lively (the default), focus, relax: calmer, dimmer and muted, changing scenes rarely (see below) |
 | `F11`, `Alt`+`Enter` or double click | fullscreen on / off |
 | `Esc` | leave fullscreen; from a window, close |
 
@@ -36,4 +37,6 @@ Play anything on the system. Juglar listens to what the speakers play, with no s
 
 The window title shows the frame rate, frame intervals, the analysis (CPU) and drawing (GPU) time per frame, the share of the screen the flash limiter is holding back (`held`), beats per second, the intensity, and the scene's name, marked *(kept)* while `Space` holds it.
 
-Environment variables, until there is a settings file: `JUGLAR_FPS=36` (or any rate) lowers the target frame rate; `JUGLAR_INTENSITY=0.3` fixes the intensity (0 to 1) instead of reading it from the music; `JUGLAR_REDUCED_MOTION=1` keeps the picture still (by default Juglar follows Windows' "Show animations" setting); `JUGLAR_SCENE=oil` (or any scene's name) starts on that scene; `JUGLAR_DEMO=1` plays a silent synthetic song instead of listening, for working on visuals without music; `JUGLAR_STATS=1` also prints the title's numbers to the terminal once a second; `JUGLAR_GPU_API=vulkan` (or `dx12`) forces a graphics API, to compare their cost.
+**Focus** and **relax** are style options for when the music matters more than the picture: motion slowed to a crawl and no camera flow, colors muted, the picture dimmed and low in contrast, scenes held for minutes and changed by a slow seep, and the music followed only faintly. They come from the limits in `docs/research/focus-and-relaxation.md` and claim nothing about attention or stress.
+
+Environment variables, until there is a settings file: `JUGLAR_FPS=36` (or any rate) lowers the target frame rate; `JUGLAR_INTENSITY=0.3` fixes the intensity (0 to 1) instead of reading it from the music; `JUGLAR_REDUCED_MOTION=1` keeps the picture still (by default Juglar follows Windows' "Show animations" setting); `JUGLAR_SCENE=oil` (or any scene's name) starts on that scene; `JUGLAR_MODE=focus` (or `relax`) starts in that mode; `JUGLAR_DEMO=1` plays a silent synthetic song instead of listening, for working on visuals without music; `JUGLAR_STATS=1` also prints the title's numbers to the terminal once a second; `JUGLAR_GPU_API=vulkan` (or `dx12`) forces a graphics API, to compare their cost.
