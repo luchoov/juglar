@@ -33,13 +33,18 @@ struct Frame {
     palette_d: vec4f,
     palette_shift: f32,
     exposure: f32,
-    _pad1: vec2f,
+    // 1 at a beat, falling to 0; and how much the music is changing.
+    beat: f32,
+    novelty: f32,
 
     // x = bass, y = mid, z = treble, w = energy.
     bands: vec4f,
     // Four values per row: GPU uniform memory is laid out in 16-byte rows.
     spectrum: array<vec4f, 8>,
     waveform: array<vec4f, 64>,
+    // The last 128 frames of beat and novelty, oldest first.
+    beat_history: array<vec4f, 32>,
+    novelty_history: array<vec4f, 32>,
 }
 
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -72,6 +77,16 @@ fn spectrum(i: u32) -> f32 {
 
 fn waveform(i: u32) -> f32 {
     return frame.waveform[i / 4u][i % 4u];
+}
+
+const HISTORY: u32 = 128u;
+
+fn beat_history(i: u32) -> f32 {
+    return frame.beat_history[i / 4u][i % 4u];
+}
+
+fn novelty_history(i: u32) -> f32 {
+    return frame.novelty_history[i / 4u][i % 4u];
 }
 
 fn knob(i: u32) -> f32 {

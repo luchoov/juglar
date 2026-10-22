@@ -29,11 +29,12 @@ pub struct Signals {
     pub treble: f32,
     /// Overall loudness.
     pub energy: f32,
-    /// 1 on a beat, falling back to 0 before the next one. Audio fills this
-    /// in from Milestone 5; until then it stays 0.
+    /// 1 on a beat, falling back to 0 before the next one. From audio, a
+    /// beat is a detected onset in the low or middle range (kicks, snares);
+    /// the tempo isn't tracked yet (Milestone 5.5).
     pub beat: f32,
-    /// High when the music changes character (a drop, a new section).
-    /// Audio fills this in from Milestone 5; until then it stays 0.
+    /// High when the music changes character (a drop, a new section),
+    /// fading over a few seconds as the change becomes the new normal.
     pub novelty: f32,
     /// How lively the visuals may be: 0 is calm, 1 is strong. Set by the
     /// user, or derived from the music in auto mode (Milestone 6).

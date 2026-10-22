@@ -76,6 +76,14 @@ impl Source {
             Source::Demo(song) => song.next(dt, out),
         }
     }
+
+    /// Beats heard since the start; the synthetic song's are known, not heard.
+    fn beats(&self) -> Option<u64> {
+        match self {
+            Source::Audio(listening) => Some(listening.analyzer.beats()),
+            Source::Demo(_) => None,
+        }
+    }
 }
 
 /// System audio capture and its analysis.
@@ -111,8 +119,7 @@ impl Listening {
         })
     }
 
-    /// Drains the new audio and analyzes it. Beat and novelty stay 0 until
-    /// Milestone 5 detects them.
+    /// Drains the new audio and analyzes it.
     fn update(&mut self, dt: f32, out: &mut Signals) {
         let n = self.consumer.pop(&mut self.block);
         self.analyzer.push(&self.block[..n]);
@@ -123,6 +130,8 @@ impl Listening {
         out.mid = analysis.mid;
         out.treble = analysis.treble;
         out.energy = analysis.energy;
+        out.beat = analysis.beat;
+        out.novelty = analysis.novelty;
         out.spectrum = analysis.spectrum;
         self.analyzer.recent(&mut self.recent);
         out.waveform = *self.scope.update(&self.recent, dt);
@@ -297,7 +306,7 @@ impl App {
         if drawn {
             self.stats.frame(dt, analysis_time, draw_time);
         }
-        if let Some(title) = self.stats.report(now) {
+        if let Some(title) = self.stats.report(now, self.source.beats()) {
             // Once a second: cheap enough to follow the OS setting live.
             renderer.set_reduced_motion(reduced_motion());
             if self.print_stats {
@@ -363,11 +372,13 @@ struct Stats {
     /// Wall-clock time spent recording, submitting and presenting frames.
     draw: Duration,
     gpu_ms: Vec<f32>,
+    /// The beat count when this second started.
+    beats: Option<u64>,
 }
 
 impl Stats {
     fn new() -> Self {
-        Self { since: Instant::now(), frames: 0, shortest: f32::MAX, longest: 0.0, analysis: Duration::ZERO, draw: Duration::ZERO, gpu_ms: Vec::new() }
+        Self { since: Instant::now(), frames: 0, shortest: f32::MAX, longest: 0.0, analysis: Duration::ZERO, draw: Duration::ZERO, gpu_ms: Vec::new(), beats: None }
     }
 
     fn frame(&mut self, dt: f32, analysis: Duration, draw: Duration) {
@@ -379,7 +390,7 @@ impl Stats {
     }
 
     /// Once a second, the title summarizing it.
-    fn report(&mut self, now: Instant) -> Option<String> {
+    fn report(&mut self, now: Instant, beats: Option<u64>) -> Option<String> {
         let elapsed = (now - self.since).as_secs_f32();
         if elapsed < 1.0 {
             return None;
@@ -398,8 +409,12 @@ impl Stats {
             let gpu = self.gpu_ms.iter().sum::<f32>() / self.gpu_ms.len() as f32;
             title += &format!(" · gpu {gpu:.3} ms");
         }
+        if let (Some(start), Some(end)) = (self.beats, beats) {
+            title += &format!(" · beats {:.1}/s", (end - start) as f32 / elapsed);
+        }
         *self = Self::new();
         self.since = now;
+        self.beats = beats;
         Some(title)
     }
 }

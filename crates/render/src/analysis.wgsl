@@ -15,6 +15,10 @@ const FOREGROUND: u32 = 0xd4d4d8u;
 const BASS: u32 = 0x5b7fa6u;
 const MID: u32 = 0x5f9488u;
 const TREBLE: u32 = 0xa39a78u;
+// Beats are drawn dim on purpose: a bright mark that lights up on every beat
+// would itself be a flashing light (see docs/research/focus-and-relaxation.md).
+const BEAT: u32 = 0x45454du;
+const NOVELTY: u32 = 0x8b8b94u;
 
 // Spectrum bars below this index are in the bass range (under 250 Hz), from
 // it up to `FIRST_TREBLE_BAR` in the mid range (under 4 kHz). The 32 bars are
@@ -80,10 +84,10 @@ fn fs_analysis(@builtin(position) position: vec4f) -> @location(0) vec4f {
         c = mix(c, color(FOREGROUND), 1.0 - smoothstep(0.4, 1.4, distance));
     }
 
-    // Spectrum bars and band meters: the lower half.
+    // Spectrum bars and meters: the lower half.
     let bars_top = top + height * 0.5;
     let bars_height = bottom - bars_top;
-    let meters_width = floor((right - left) * 0.14);
+    let meters_width = floor((right - left) * 0.2);
     let spectrum_right = right - meters_width - floor(margin * 0.5);
     if p.y >= bars_top && p.y < bottom {
         if p.x >= left && p.x < spectrum_right {
@@ -95,16 +99,35 @@ fn fs_analysis(@builtin(position) position: vec4f) -> @location(0) vec4f {
                 c = mix(c, bar_color(i), below(p.y, bottom - spectrum(i) * bars_height));
             }
         }
+        // Six meters: bass, mid, treble, energy, beat, novelty.
         let meters_left = right - meters_width;
         if p.x >= meters_left && p.x < right {
-            let step = meters_width / 4.0;
-            let i = min(u32((p.x - meters_left) / step), 3u);
+            let step = meters_width / 6.0;
+            let i = min(u32((p.x - meters_left) / step), 5u);
             let gap = max(1.0, floor(step * 0.25));
             if p.x < floor(meters_left + f32(i + 1u) * step) - gap {
-                var meter = array<vec3f, 4>(color(BASS), color(MID), color(TREBLE), color(FOREGROUND));
+                var meter = array<vec3f, 6>(color(BASS), color(MID), color(TREBLE), color(FOREGROUND), color(BEAT), color(NOVELTY));
+                var level = array<f32, 6>(frame.bands.x, frame.bands.y, frame.bands.z, frame.bands.w, frame.beat, frame.novelty);
                 c = color(TRACK);
-                c = mix(c, meter[i], below(p.y, bottom - frame.bands[i] * bars_height));
+                c = mix(c, meter[i], below(p.y, bottom - level[i] * bars_height));
             }
+        }
+    }
+
+    // Timeline between the waveform and the bars: the last two seconds of
+    // beats (dim spikes) and novelty (a line), newest on the right.
+    let strip_top = top + height * 0.41;
+    let strip_bottom = floor(top + height * 0.47) + 0.5;
+    if p.x >= left && p.x < right && p.y >= strip_top && p.y < strip_bottom + 1.0 {
+        let t = (p.x - left) / (right - left) * f32(HISTORY - 1u);
+        let i = min(u32(t), HISTORY - 2u);
+        let strip = strip_bottom - strip_top;
+        c = mix(c, color(BEAT), below(p.y, strip_bottom - beat_history(u32(round(t))) * strip));
+        let n = mix(novelty_history(i), novelty_history(i + 1u), t - f32(i));
+        let distance = abs(p.y - (strip_bottom - n * strip));
+        c = mix(c, color(NOVELTY), 1.0 - smoothstep(0.4, 1.4, distance));
+        if abs(p.y - strip_bottom) < 0.5 {
+            c = max(c, color(LINE));
         }
     }
 

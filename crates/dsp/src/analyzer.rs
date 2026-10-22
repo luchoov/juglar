@@ -7,6 +7,7 @@
 
 use crate::fft::{Complex, Fft};
 use crate::level::to_dbfs;
+use crate::onset::Onsets;
 use crate::smoothing::{AutoGain, Envelope};
 use crate::window::hann;
 
@@ -47,13 +48,17 @@ pub struct Analysis {
     /// Log-spaced bands from low to high. They share one auto-gain, so their
     /// relative heights keep the shape of the spectrum.
     pub spectrum: [f32; SPECTRUM_BANDS],
+    /// 1 at a beat (an onset in the low or middle region), falling to 0.
+    pub beat: f32,
+    /// How much the music is changing character (see `onset`).
+    pub novelty: f32,
 }
 
 /// A half-open range of FFT bins.
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct Bins {
-    start: usize,
-    end: usize,
+pub(crate) struct Bins {
+    pub start: usize,
+    pub end: usize,
 }
 
 /// One analyzed band: where it is in the spectrum and how it is smoothed.
@@ -92,6 +97,7 @@ pub struct Analyzer {
     energy: Band,
     spectrum: Vec<Band>,
     spectrum_gain: AutoGain,
+    onsets: Onsets,
     output: Analysis,
 }
 
@@ -106,8 +112,8 @@ impl Analyzer {
         let sum_sq: f32 = window.iter().map(|w| w * w).sum();
         let power_scale = 2.0 / (FFT_SIZE as f32 * sum_sq);
 
-        let bins = |hz: (f32, f32)| hz_to_bins(hz.0, hz.1, sample_rate);
-        let spectrum = log_bands(SPECTRUM_HZ, SPECTRUM_BANDS, sample_rate)
+        let bins = |hz: (f32, f32)| hz_to_bins(hz.0, hz.1, sample_rate, FFT_SIZE);
+        let spectrum = log_bands(SPECTRUM_HZ, SPECTRUM_BANDS, sample_rate, FFT_SIZE)
             .into_iter()
             .map(|b| Band::new(b, 0.010, 0.150))
             .collect();
@@ -127,6 +133,7 @@ impl Analyzer {
             energy: Band::new(bins((BASS_HZ.0, TREBLE_HZ.1)), 0.030, 0.400),
             spectrum,
             spectrum_gain: AutoGain::new(GAIN_RANGE_DB, SILENCE_DB, GAIN_FALL_DB_PER_S),
+            onsets: Onsets::new(sample_rate as u32),
             output: Analysis::default(),
         }
     }
@@ -137,7 +144,9 @@ impl Analyzer {
             return;
         }
         self.fed = true;
-        // Only the newest FFT_SIZE samples can matter.
+        // Onsets need every sample, at their own fixed rate.
+        self.onsets.push(samples);
+        // Only the newest FFT_SIZE samples can matter here.
         let samples = &samples[samples.len().saturating_sub(FFT_SIZE)..];
         for &sample in samples {
             self.history[self.write] = sample;
@@ -154,11 +163,12 @@ impl Analyzer {
     /// last sound forever.
     pub fn analyze(&mut self, dt: f32) -> &Analysis {
         if !self.fed {
-            let silent = ((dt * self.sample_rate) as usize).clamp(1, FFT_SIZE);
-            for _ in 0..silent {
+            let silent = ((dt * self.sample_rate) as usize).max(1);
+            for _ in 0..silent.min(FFT_SIZE) {
                 self.history[self.write] = 0.0;
                 self.write = (self.write + 1) % FFT_SIZE;
             }
+            self.onsets.push_silence(silent);
         }
         self.fed = false;
 
@@ -195,8 +205,15 @@ impl Analyzer {
             let gained = self.spectrum_gain.relative(db);
             *out = band.envelope.update(gained, dt);
         }
+        self.output.beat = self.onsets.beat();
+        self.output.novelty = self.onsets.novelty();
 
         &self.output
+    }
+
+    /// Beats found since the start.
+    pub fn beats(&self) -> u64 {
+        self.onsets.beats()
     }
 
     /// Copies the newest `out.len()` samples (at most `FFT_SIZE`) into `out`,
@@ -211,10 +228,11 @@ impl Analyzer {
     }
 }
 
-/// Bins covering `low..high` Hz, at least one, never including DC (bin 0).
-fn hz_to_bins(low: f32, high: f32, sample_rate: f32) -> Bins {
-    let bin_hz = sample_rate / FFT_SIZE as f32;
-    let nyquist_bin = FFT_SIZE / 2;
+/// Bins of an `fft_size` transform covering `low..high` Hz, at least one,
+/// never including DC (bin 0).
+pub(crate) fn hz_to_bins(low: f32, high: f32, sample_rate: f32, fft_size: usize) -> Bins {
+    let bin_hz = sample_rate / fft_size as f32;
+    let nyquist_bin = fft_size / 2;
     let start = ((low / bin_hz).round() as usize).clamp(1, nyquist_bin - 1);
     let end = ((high / bin_hz).round() as usize).clamp(start + 1, nyquist_bin);
     Bins { start, end }
@@ -222,12 +240,12 @@ fn hz_to_bins(low: f32, high: f32, sample_rate: f32) -> Bins {
 
 /// `count` bands spaced evenly on a log-frequency axis, as hearing perceives
 /// pitch: every band spans the same musical interval.
-fn log_bands((low, high): (f32, f32), count: usize, sample_rate: f32) -> Vec<Bins> {
+pub(crate) fn log_bands((low, high): (f32, f32), count: usize, sample_rate: f32, fft_size: usize) -> Vec<Bins> {
     let ratio = high / low;
     (0..count)
         .map(|i| {
             let edge = |i: usize| low * ratio.powf(i as f32 / count as f32);
-            hz_to_bins(edge(i), edge(i + 1), sample_rate)
+            hz_to_bins(edge(i), edge(i + 1), sample_rate, fft_size)
         })
         .collect()
 }
@@ -296,7 +314,7 @@ mod tests {
         let mut analyzer = Analyzer::new(RATE);
         let out = run(&mut analyzer, &sine(1_000.0, 0.5, RATE as usize));
         let peak = (0..SPECTRUM_BANDS).max_by(|&a, &b| out.spectrum[a].total_cmp(&out.spectrum[b])).unwrap();
-        let bands = log_bands(SPECTRUM_HZ, SPECTRUM_BANDS, RATE as f32);
+        let bands = log_bands(SPECTRUM_HZ, SPECTRUM_BANDS, RATE as f32, FFT_SIZE);
         let bin_hz = RATE as f32 / FFT_SIZE as f32;
         let (low, high) = (bands[peak].start as f32 * bin_hz, bands[peak].end as f32 * bin_hz);
         assert!(low <= 1_020.0 && 980.0 <= high, "peak band {peak} covers {low}..{high} Hz");
@@ -315,7 +333,7 @@ mod tests {
 
     #[test]
     fn every_log_band_has_bins_and_they_climb() {
-        let bands = log_bands(SPECTRUM_HZ, SPECTRUM_BANDS, RATE as f32);
+        let bands = log_bands(SPECTRUM_HZ, SPECTRUM_BANDS, RATE as f32, FFT_SIZE);
         assert!(bands.iter().all(|b| b.end > b.start));
         assert!(bands.windows(2).all(|w| w[1].start >= w[0].start));
     }

@@ -67,11 +67,19 @@ struct Uniforms {
     palette_d: [f32; 4],
     palette_shift: f32,
     exposure: f32,
-    _pad1: [f32; 2],
+    beat: f32,
+    novelty: f32,
     bands: [f32; 4],
     spectrum: [[f32; 4]; SPECTRUM_BANDS / 4],
     waveform: [[f32; 4]; WAVEFORM_POINTS / 4],
+    /// The last `HISTORY` frames' beat and novelty, oldest first, for the
+    /// analysis view's timeline.
+    beat_history: [[f32; 4]; HISTORY / 4],
+    novelty_history: [[f32; 4]; HISTORY / 4],
 }
+
+/// Frames of beat and novelty the analysis view shows: about two seconds.
+const HISTORY: usize = 128;
 
 #[derive(Debug)]
 pub struct RenderError(String);
@@ -132,6 +140,8 @@ pub struct Renderer {
     view: View,
     reduced_motion: bool,
     frames: u32,
+    /// Beat and novelty of the last `HISTORY` frames, circular.
+    history: [[f32; 2]; HISTORY],
     encode_srgb: bool,
     timer: Option<GpuTimer>,
     adapter: wgpu::AdapterInfo,
@@ -333,6 +343,7 @@ impl Renderer {
             view: View::Scene,
             reduced_motion: false,
             frames: 0,
+            history: [[0.0; 2]; HISTORY],
             encode_srgb: !format.is_srgb(),
             timer,
             adapter: adapter.get_info(),
@@ -407,6 +418,7 @@ impl Renderer {
         };
         let look = self.scene.update(scene_signals, motion);
         self.frames = self.frames.wrapping_add(1);
+        self.history[self.frames as usize % HISTORY] = [scene_signals.beat, scene_signals.novelty];
         let uniforms = self.uniforms(scene_signals, &look);
         self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
 
@@ -474,11 +486,20 @@ impl Renderer {
             palette_d: row(look.palette.d),
             palette_shift: look.palette_shift,
             exposure: look.exposure,
-            _pad1: [0.0; 2],
+            beat: s.beat,
+            novelty: s.novelty,
             bands: [s.bass, s.mid, s.treble, s.energy],
             spectrum: bytemuck::cast(s.spectrum),
             waveform: bytemuck::cast(s.waveform),
+            beat_history: bytemuck::cast(self.history_of(0)),
+            novelty_history: bytemuck::cast(self.history_of(1)),
         }
+    }
+
+    /// One of the two histories, oldest first.
+    fn history_of(&self, which: usize) -> [f32; HISTORY] {
+        let newest = self.frames as usize % HISTORY;
+        std::array::from_fn(|i| self.history[(newest + 1 + i) % HISTORY][which])
     }
 
     /// The newest GPU time measurement of a frame, in milliseconds, if one
@@ -540,6 +561,8 @@ mod tests {
         assert_eq!(std::mem::offset_of!(Uniforms, bands), 176);
         assert_eq!(std::mem::offset_of!(Uniforms, spectrum), 192);
         assert_eq!(std::mem::offset_of!(Uniforms, waveform), 320);
-        assert_eq!(size_of::<Uniforms>(), 320 + 64 * 16);
+        assert_eq!(std::mem::offset_of!(Uniforms, beat_history), 1344);
+        assert_eq!(std::mem::offset_of!(Uniforms, novelty_history), 1344 + 32 * 16);
+        assert_eq!(size_of::<Uniforms>(), 1344 + 64 * 16);
     }
 }

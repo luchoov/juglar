@@ -60,6 +60,10 @@ Open: the flash and pattern limits hold by design but nothing measures the final
 - Global flash limiter.
 - Theory: `07-beats.md`, `08-bloom-and-hdr.md`, `09-photosensitivity.md`.
 
+**Status: in progress.**
+
+- **5a, onsets and beats: done.** Spectral flux in three regions with adaptive thresholds fills `beat` (kicks and snares) and `novelty` (a change of character). The analysis view (`Tab`) shows both as meters and a two-second timeline. Analysis cost 0.075 ms per frame (from 0.050). Decisions D27–D28, note `07-beats.md`. Checked on synthetic signals by tests and on three real recordings by statistics, not yet by ear across genres.
+
 ## M5.5 — Listening like a musician
 
 The core innovation (see `docs/vision.md`). Built before the generator so it is designed around these signals from day one.
