@@ -33,6 +33,7 @@ mod timer;
 
 use std::fmt;
 use std::num::NonZeroU64;
+use std::sync::mpsc;
 
 use bytemuck::{Pod, Zeroable};
 use bloom::{Bloom, Glow};
@@ -169,14 +170,21 @@ pub struct Renderer {
     /// Uniforms plus an image and how to filter it: feedback and composite.
     image_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
-    /// Every scene, with its own pipelines: the scene's WGSL is compiled
-    /// into each.
-    scenes: Vec<(Box<dyn Scene>, ScenePipelines)>,
+    scenes: Vec<Box<dyn Scene>>,
+    /// Each scene's pipelines, its WGSL compiled into each; `None` until
+    /// they are compiled.
+    pipelines: Vec<Option<ScenePipelines>>,
+    factory: PipelineFactory,
+    /// Pipelines compiled by the background thread, as they are ready.
+    compiled: Option<mpsc::Receiver<(usize, ScenePipelines)>>,
     analysis_pipeline: wgpu::RenderPipeline,
     layers: [Layer; 2],
     /// The layer whose scene is showing (the old one, during a transition).
     front: usize,
     crossing: Option<Crossing>,
+    /// The scene asked for while a transition was under way, and how to
+    /// get there: it starts when that one ends.
+    pending: Option<(usize, Transition)>,
     /// How many transitions have started, for their seeds.
     crossings: u32,
     bloom: Bloom,
@@ -304,93 +312,25 @@ impl Renderer {
             ..Default::default()
         });
 
-        let pipeline = |label, layouts: &[&wgpu::BindGroupLayout], source: String, entry_point, target, blend| {
-            let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some(label),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
-            });
-            let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some(label),
-                bind_group_layouts: &layouts.iter().map(|&layout| Some(layout)).collect::<Vec<_>>(),
+        let bloom = Bloom::new(&device, &image_layout, COMMON);
+        let factory = PipelineFactory::new(&device, &image_layout, bloom.apply_layout());
+        let analysis_pipeline = {
+            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("analysis"),
+                bind_group_layouts: &[Some(&analysis_layout)],
                 immediate_size: 0,
             });
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(label),
-                layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some("vs_main"),
-                    compilation_options: Default::default(),
-                    buffers: &[],
-                },
-                primitive: wgpu::PrimitiveState::default(),
-                depth_stencil: None,
-                multisample: wgpu::MultisampleState::default(),
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some(entry_point),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: target,
-                        blend,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                multiview_mask: None,
-                cache: None,
-            })
+            let module = shader_module(&device, "analysis", [COMMON, include_str!("analysis.wgsl")].concat());
+            render_pipeline(&device, "analysis", &layout, &module, "fs_analysis", limiter::CANDIDATE_FORMAT, None)
         };
-        let bloom = Bloom::new(&device, &image_layout, COMMON);
-        let scenes = scene::all()
-            .into_iter()
-            .map(|scene| {
-                let composite_source = [COMMON, scene.shader(), include_str!("composite.wgsl")].concat();
-                let pipelines = ScenePipelines {
-                    feedback: pipeline(
-                        "feedback",
-                        &[&image_layout],
-                        [COMMON, scene.shader(), include_str!("feedback.wgsl")].concat(),
-                        "fs_feedback",
-                        feedback::FORMAT,
-                        None,
-                    ),
-                    bloom_source: pipeline(
-                        "bloom source",
-                        &[&image_layout],
-                        composite_source.clone(),
-                        "fs_bloom_source",
-                        feedback::FORMAT,
-                        None,
-                    ),
-                    composite: pipeline(
-                        "composite",
-                        &[&image_layout, bloom.apply_layout()],
-                        composite_source.clone(),
-                        "fs_composite",
-                        limiter::CANDIDATE_FORMAT,
-                        None,
-                    ),
-                    fade: pipeline(
-                        "fade",
-                        &[&image_layout, bloom.apply_layout()],
-                        composite_source,
-                        "fs_fade",
-                        limiter::CANDIDATE_FORMAT,
-                        Some(wgpu::BlendState::ALPHA_BLENDING),
-                    ),
-                };
-                (scene, pipelines)
-            })
-            .collect();
-        let analysis_pipeline =
-            pipeline(
-            "analysis",
-            &[&analysis_layout],
-            [COMMON, include_str!("analysis.wgsl")].concat(),
-            "fs_analysis",
-            limiter::CANDIDATE_FORMAT,
-            None,
-        );
+
+        // Only the first scene is compiled before the first frame; a thread
+        // compiles the rest while it shows (see `PipelineFactory`).
+        let scenes = scene::all();
+        let shaders: Vec<&'static str> = scenes.iter().map(|scene| scene.shader()).collect();
+        let mut pipelines: Vec<Option<ScenePipelines>> = scenes.iter().map(|_| None).collect();
+        pipelines[0] = Some(factory.scene(shaders[0]));
+        let compiled = factory.compile_in_background(shaders[1..].iter().copied().enumerate().map(|(i, shader)| (i + 1, shader)).collect());
 
         let layers = std::array::from_fn(|_| {
             let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
@@ -422,10 +362,14 @@ impl Renderer {
             image_layout,
             sampler,
             scenes,
+            pipelines,
+            factory,
+            compiled,
             analysis_pipeline,
             layers,
             front: 0,
             crossing: None,
+            pending: None,
             crossings: 0,
             bloom,
             limiter,
@@ -464,15 +408,30 @@ impl Renderer {
 
     /// The names of the scenes, in order.
     pub fn scene_names(&self) -> Vec<&'static str> {
-        self.scenes.iter().map(|(scene, ..)| scene.name()).collect()
+        self.scenes.iter().map(|scene| scene.name()).collect()
+    }
+
+    /// Makes sure scene `index`'s pipelines exist: collects what the
+    /// background thread has finished, and compiles the scene here if it
+    /// hasn't got to it yet (which only happens in the first seconds).
+    fn ready(&mut self, index: usize) {
+        if let Some(compiled) = &self.compiled {
+            for (i, pipelines) in compiled.try_iter() {
+                self.pipelines[i].get_or_insert(pipelines);
+            }
+        }
+        if self.pipelines[index].is_none() {
+            self.pipelines[index] = Some(self.factory.scene(self.scenes[index].shader()));
+        }
     }
 
     /// Which scene is showing, as an index into `scene_names`; during a
-    /// transition, the one arriving.
+    /// transition, the one it leads to (or the one asked for after it).
     pub fn scene(&self) -> usize {
-        match self.crossing {
-            Some(_) => self.layers[1 - self.front].scene,
-            None => self.layers[self.front].scene,
+        match (self.pending, &self.crossing) {
+            (Some((index, _)), _) => index,
+            (None, Some(_)) => self.layers[1 - self.front].scene,
+            (None, None) => self.layers[self.front].scene,
         }
     }
 
@@ -485,20 +444,28 @@ impl Renderer {
     /// transition. The picture carries over and the new scene's warp takes
     /// it from there.
     pub fn set_scene(&mut self, index: usize) {
+        let index = index % self.scenes.len();
+        self.ready(index);
         self.crossing = None;
-        self.layers[self.front].scene = index % self.scenes.len();
+        self.pending = None;
+        self.layers[self.front].scene = index;
     }
 
-    /// Starts a transition to scene `index` (wrapping around). A transition
-    /// already under way ends at once, its new scene taking over.
+    /// Starts a transition to scene `index` (wrapping around). While one is
+    /// under way, the new one waits for it to end, and only the last asked
+    /// for is kept: cutting the first short would change the whole screen
+    /// at once.
     pub fn begin_transition(&mut self, index: usize, transition: Transition) {
-        if self.crossing.take().is_some() {
-            self.front = 1 - self.front;
-        }
         let index = index % self.scenes.len();
+        if self.crossing.is_some() {
+            let arriving = self.layers[1 - self.front].scene;
+            self.pending = (index != arriving).then_some((index, transition));
+            return;
+        }
         if index == self.layers[self.front].scene {
             return;
         }
+        self.ready(index);
         self.layers[1 - self.front].scene = index;
         self.crossings = self.crossings.wrapping_add(1);
         // Seeds far apart, so no two edges look alike.
@@ -555,6 +522,9 @@ impl Renderer {
             if crossing.progress >= 1.0 {
                 self.crossing = None;
                 self.front = 1 - self.front;
+                if let Some((index, transition)) = self.pending.take() {
+                    self.begin_transition(index, transition);
+                }
             }
         }
 
@@ -587,7 +557,7 @@ impl Renderer {
         let drawn: &[usize] = if self.crossing.is_some() { &[front, back] } else { &[front] };
         let mut looks = Vec::with_capacity(2);
         for &i in drawn {
-            let look = self.scenes[self.layers[i].scene].0.update(scene_signals, motion);
+            let look = self.scenes[self.layers[i].scene].update(scene_signals, motion);
             let uniforms = self.uniforms(scene_signals, &look, reveal);
             self.queue.write_buffer(&self.layers[i].uniforms, 0, bytemuck::bytes_of(&uniforms));
             looks.push(look);
@@ -609,7 +579,7 @@ impl Renderer {
                 }
                 for (n, (&i, look)) in drawn.iter().zip(&looks).enumerate() {
                     let layer = &mut self.layers[i];
-                    let pipelines = &self.scenes[layer.scene].1;
+                    let pipelines = self.pipelines[layer.scene].as_ref().expect("compiled when chosen");
                     {
                         // The GPU clock starts with the first pass.
                         let timing = if n == 0 { timestamps(true, false) } else { None };
@@ -632,7 +602,7 @@ impl Renderer {
                 // over it, through the transition's shape.
                 for (n, &i) in drawn.iter().rev().enumerate() {
                     let layer = &self.layers[i];
-                    let pipelines = &self.scenes[layer.scene].1;
+                    let pipelines = self.pipelines[layer.scene].as_ref().expect("compiled when chosen");
                     composite.set_pipeline(if n == 0 { &pipelines.composite } else { &pipelines.fade });
                     composite.set_bind_group(0, layer.feedback.latest(), &[]);
                     composite.set_bind_group(1, layer.glow.apply(), &[]);
@@ -726,6 +696,123 @@ struct ScenePipelines {
     /// The composite step as the old scene of a transition: blended over
     /// the new one, leaving it where the transition has passed.
     fade: wgpu::RenderPipeline,
+}
+
+/// Compiles scenes' pipelines, on the main thread or on one of its own.
+///
+/// Compiling is the slow part of starting: each pipeline turns WGSL into
+/// the GPU's own code, about 75 ms apiece on the development PC with
+/// DirectX 12, and every scene has four. Compiling all twelve scenes before
+/// the first frame kept the window empty for four seconds; compiling only
+/// the first, for 1.7–1.9 s. The others follow on a thread while it shows.
+#[derive(Clone)]
+struct PipelineFactory {
+    device: wgpu::Device,
+    /// Feedback and the bloom source: frame numbers and one image.
+    image: wgpu::PipelineLayout,
+    /// The composite step: that, plus the three blurs.
+    composite: wgpu::PipelineLayout,
+}
+
+impl PipelineFactory {
+    fn new(device: &wgpu::Device, image_layout: &wgpu::BindGroupLayout, apply_layout: &wgpu::BindGroupLayout) -> Self {
+        let layout = |label, groups: &[&wgpu::BindGroupLayout]| {
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some(label),
+                bind_group_layouts: &groups.iter().map(|&group| Some(group)).collect::<Vec<_>>(),
+                immediate_size: 0,
+            })
+        };
+        Self {
+            device: device.clone(),
+            image: layout("image", &[image_layout]),
+            composite: layout("composite", &[image_layout, apply_layout]),
+        }
+    }
+
+    /// The four pipelines of a scene whose WGSL is `shader`.
+    fn scene(&self, shader: &str) -> ScenePipelines {
+        let device = &self.device;
+        let feedback = shader_module(device, "feedback", [COMMON, shader, include_str!("feedback.wgsl")].concat());
+        let composite = shader_module(device, "composite", [COMMON, shader, include_str!("composite.wgsl")].concat());
+        let candidate = limiter::CANDIDATE_FORMAT;
+        ScenePipelines {
+            feedback: render_pipeline(device, "feedback", &self.image, &feedback, "fs_feedback", feedback::FORMAT, None),
+            bloom_source: render_pipeline(device, "bloom source", &self.image, &composite, "fs_bloom_source", feedback::FORMAT, None),
+            composite: render_pipeline(device, "composite", &self.composite, &composite, "fs_composite", candidate, None),
+            fade: render_pipeline(
+                device,
+                "fade",
+                &self.composite,
+                &composite,
+                "fs_fade",
+                candidate,
+                Some(wgpu::BlendState::ALPHA_BLENDING),
+            ),
+        }
+    }
+
+    /// On the web there are no threads to spare: scenes compile when chosen.
+    #[cfg(target_arch = "wasm32")]
+    fn compile_in_background(&self, _scenes: Vec<(usize, &'static str)>) -> Option<mpsc::Receiver<(usize, ScenePipelines)>> {
+        None
+    }
+
+    /// Compiles each `(index, shader)` in order on a thread of its own,
+    /// sending each scene's pipelines as they are ready.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn compile_in_background(&self, scenes: Vec<(usize, &'static str)>) -> Option<mpsc::Receiver<(usize, ScenePipelines)>> {
+        let (send, receive) = mpsc::channel();
+        let factory = self.clone();
+        let spawned = std::thread::Builder::new().name("juglar shaders".into()).spawn(move || {
+            for (index, shader) in scenes {
+                // The renderer is gone: nobody needs the rest.
+                if send.send((index, factory.scene(shader))).is_err() {
+                    return;
+                }
+            }
+        });
+        // Without the thread, scenes compile when chosen.
+        spawned.ok().map(|_| receive)
+    }
+}
+
+fn shader_module(device: &wgpu::Device, label: &str, source: String) -> wgpu::ShaderModule {
+    device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some(label), source: wgpu::ShaderSource::Wgsl(source.into()) })
+}
+
+/// A pipeline drawing one triangle over the whole target (see `vs_main`)
+/// with `entry_point` of `module`.
+fn render_pipeline(
+    device: &wgpu::Device,
+    label: &str,
+    layout: &wgpu::PipelineLayout,
+    module: &wgpu::ShaderModule,
+    entry_point: &str,
+    target: wgpu::TextureFormat,
+    blend: Option<wgpu::BlendState>,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(label),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module,
+            entry_point: Some("vs_main"),
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        fragment: Some(wgpu::FragmentState {
+            module,
+            entry_point: Some(entry_point),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState { format: target, blend, write_mask: wgpu::ColorWrites::ALL })],
+        }),
+        multiview_mask: None,
+        cache: None,
+    })
 }
 
 /// A pass drawing over all of `target`. Every pass covers every pixel, so
