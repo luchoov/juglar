@@ -11,10 +11,10 @@ use juglar_render::{Renderer, View};
 use juglar_signals::{Signals, Synthetic};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, KeyEvent, WindowEvent};
+use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::{Key, NamedKey};
-use winit::window::{Window, WindowId};
+use winit::keyboard::{Key, ModifiersState, NamedKey};
+use winit::window::{Fullscreen, Window, WindowId};
 
 const _: () = assert!(juglar_dsp::SPECTRUM_BANDS == juglar_signals::SPECTRUM_BANDS);
 const _: () = assert!(SCOPE_POINTS == juglar_signals::WAVEFORM_POINTS);
@@ -26,6 +26,10 @@ const TARGET_FPS: f64 = 60.0;
 const HIDDEN_RETRY: Duration = Duration::from_millis(100);
 /// Intensity presets on keys 1, 2 and 3: gentle, medium, strong.
 const INTENSITY_PRESETS: [f32; 3] = [0.2, 0.5, 0.9];
+/// Two clicks closer than this are a double click.
+const DOUBLE_CLICK: Duration = Duration::from_millis(400);
+/// In fullscreen, the mouse pointer hides after this long without moving.
+const POINTER_HIDES: Duration = Duration::from_secs(2);
 
 fn main() {
     let source = match std::env::var("JUGLAR_DEMO") {
@@ -55,6 +59,10 @@ fn main() {
         print_stats: std::env::var("JUGLAR_STATS").is_ok_and(|v| v != "0"),
         last_frame: Instant::now(),
         stats: Stats::new(),
+        start_fullscreen: std::env::args().any(|arg| arg == "--fullscreen"),
+        modifiers: ModifiersState::empty(),
+        last_click: None,
+        pointer_moved: Instant::now(),
     };
     if let Err(e) = event_loop.run_app(&mut app) {
         eprintln!("juglar: {e}");
@@ -176,6 +184,14 @@ struct App {
     print_stats: bool,
     last_frame: Instant,
     stats: Stats,
+    /// `--fullscreen` on the command line.
+    start_fullscreen: bool,
+    /// Shift, Ctrl, Alt and the Windows key, as last reported.
+    modifiers: ModifiersState,
+    /// When the left button was last pressed, to tell double clicks.
+    last_click: Option<Instant>,
+    /// When the mouse pointer last moved.
+    pointer_moved: Instant,
 }
 
 impl ApplicationHandler for App {
@@ -199,6 +215,9 @@ impl ApplicationHandler for App {
         };
         println!("GPU: {}", renderer.adapter_name());
         self.window = Some(window);
+        if self.start_fullscreen {
+            self.toggle_fullscreen();
+        }
         self.follow_display();
 
         let mut renderer = renderer;
@@ -219,13 +238,36 @@ impl ApplicationHandler for App {
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
-            WindowEvent::CloseRequested
-            | WindowEvent::KeyboardInput {
+            WindowEvent::CloseRequested => event_loop.exit(),
+            // Escape leaves fullscreen first, and closes from a window.
+            WindowEvent::KeyboardInput {
                 event: KeyEvent { logical_key: Key::Named(NamedKey::Escape), state: ElementState::Pressed, .. },
                 ..
-            } => event_loop.exit(),
+            } => {
+                if self.is_fullscreen() {
+                    self.toggle_fullscreen();
+                } else {
+                    event_loop.exit();
+                }
+            }
             WindowEvent::KeyboardInput { event: KeyEvent { logical_key, state: ElementState::Pressed, repeat: false, .. }, .. } => {
                 self.key(&logical_key)
+            }
+            WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
+            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
+                let now = Instant::now();
+                if self.last_click.is_some_and(|last| now - last < DOUBLE_CLICK) {
+                    self.toggle_fullscreen();
+                    self.last_click = None;
+                } else {
+                    self.last_click = Some(now);
+                }
+            }
+            WindowEvent::CursorMoved { .. } => {
+                self.pointer_moved = Instant::now();
+                if let Some(window) = &self.window {
+                    window.set_cursor_visible(true);
+                }
             }
             WindowEvent::Resized(size) => {
                 if let Some(renderer) = &mut self.renderer {
@@ -269,11 +311,32 @@ impl App {
         }
     }
 
+    fn is_fullscreen(&self) -> bool {
+        self.window.as_ref().is_some_and(|w| w.fullscreen().is_some())
+    }
+
+    /// Fills the display the window is on, without borders, or goes back to
+    /// a window. Borderless rather than exclusive fullscreen: the display
+    /// keeps its mode, so switching is instant and other windows can still
+    /// appear on top.
+    fn toggle_fullscreen(&mut self) {
+        let Some(window) = &self.window else { return };
+        if window.fullscreen().is_some() {
+            window.set_fullscreen(None);
+            window.set_cursor_visible(true);
+        } else {
+            window.set_fullscreen(Some(Fullscreen::Borderless(window.current_monitor())));
+            self.pointer_moved = Instant::now();
+        }
+    }
+
     /// Tab switches between the scene and the analysis view; the left and
     /// right arrows go through the scenes; 1, 2 and 3 set the intensity to
-    /// gentle, medium or strong.
+    /// gentle, medium or strong; F11 and Alt+Enter switch fullscreen.
     fn key(&mut self, key: &Key) {
         match key {
+            Key::Named(NamedKey::F11) => self.toggle_fullscreen(),
+            Key::Named(NamedKey::Enter) if self.modifiers.alt_key() => self.toggle_fullscreen(),
             Key::Named(step @ (NamedKey::ArrowLeft | NamedKey::ArrowRight)) => {
                 if let Some(renderer) = &mut self.renderer {
                     let count = renderer.scene_names().len();
@@ -328,6 +391,12 @@ impl App {
             let title = format!("{stats} · {}", renderer.scene_names()[renderer.scene()]);
             // Once a second: cheap enough to follow the OS setting live.
             renderer.set_reduced_motion(reduced_motion());
+            if let Some(window) = &self.window
+                && window.fullscreen().is_some()
+                && now - self.pointer_moved > POINTER_HIDES
+            {
+                window.set_cursor_visible(false);
+            }
             if self.print_stats {
                 println!("{title}");
             }

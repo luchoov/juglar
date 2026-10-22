@@ -27,7 +27,10 @@ Play anything on the system. Juglar listens to what the speakers play, with no s
 | `Tab` | switch between the visuals and the analysis view (what Juglar hears) |
 | `←` `→` | previous / next scene: *tide*, *orbits*, *kaleido*, *oil*, *plasma*, *harmonograph*, *julia*, *crystal*, *vortex*, *corona*, *melt*, *lenses* |
 | `1` `2` `3` | intensity: gentle, medium, strong |
-| `Esc` | close |
+| `F11`, `Alt`+`Enter` or double click | fullscreen on / off |
+| `Esc` | leave fullscreen; from a window, close |
+
+`cargo run --release -- --fullscreen` starts in fullscreen.
 
 The window title shows the frame rate, frame intervals, the analysis (CPU) and drawing (GPU) time per frame, the share of the screen the flash limiter is holding back (`held`), beats per second, and the scene's name.
 
