@@ -228,3 +228,17 @@ Every important decision in Juglar, in plain language: what was decided, why, wh
 **Considered:** patching the sin hash (any rounding difference in its input still changes its output); a noise texture (one more resource to create and bind for every scene).
 **Cost:** a little more GPU time: *Oil* 0.247 → 0.264 ms per frame at 960×540. *Oil*'s current is a different random pattern than before.
 
+### D36 — Borderless fullscreen
+
+**Decided:** F11, Alt+Enter, a double click or `--fullscreen` fill the display the window is on with a borderless window, not an exclusive video mode. Escape leaves fullscreen first and closes only from a window. The mouse pointer hides after two seconds without moving.
+**Why:** borderless switches instantly, keeps the display's refresh rate (which the frame pacer follows) and lets other windows and notifications appear on top. Escape closing a fullscreen picture at once would surprise anyone who pressed it to get out.
+**Considered:** exclusive fullscreen (a mode switch with a black flash, and nothing gained for a program this light).
+**Cost:** none measured beyond the larger picture: 0.80 ms of GPU per frame at 1920×1080 on the 75 Hz display, as when maximized.
+
+### D37 — Natural intensity, read from the music, by default
+
+**Decided:** a new crate, `director`, decides what to show from slow summaries of the signals (`Feel`: beats per second over about three seconds, treble over three, loudness compared with the last half minute, and whether the music is rising). By default it sets the intensity: half from the pulse, three tenths from the brightness, a fifth from that swell, mapped to 0.15–0.95, rising in about 2 s and falling in about 6 s. `A` returns to it; keys 1–3 and `JUGLAR_INTENSITY` fix the intensity as before.
+**Why:** a fixed intensity is wrong for most of a song: an intro is not a drop. Intensity only scales how fast and far scenes move, never brightness, so following the music changes motion, and slowly. Loudness was the obvious input and turned out the worst: the analysis levels every song to its own peaks, so over two and a half minutes of real music it stayed between 0.87 and 0.98 while the pulse ran from 0.01 to 1 and the brightness from 0.01 to 0.8. The first formula, built on loudness, sat at 0.91 for the whole song. Comparing loudness with the last half minute keeps what it does say: this part is louder or quieter than the one before.
+**Considered:** loudness as the main input (above); the decision inside `render` or the app (the generator and scene changes will need the same summaries, and they must build for the web).
+**Cost:** a busy song with hi-hats sits at about 0.6–0.75 for most of its length, not at the strong preset; a slow, dark song stays near 0.35. Tuned on the synthetic song and five minutes of one playlist. Natural intensity was judged by numbers only, not by watching.
+

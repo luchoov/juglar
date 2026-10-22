@@ -48,14 +48,15 @@ juglar/
 └─ crates/
    ├─ signals/          the `Signals` struct and its producers that need no OS (time, synthetic)
    ├─ dsp/              SPSC ring buffer, levels, FFT (own radix-2), windowing, bands, envelopes, beat/onset detection, auto-gain
-   ├─ generator/        building blocks, composition rules, intensity mapping, mutation, WGSL emission
+   ├─ director/         what to show and when: natural intensity, scene choice, transitions, from slow summaries of the signals
+   ├─ generator/        building blocks, composition rules, mutation, WGSL emission
    ├─ render/           wgpu setup, render graph, ping-pong targets, bloom, composite, HUD glyphs
    └─ platform/         traits + per-OS modules
       ├─ src/lib.rs     AudioCapture, NowPlaying, DesktopMode, Tray, ForegroundWatch traits
       └─ src/win32/     WASAPI loopback, GSMTC, WorkerW wallpaper, tray, fullscreen-game detection
 ```
 
-`signals`, `dsp`, `generator` and `render` must compile for `wasm32-unknown-unknown`. CI enforces it, so an OS dependency can never leak into the core.
+`signals`, `dsp`, `director`, `generator` and `render` must compile for `wasm32-unknown-unknown`. CI enforces it, so an OS dependency can never leak into the core.
 
 ## Key types (sketch)
 

@@ -1,0 +1,11 @@
+[package]
+name = "juglar-director"
+description = "Decides what Juglar shows and when: intensity, scenes and transitions, from the music's signals."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+juglar-signals = { path = "../signals" }

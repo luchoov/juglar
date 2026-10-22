@@ -5,6 +5,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use juglar_director::{Director, Intensity};
 use juglar_dsp::{Analyzer, Consumer, FFT_SIZE, SCOPE_POINTS, Scope, ring};
 use juglar_platform::{AudioCapture, PlatformError, SystemAudio};
 use juglar_render::{Renderer, View};
@@ -48,10 +49,15 @@ fn main() {
     };
 
     let event_loop = EventLoop::new().expect("event loop");
-    let intensity = std::env::var("JUGLAR_INTENSITY").ok().and_then(|v| v.parse().ok()).unwrap_or(INTENSITY_PRESETS[1]);
+    // Natural intensity unless `JUGLAR_INTENSITY` fixes one.
+    let intensity = match std::env::var("JUGLAR_INTENSITY").ok().and_then(|v| v.parse::<f32>().ok()) {
+        Some(value) => Intensity::Fixed(value.clamp(0.0, 1.0)),
+        None => Intensity::Natural,
+    };
     let mut app = App {
         source,
-        signals: Signals { intensity: f32::clamp(intensity, 0.0, 1.0), ..Signals::default() },
+        director: Director::new(intensity),
+        signals: Signals::default(),
         window: None,
         renderer: None,
         pacer: Pacer::new(None, TARGET_FPS),
@@ -172,6 +178,7 @@ fn downmix(interleaved: &[f32], channels: usize, out: &mut Vec<f32>) {
 
 struct App {
     source: Source,
+    director: Director,
     signals: Signals,
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
@@ -331,8 +338,9 @@ impl App {
     }
 
     /// Tab switches between the scene and the analysis view; the left and
-    /// right arrows go through the scenes; 1, 2 and 3 set the intensity to
-    /// gentle, medium or strong; F11 and Alt+Enter switch fullscreen.
+    /// right arrows go through the scenes; 1, 2 and 3 fix the intensity at
+    /// gentle, medium or strong, and A lets the music set it; F11 and
+    /// Alt+Enter switch fullscreen.
     fn key(&mut self, key: &Key) {
         match key {
             Key::Named(NamedKey::F11) => self.toggle_fullscreen(),
@@ -350,9 +358,12 @@ impl App {
                     renderer.set_view(next);
                 }
             }
+            Key::Character(c) if c.eq_ignore_ascii_case("a") => {
+                self.director.set_intensity(Intensity::Natural, self.signals.intensity);
+            }
             Key::Character(c) => {
-                if let Some(preset) = c.parse::<usize>().ok().and_then(|n| INTENSITY_PRESETS.get(n.wrapping_sub(1))) {
-                    self.signals.intensity = *preset;
+                if let Some(&preset) = c.parse::<usize>().ok().and_then(|n| INTENSITY_PRESETS.get(n.wrapping_sub(1))) {
+                    self.director.set_intensity(Intensity::Fixed(preset), self.signals.intensity);
                 }
             }
             _ => {}
@@ -368,6 +379,7 @@ impl App {
         // buffer keeps draining and the envelopes stay current.
         let work = Instant::now();
         self.source.update(dt, &mut self.signals);
+        self.director.update(&mut self.signals);
         let analysis_time = work.elapsed();
 
         let Some(renderer) = &mut self.renderer else { return };
@@ -388,7 +400,11 @@ impl App {
             self.stats.frame(dt, analysis_time, draw_time);
         }
         if let Some(stats) = self.stats.report(now, self.source.beats()) {
-            let title = format!("{stats} · {}", renderer.scene_names()[renderer.scene()]);
+            let intensity = match self.director.intensity() {
+                Intensity::Natural => "natural",
+                Intensity::Fixed(_) => "intensity",
+            };
+            let title = format!("{stats} · {intensity} {:.2} · {}", self.signals.intensity, renderer.scene_names()[renderer.scene()]);
             // Once a second: cheap enough to follow the OS setting live.
             renderer.set_reduced_motion(reduced_motion());
             if let Some(window) = &self.window
@@ -398,7 +414,12 @@ impl App {
                 window.set_cursor_visible(false);
             }
             if self.print_stats {
-                println!("{title}");
+                // Also what the director hears, to tune it by.
+                let feel = self.director.feel();
+                println!(
+                    "{title} · pulse {:.2} loudness {:.2} swell {:.2} brightness {:.2} rise {:+.2}",
+                    feel.pulse, feel.loudness, feel.swell, feel.brightness, feel.rise
+                );
             }
             if let Some(window) = &self.window {
                 window.set_title(&title);

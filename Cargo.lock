@@ -628,12 +628,20 @@ dependencies = [
 name = "juglar"
 version = "0.1.0"
 dependencies = [
+ "juglar-director",
  "juglar-dsp",
  "juglar-platform",
  "juglar-render",
  "juglar-signals",
  "pollster",
  "winit",
+]
+
+[[package]]
+name = "juglar-director"
+version = "0.1.0"
+dependencies = [
+ "juglar-signals",
 ]
 
 [[package]]
