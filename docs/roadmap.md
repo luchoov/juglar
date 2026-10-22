@@ -36,9 +36,9 @@ The north star is in `docs/vision.md`: a visualizer that listens like a musician
 
 **Status: done.** The HUD comes in M7, so stats go to the window title for now. Triggered (stable) waveform, 32 bars and 4 meters from one fragment shader. Own frame pacer snapped to the display refresh (72 fps at 144 Hz, intervals 13.1–14.4 ms). GPU time 0.03 ms per frame on a GTX 1060. DirectX 12 preferred on Windows after measuring the whole process (decisions D14–D19; D19 replaced D17). The core builds for `wasm32-unknown-unknown`.
 
-Re-measured on a quiet machine: 6.3% of one core at 75 fps (under 1% of the CPU), proportional to the frame rate; the earlier 1.3–15% spread had outside causes (another program loading the machine, probably hidden windows), not driver spin-waiting: no step of the frame waits for the display.
+Re-measured with both monitors on, counting processor cycles (decision D26): 5.8% of one core at 75 fps and 5.6% at 72 fps (under 1% of the CPU), proportional to the frame rate, almost all of it on the main thread. Vulkan, counted the same way, costs 6.4%, so D19 stands. Earlier spreads (0.2% to 15% for the same work) came from Windows' tick-based CPU accounting, which is unreliable for work locked to the display, and from another program loading the machine. A minimized window was still drawn at full cost; now it costs 0.3%. The frame rate now follows the window to another display.
 
-Open: memory went from 12 MB to 100–115 MB, mostly GPU driver allocations. Repeat the Vulkan/DirectX 12 comparison on AMD and Intel GPUs.
+Open: memory went from 12 MB to 100–115 MB, mostly GPU driver allocations. Repeat the Vulkan/DirectX 12 comparison on AMD and Intel GPUs (`JUGLAR_GPU_API` forces one).
 
 ## M4 — The feedback loop
 
@@ -49,9 +49,9 @@ Open: memory went from 12 MB to 100–115 MB, mostly GPU driver allocations. Rep
 
 **Done when:** a single hand-written scene looks hypnotic and reacts to the music; no banding.
 
-**Status: done, pending a human verdict on "hypnotic".** Two half-size 16-bit float images take turns; each frame warps (zoom, rotation, swirl, wandering center) and fades the last picture by per-second rates, and the scene paints faintly into it and sharply on top. The composite applies a cosine palette, tone mapping, a contrast curve, dithering and a vignette. First scene: *Tide*, a ring drawn by the waveform whose trails flow outward. `Tab` shows the analysis view, keys 1–3 set the intensity, Windows' reduced-motion setting freezes the picture. GPU 0.095 ms per frame at 960×540 and 0.32 ms at 1920×1009 (GTX 1060); CPU unchanged from M3. Decisions D20–D25.
+**Status: done, pending a human verdict on "hypnotic".** Two half-size 16-bit float images take turns; each frame warps (zoom, rotation, swirl, wandering center) and fades the last picture by per-second rates, and the scene paints faintly into it and sharply on top. The composite applies a cosine palette, tone mapping, a contrast curve, dithering and a vignette. First scene: *Tide*, a ring drawn by the waveform whose trails flow outward. `Tab` shows the analysis view, keys 1–3 set the intensity, Windows' reduced-motion setting freezes the picture. GPU 0.095 ms per frame at 960×540 and 0.32 ms at 1920×1009 (GTX 1060); CPU unchanged from M3 (5.6–5.8% of one core, measured with the monitors on). Decisions D20–D25.
 
-Open: CPU figures for M3 and M4 were taken with both monitors switched off; repeat them with the monitors on. The flash and pattern limits hold by design but nothing measures the final picture yet (the limiter is M5). Audio `beat` and `novelty` are still 0. The scene was tuned on one evening of music; it needs judging on more genres.
+Open: the flash and pattern limits hold by design but nothing measures the final picture yet (the limiter is M5). Audio `beat` and `novelty` are still 0. The scene was tuned on one evening of music; it needs judging on more genres.
 
 ## M5 — Beats and bloom
 

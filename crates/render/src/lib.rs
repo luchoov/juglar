@@ -156,6 +156,12 @@ impl Renderer {
             .await
             .into_iter()
             .filter(|adapter| adapter.is_surface_supported(&surface))
+            // `JUGLAR_GPU_API=vulkan` (or `dx12`, `metal`) keeps only that
+            // API, to compare their costs until there is a settings file.
+            .filter(|adapter| {
+                std::env::var("JUGLAR_GPU_API")
+                    .map_or(true, |api| adapter.get_info().backend.to_str().eq_ignore_ascii_case(&api))
+            })
             .min_by_key(|adapter| {
                 let info = adapter.get_info();
                 adapter_rank(info.device_type, info.backend)

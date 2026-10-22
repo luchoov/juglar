@@ -59,7 +59,9 @@ The timer that wakes the program for each frame advances from the **previous dea
 
 **Why not just use vsync?** Vsync makes presenting wait for the next refresh, so in theory a loop that just draws frames as fast as possible would be paced by the display. On the development PC it wasn't: with Juglar asking for vsync, the loop ran at **1,400 frames per second** and used 80% of a CPU core. GPU drivers let users force vsync off (gamers often do), and then nothing stops the loop. So Juglar still asks for vsync, which avoids tearing when the driver honors it, but sets its own pace with a timer.
 
-When the window is minimized or hidden, nothing can be drawn, and Juglar checks again only ten times a second. The audio analysis keeps running at that rate so the envelopes stay current.
+The rate follows the window: dragged from a 144 Hz display to a 75 Hz one, Juglar switches from 72 to 75 frames per second as soon as the window arrives.
+
+When the window is minimized, Juglar stops drawing and checks again only ten times a second. The audio analysis keeps running at that rate so the envelopes stay current. It has to ask the window itself: DirectX 12 happily accepts frames for a minimized window, and until this was measured (section 6) Juglar kept drawing 72 invisible frames a second at full cost. A window covered by other windows is still drawn; it costs about the same as a visible one.
 
 ## 5. Measuring the GPU
 
@@ -71,27 +73,33 @@ The window title shows, once a second: frames per second, the shortest and longe
 
 ## 6. What it costs
 
-Measured on the development PC (GTX 1060 6 GB, 8 cores, Windows 11), release build, with music playing. The first round ran while a heavy test suite kept the machine busy; the numbers below come from a second round on a quiet machine, with the display at 75 Hz, so Juglar drew 75 frames per second. Each figure is the average of several 15–20 second runs.
+Measured on the development PC (GTX 1060 6 GB, Intel i7-7700 with 4 cores and 8 threads, Windows 11, DirectX 12), release build, with music playing, both monitors on: the primary at 144 Hz, where Juglar draws 72 frames per second, and the secondary at 75 Hz, where it draws 75. Each figure is the average of three 15-second runs; runs agreed within 0.1 points.
 
-| | |
-|---|---|
-| GPU time per frame | **0.038 ms** with DirectX 12 (0.029 ms with Vulkan), out of 13.3 ms available: 0.3% of the frame budget |
-| Frame intervals | 12.8–13.8 ms (target 13.3) |
-| Audio analysis | 0.05 ms CPU per frame |
-| Whole process | **6.3% of one core** with DirectX 12, 7.7% with Vulkan, which is under 1% of the whole 8-core CPU. 3.1% at half the frame rate |
-| Memory | 100–115 MB with DirectX 12, ~120 MB with Vulkan, almost all of it the GPU driver |
+| | 144 Hz display (72 fps) | 75 Hz display (75 fps) |
+|---|---|---|
+| Whole process, window visible | **5.6% of one core** | **5.8% of one core** |
+| of which the main thread | 5.4% | 5.6% |
+| of which the audio thread | 0.13% | 0.13% |
+| Window maximized (1920×1009) | 5.5% | 5.8% |
+| Window covered by another | 5.2% | 5.4% |
+| Window minimized | 0.4% | 0.3% |
+| Half the frame rate (36 / 37.5 fps) | 3.0% | 3.1% |
+| CPU per frame | 0.78 ms | 0.77 ms |
+| GPU time per frame (Milestone 4) | 0.095 ms | 0.095 ms |
+| Memory | 112 MB | 112 MB |
+
+5.7% of one core is 0.7% of the whole 8-thread CPU. In silence, or in demo mode, the cost is the same within half a point: the work is in presenting frames, not in listening.
 
 What came out of it:
 
-- **Drawing is nearly free; talking to the driver is not.** The GPU needs 0.04 ms. The CPU needs about 0.85 ms per frame, almost all of it to submit the work and present the image, whatever is drawn. So the frame rate, not the picture, sets the CPU cost: halving the frame rate halved it. This is why the roadmap pauses rendering on silence and lowers the rate while a game runs.
-- **Measure the whole process, not one thread.** The first round timed each step of the frame on Juglar's own thread, and Vulkan looked two to three times cheaper than DirectX 12. That was true for that thread only. Counting every thread showed that NVIDIA's Vulkan driver runs a helper thread of its own that does the rest of the work, and in total Vulkan cost about a fifth *more* CPU than DirectX 12, in every one of six alternating pairs of runs. Juglar now prefers DirectX 12 on Windows and keeps Vulkan as the fallback (decision D19, which replaces D17). It still prefers an integrated GPU when there is one, so a dedicated GPU stays free for games.
-- **Where the 0.85 ms goes.** Timing the steps of a frame on the main thread (Milestone 4, DirectX 12): borrowing the screen image 0.02 ms, submitting the work 0.25 ms, presenting 0.24 ms. The rest runs on the driver's own threads. Borrowing the image returns at once, so the frame never waits for the display, and the cost per frame is the same at 75, 60 or 37.5 frames per second.
-- **The noise had outside causes.** In the first round the same build measured anywhere from 1.3% to 15% of a core. On the quiet machine, with the window in view, runs agreed within about one point. The high readings came from the other program competing for the CPU; the low ones may have been windows hidden behind others (see below). No step of the frame waits for the display, so there is no waiting for the driver to do actively; the spinning suspected in the first round is ruled out.
-- **Memory is the weak spot.** Milestone 2 used 12 MB; opening the GPU adds 90–110 MB, mostly the driver's own allocations. Still far below an Electron app, and worth revisiting.
+- **Drawing is nearly free; talking to the driver is not.** The GPU needs a tenth of a millisecond. The CPU needs about 0.8 ms per frame, almost all of it on the main thread to record, submit and present the work, whatever is drawn. So the frame rate, not the picture, sets the CPU cost: halving the frame rate halved it. This is why the roadmap pauses rendering on silence and lowers the rate while a game runs.
+- **Measure the whole process, not one thread.** An earlier round timed each step of the frame on Juglar's own thread, and Vulkan looked two to three times cheaper than DirectX 12. Counting every thread showed that NVIDIA's Vulkan driver runs a helper thread of its own that does the rest of the work, and in total Vulkan cost *more* CPU than DirectX 12 (decision D19, which replaces D17). Counted in cycles, with the monitors on, it is 6.4% against 5.8% of a core at 75 frames per second, DirectX 12 lower in each of three alternating pairs of runs; Vulkan also used 7–36 MB more memory. `JUGLAR_GPU_API=vulkan` forces it, to repeat the comparison. With DirectX 12, on this GPU, the driver's own threads use almost nothing: the main thread is the cost.
+- **Measure in cycles, not in clock ticks** (decision D26). Windows' usual CPU-time figure (what Task Manager and `TotalProcessorTime` report) isn't timed: at every tick of the system clock, every 15.6 ms, Windows charges the whole tick to whichever thread happens to be running. That averages out for work that runs at random moments. Juglar's work doesn't: it runs in short bursts locked to the display, and at 72 frames per second on the 144 Hz display its bursts can stay in step with the ticks for many seconds. The same visible window, drawing the same 72 frames per second, then measured anywhere from **0% to 12.6%** of a core, depending on luck. Windows also counts every thread's processor cycles exactly, and that count gave 5.6% in every run. On the 75 Hz display the two methods happened to agree within half a point.
+- **That explains the mysterious cheap runs.** Earlier rounds, with the monitors switched off, sometimes measured 0.2–0.3% while drawing 72 frames per second, and the guess was a hidden window that Windows didn't compose. With the monitors on, a window covered by another costs only 0.4 points less than a visible one, so that guess is ruled out. The cheap readings were the tick counting above. The earlier round's 6.3% at 75 frames per second is close to today's 5.8%; at 75 Hz the tick counting was reliable.
+- **Minimized windows were drawn at full cost.** Tested with cycles, a minimized Juglar still used 5.4% of a core: DirectX 12 never reports a minimized window as hidden, so frames kept coming. Juglar now checks the window itself and drops to 0.3–0.4%.
+- **Memory is the weak spot.** Milestone 2 used 12 MB; opening the GPU adds about 100 MB, mostly the driver's own allocations. Still far below an Electron app, and worth revisiting.
 
-Two runs measured only 0.2–0.3% of a core while drawing 72 frames per second. Both windows had opened on the second monitor, where they were probably hidden behind another window, and Windows doesn't compose a window nobody can see. That would make presenting nearly free, but it wasn't verified. A separate test showed why the pacer snaps to the display: forced to draw 72 frames per second on the 75 Hz display, in plain view, Juglar got intervals from 4.8 to 22.7 ms instead of a steady 13.9.
-
-**Caveat:** both monitors were switched off during this second round. Windows still drew the desktop (screenshots were normal), but whether a display is actually showing the picture can change how presenting behaves, and may explain the cheap runs above. The CPU figures need repeating with the monitors on.
+A separate test showed why the pacer snaps to the display: forced to draw 72 frames per second on the 75 Hz display, in plain view, Juglar got intervals from 4.8 to 22.7 ms instead of a steady 13.9.
 
 All of this is one GPU from one vendor. AMD and Intel drivers split the work differently, so the comparison has to be repeated there.
 

@@ -51,6 +51,8 @@ fn main() {
         window: None,
         renderer: None,
         pacer: Pacer::new(None, TARGET_FPS),
+        display_hz: None,
+        print_stats: std::env::var("JUGLAR_STATS").is_ok_and(|v| v != "0"),
         last_frame: Instant::now(),
         stats: Stats::new(),
     };
@@ -157,6 +159,12 @@ struct App {
     window: Option<Arc<Window>>,
     renderer: Option<Renderer>,
     pacer: Pacer,
+    /// The refresh rate the pacer was last snapped to (`Some(None)` when
+    /// the display didn't report one).
+    display_hz: Option<Option<f64>>,
+    /// `JUGLAR_STATS=1` also prints the title's numbers once a second, so a
+    /// script can tell whether frames are being drawn at all.
+    print_stats: bool,
     last_frame: Instant,
     stats: Stats,
 }
@@ -180,13 +188,9 @@ impl ApplicationHandler for App {
                 return;
             }
         };
-        let refresh_hz = window.current_monitor().and_then(|m| m.refresh_rate_millihertz()).map(|mhz| f64::from(mhz) / 1000.0);
-        self.pacer = Pacer::new(refresh_hz, target_fps());
         println!("GPU: {}", renderer.adapter_name());
-        match refresh_hz {
-            Some(hz) => println!("Display: {hz:.0} Hz, drawing at {:.1} fps.", self.pacer.fps()),
-            None => println!("Display refresh rate unknown, drawing at {:.1} fps.", self.pacer.fps()),
-        }
+        self.window = Some(window);
+        self.follow_display();
 
         let mut renderer = renderer;
         renderer.set_reduced_motion(reduced_motion());
@@ -194,7 +198,6 @@ impl ApplicationHandler for App {
             println!("Reduced motion is on: the picture stays still.");
         }
         self.renderer = Some(renderer);
-        self.window = Some(window);
         self.last_frame = Instant::now();
     }
 
@@ -213,6 +216,8 @@ impl ApplicationHandler for App {
                     renderer.resize(size.width, size.height);
                 }
             }
+            // The window may have reached a display with another refresh rate.
+            WindowEvent::Moved(_) | WindowEvent::ScaleFactorChanged { .. } => self.follow_display(),
             WindowEvent::RedrawRequested => self.frame(),
             _ => {}
         }
@@ -231,6 +236,23 @@ impl ApplicationHandler for App {
 }
 
 impl App {
+    /// Snaps the frame rate to the refresh rate of the display the window is
+    /// on. Called at start and whenever the window moves, since a window
+    /// dragged from a 144 Hz display to a 75 Hz one must change its rhythm.
+    fn follow_display(&mut self) {
+        let Some(window) = &self.window else { return };
+        let refresh_hz = window.current_monitor().and_then(|m| m.refresh_rate_millihertz()).map(|mhz| f64::from(mhz) / 1000.0);
+        if self.display_hz == Some(refresh_hz) {
+            return;
+        }
+        self.display_hz = Some(refresh_hz);
+        self.pacer = Pacer::new(refresh_hz, target_fps());
+        match refresh_hz {
+            Some(hz) => println!("Display: {hz:.0} Hz, drawing at {:.1} fps.", self.pacer.fps()),
+            None => println!("Display refresh rate unknown, drawing at {:.1} fps.", self.pacer.fps()),
+        }
+    }
+
     /// Tab switches between the scene and the analysis view; 1, 2 and 3
     /// set the intensity to gentle, medium or strong.
     fn key(&mut self, key: &Key) {
@@ -262,17 +284,25 @@ impl App {
         let analysis_time = work.elapsed();
 
         let Some(renderer) = &mut self.renderer else { return };
-        let drawn = renderer.render(&self.signals);
+        // A minimized window can't be seen, but DirectX 12 still accepts its
+        // frames, so drawing them would cost as much as drawing visible ones.
+        let minimized = self.window.as_ref().and_then(|w| w.is_minimized()).unwrap_or(false);
+        let work = Instant::now();
+        let drawn = !minimized && renderer.render(&self.signals);
+        let draw_time = work.elapsed();
         self.pacer.frame_done(now, drawn);
         if let Some(ms) = renderer.take_gpu_ms() {
             self.stats.gpu_ms.push(ms);
         }
         if drawn {
-            self.stats.frame(dt, analysis_time);
+            self.stats.frame(dt, analysis_time, draw_time);
         }
         if let Some(title) = self.stats.report(now) {
             // Once a second: cheap enough to follow the OS setting live.
             renderer.set_reduced_motion(reduced_motion());
+            if self.print_stats {
+                println!("{title}");
+            }
             if let Some(window) = &self.window {
                 window.set_title(&title);
             }
@@ -330,19 +360,22 @@ struct Stats {
     shortest: f32,
     longest: f32,
     analysis: Duration,
+    /// Wall-clock time spent recording, submitting and presenting frames.
+    draw: Duration,
     gpu_ms: Vec<f32>,
 }
 
 impl Stats {
     fn new() -> Self {
-        Self { since: Instant::now(), frames: 0, shortest: f32::MAX, longest: 0.0, analysis: Duration::ZERO, gpu_ms: Vec::new() }
+        Self { since: Instant::now(), frames: 0, shortest: f32::MAX, longest: 0.0, analysis: Duration::ZERO, draw: Duration::ZERO, gpu_ms: Vec::new() }
     }
 
-    fn frame(&mut self, dt: f32, analysis: Duration) {
+    fn frame(&mut self, dt: f32, analysis: Duration, draw: Duration) {
         self.frames += 1;
         self.shortest = self.shortest.min(dt);
         self.longest = self.longest.max(dt);
         self.analysis += analysis;
+        self.draw += draw;
     }
 
     /// Once a second, the title summarizing it.
@@ -354,10 +387,11 @@ impl Stats {
         let mut title = format!("Juglar · {:.0} fps", self.frames as f32 / elapsed);
         if self.frames > 0 {
             title += &format!(
-                " · frame {:.1}–{:.1} ms · dsp {:.3} ms",
+                " · frame {:.1}–{:.1} ms · dsp {:.3} ms · draw {:.2} ms",
                 self.shortest * 1000.0,
                 self.longest * 1000.0,
                 self.analysis.as_secs_f32() * 1000.0 / self.frames as f32,
+                self.draw.as_secs_f32() * 1000.0 / self.frames as f32,
             );
         }
         if !self.gpu_ms.is_empty() {

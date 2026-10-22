@@ -190,8 +190,8 @@ fn frame_done(&amp;mut self, started: Instant, drawn: bool) {
   <tr><th>Measured</th><th>Value</th><th>What it shows</th></tr>
   <tr><td>Drawing, on the GPU</td><td class="n">0.04 ms</td><td>The picture itself is nearly free</td></tr>
   <tr><td>Submitting + presenting</td><td class="n">0.5 ms</td><td>Talking to the driver costs ten times more than drawing</td></tr>
-  <tr><td>Whole process, DirectX 12</td><td class="n">6.3% of a core</td><td>Under 1% of the 8-core CPU</td></tr>
-  <tr><td>Whole process, Vulkan</td><td class="n">7.7% of a core</td><td>Its driver does part of the work on a thread of its own</td></tr>
+  <tr><td>Whole process, DirectX 12</td><td class="n">5.8% of a core</td><td>Under 1% of the 8-thread CPU</td></tr>
+  <tr><td>Whole process, Vulkan</td><td class="n">6.4% of a core</td><td>Its driver does part of the work on a thread of its own</td></tr>
   <tr><td>Half the frame rate</td><td class="n">3.1% of a core</td><td>Cost follows frames, not pictures</td></tr>
 </table>
 <p>The lesson shaped later decisions: drawing more costs little, drawing <em>often</em> costs. So Juglar will lower its frame rate while a game runs and stop drawing in silence. And the first measurement, which timed only Juglar's own thread, picked the wrong graphics API: counting every thread reversed it (decision D19).</p>

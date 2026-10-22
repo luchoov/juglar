@@ -105,15 +105,18 @@ What is **not** done yet: nothing measures the final picture. A limiter that cou
 
 ## 9. What it costs
 
-Measured on the development PC (GTX 1060, Windows 11, DirectX 12, 75 Hz display), release build, real music:
+Measured on the development PC (GTX 1060, Windows 11, DirectX 12), release build, real music, both monitors on. CPU is counted in processor cycles, which note 04 explains is the only reliable way for a program that works in short bursts locked to the display:
 
 | | 960×540 window | maximized, 1920×1009 |
 |---|---|---|
 | GPU time per frame | 0.095 ms | 0.32 ms |
-| Whole process CPU | 5.8–6.8% of one core | 7.5% of one core |
-| Frame intervals | 12.9–13.8 ms (target 13.3) | 13.0–13.7 ms |
+| Whole process CPU, 75 Hz display (75 fps) | 5.8% of one core | 5.8% of one core |
+| Whole process CPU, 144 Hz display (72 fps) | 5.6% of one core | 5.5% of one core |
+| Frame intervals at 75 fps | 12.8–13.8 ms (target 13.3) | 13.0–13.7 ms |
 
-Both monitors were switched off during these measurements (see note 04); the GPU times shouldn't depend on it, the CPU figures might. The GPU does three times more than in Milestone 3 and is still busy for under 3% of each frame at full size. The CPU cost didn't change: as note 04 found, it is the fixed cost of handing a frame to the driver, whatever the frame contains.
+The GPU does three times more than in Milestone 3 and is still busy for under 3% of each frame at full size. The CPU cost didn't change and doesn't depend on the window's size: as note 04 found, it is the fixed cost of handing a frame to the driver, whatever the frame contains.
+
+An earlier version of this table, measured with both monitors switched off and with Windows' tick-based CPU figure, gave 5.8–6.8% and warned that the CPU numbers might change with the monitors on. They didn't in any way that matters; the spread came from the measuring method (note 04, section 6).
 
 ## Further reading
 
