@@ -32,9 +32,9 @@
 //! **Telling the drums apart.** Each drum spills into the others' regions,
 //! so a hit only counts when it isn't the spill of a louder one:
 //!
-//! - A kick doesn't count when the snare's region rose more at the same
-//!   moment (in decibels), and a snare doesn't count when the kick's region
-//!   rose much more. In a loud mix the bass guitar fills the kick's region
+//! - A kick doesn't count when the snare's region rose, at the same
+//!   moment, more than two thirds as much (in decibels), and a snare
+//!   doesn't count when the kick's region rose much more. In a loud mix the bass guitar fills the kick's region
 //!   too, so a kick also needs its *click*, the beater's tick at 2.5–6 kHz,
 //!   unless its thump is unmistakable on its own. And a sharp click with no
 //!   snare and no cymbal in it is a kick even without a thump: in dense
@@ -107,9 +107,9 @@ const THRESHOLD_SECONDS: f32 = 1.0;
 const REFRACTORY: f32 = 0.04;
 /// How fast each drum's event falls back to 0 after a hit, in seconds.
 const DECAY: [f32; DRUMS] = [0.04, 0.05, 0.05];
-/// A kick doesn't count when the snare's region rose more than this many
-/// times less than it (in decibels, over the same hops); a snare doesn't
-/// count when the kick's region rose this many times more than it.
+/// A kick must rise at least this many times as much as the snare's region
+/// (in decibels, over the same hops), and a snare at least this many times
+/// as much as the kick's.
 const KICK_OVER_SNARE: f32 = 1.5;
 const SNARE_OVER_KICK: f32 = 0.6;
 /// A kick needs its click: the click region this many times over its own

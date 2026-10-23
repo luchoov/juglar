@@ -73,6 +73,12 @@ pub struct Signals {
     pub energy: f32,      // overall loudness after auto-gain
     pub beat: f32,        // 1.0 on a detected beat, decays to 0
     pub novelty: f32,     // spectral flux, high on drops and section changes
+    pub kick: f32,        // each drum's hits apart: 1 at a hit, back to 0 in ~0.05 s
+    pub snare: f32,
+    pub cymbals: f32,
+    pub percussive: f32,  // 0..1, the struck part of the sound
+    pub harmonic: f32,    // 0..1, the held part
+    pub relative: Relative, // levels over their own last 4 s, 1 = usual
     pub intensity: f32,   // 0..1, fixed by the user or derived from the music (auto mode)
     pub spectrum: [f32; 32],  // log-spaced bands, 0..1
     pub waveform: [f32; 256], // a stable (triggered) snapshot of the wave, -1..1
