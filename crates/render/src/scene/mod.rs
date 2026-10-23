@@ -11,6 +11,7 @@
 
 mod corona;
 mod crystal;
+mod datamosh;
 mod furnace;
 mod hammer;
 mod harmonograph;
@@ -27,6 +28,7 @@ mod shrapnel;
 mod static_;
 mod tide;
 mod vortex;
+mod wire;
 
 pub use juglar_director::Character;
 use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
@@ -54,6 +56,8 @@ pub(crate) fn all() -> Vec<Box<dyn Scene>> {
         Box::new(static_::Static::new()),
         Box::new(maelstrom::Maelstrom::new()),
         Box::new(hammer::Hammer::new()),
+        Box::new(wire::Wire::new()),
+        Box::new(datamosh::Datamosh::new()),
         Box::new(Tide::new()),
         Box::new(orbits::Orbits::new()),
         Box::new(kaleido::Kaleido::new()),
@@ -157,15 +161,37 @@ pub(crate) struct Fx {
     /// How much the ink is lit as a surface, from the side, with a glint:
     /// molten metal instead of light. 0..1.
     pub relief: f32,
+    /// A ground of color instead of black: how bright (0..1), and where on
+    /// the palette (shifted with it).
+    pub ground: f32,
+    pub ground_hue: f32,
+    /// 0: the ink is light over the ground. 1: the ink is a stencil that
+    /// cuts the ground away, dark figures on a field of color.
+    pub stencil: f32,
 }
 
 impl Fx {
     /// None at all.
-    pub const NONE: Fx = Fx { shake: [0.0; 2], chroma: 0.0, invert: 0.0, flash: 0.0, glitch: 0.0, glitch_seed: 0.0, relief: 0.0 };
+    pub const NONE: Fx = Fx {
+        shake: [0.0; 2],
+        chroma: 0.0,
+        invert: 0.0,
+        flash: 0.0,
+        glitch: 0.0,
+        glitch_seed: 0.0,
+        relief: 0.0,
+        ground: 0.0,
+        ground_hue: 0.0,
+        stencil: 0.0,
+    };
 
     /// As `Frame::fx` in `common.wgsl` reads it.
-    pub fn packed(&self) -> [[f32; 4]; 2] {
-        [[self.shake[0], self.shake[1], self.chroma, self.invert], [self.flash, self.glitch, self.glitch_seed, self.relief]]
+    pub fn packed(&self) -> [[f32; 4]; 3] {
+        [
+            [self.shake[0], self.shake[1], self.chroma, self.invert],
+            [self.flash, self.glitch, self.glitch_seed, self.relief],
+            [self.ground, self.ground_hue, self.stencil, 0.0],
+        ]
     }
 }
 

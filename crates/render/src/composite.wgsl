@@ -136,6 +136,17 @@ fn composite(position: vec2f) -> vec3f {
     // A faint vignette keeps the eye in the middle.
     let edge = length(uv - 0.5) * 1.4;
     var c = clamp(BACKGROUND * (1.0 - 0.5 * edge * edge) + lit, vec3f(0.0), vec3f(1.0));
+    // A ground of color: the ink as light over it, or as a stencil that
+    // cuts it away.
+    let ground_strength = frame.fx[2].x;
+    if ground_strength > 0.0 {
+        let t = frame.fx[2].y + frame.palette_shift;
+        let field = srgb_to_linear(palette(select(clamp(t, 0.0, 1.0), fract(t), frame.palette_wrap > 0.5)));
+        let ground = field * ground_strength * (1.0 - 0.35 * edge * edge);
+        let over = 1.0 - (1.0 - ground) * (1.0 - lit);
+        let cut = ground * (1.0 - min(2.0 * dot(lit, vec3f(0.2126, 0.7152, 0.0722)), 1.0)) + lit * lit;
+        c = clamp(mix(over, cut, frame.fx[2].z), vec3f(0.0), vec3f(1.0));
+    }
     // A flash: light over everything, as through a screen.
     c = 1.0 - (1.0 - c) * (1.0 - frame.fx[1].x);
     // The negative, as much as asked.

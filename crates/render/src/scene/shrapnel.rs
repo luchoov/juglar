@@ -114,6 +114,9 @@ impl Scene for Shrapnel {
                 glitch: if chaos > 0.6 { 0.35 * snap.min(1.0) } else { 0.0 },
                 glitch_seed: cuts as f32 + (self.clock * 12.0).floor(),
                 relief: 0.0,
+                ground: 0.0,
+                ground_hue: 0.0,
+                stencil: 0.0,
             },
         }
     }

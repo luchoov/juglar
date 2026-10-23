@@ -110,6 +110,9 @@ impl Scene for Furnace {
                 glitch: if chaos > 0.65 { 0.2 * snap.abs().min(1.0) } else { 0.0 },
                 glitch_seed: (self.clock * 15.0).floor(),
                 relief: 0.85,
+                ground: 0.0,
+                ground_hue: 0.0,
+                stencil: 0.0,
             },
         }
     }

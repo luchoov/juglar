@@ -105,7 +105,7 @@ struct Uniforms {
     percussive_history: [[f32; 4]; HISTORY / 4],
     harmonic_history: [[f32; 4]; HISTORY / 4],
     /// The scene's screen effects, and chaos, impact, hit and loudness.
-    fx: [[f32; 4]; 2],
+    fx: [[f32; 4]; 3],
     heavy: [f32; 4],
 }
 
@@ -1004,7 +1004,7 @@ mod tests {
         assert_eq!(std::mem::offset_of!(Uniforms, kick_history), 2432);
         assert_eq!(std::mem::offset_of!(Uniforms, harmonic_history), 2432 + 4 * 32 * 16);
         assert_eq!(std::mem::offset_of!(Uniforms, fx), 2432 + 5 * 32 * 16);
-        assert_eq!(std::mem::offset_of!(Uniforms, heavy), 2432 + 5 * 32 * 16 + 32);
-        assert_eq!(size_of::<Uniforms>(), 2432 + 5 * 32 * 16 + 48);
+        assert_eq!(std::mem::offset_of!(Uniforms, heavy), 2432 + 5 * 32 * 16 + 48);
+        assert_eq!(size_of::<Uniforms>(), 2432 + 5 * 32 * 16 + 64);
     }
 }

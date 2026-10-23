@@ -113,6 +113,9 @@ impl Scene for Static {
                 glitch: (0.6 * chaos * snap.min(1.0) + 0.25 * punch.min(1.0)).min(0.8) * motion,
                 glitch_seed: self.tear as f32,
                 relief: 0.0,
+                ground: 0.0,
+                ground_hue: 0.0,
+                stencil: 0.0,
             },
         }
     }

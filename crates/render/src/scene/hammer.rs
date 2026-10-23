@@ -171,6 +171,9 @@ impl Scene for Hammer {
                 glitch: 0.0,
                 glitch_seed: 0.0,
                 relief: 0.0,
+                ground: 0.0,
+                ground_hue: 0.0,
+                stencil: 0.0,
             },
         }
     }

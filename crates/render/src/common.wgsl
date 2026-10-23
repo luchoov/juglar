@@ -69,8 +69,9 @@ struct Frame {
 
     // The scene's screen effects (`Fx` in `scene/mod.rs`, applied in
     // `composite.wgsl`): [0] = shake x, shake y, chromatic split, invert;
-    // [1] = flash, glitch, glitch seed, relief.
-    fx: array<vec4f, 2>,
+    // [1] = flash, glitch, glitch seed, relief; [2] = ground, ground's
+    // palette position, stencil.
+    fx: array<vec4f, 3>,
     // The heavy side of the music: x = chaos, y = impact, z = hit,
     // w = loudness.
     heavy: vec4f,
