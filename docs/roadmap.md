@@ -105,6 +105,22 @@ The core innovation (see `docs/vision.md`). Built before the generator so it is 
 
 All of this lives in the OS-free `crates/director`. Over 8 minutes of real music with automatic changes, the limiter held nothing and the GPU averaged 0.27 ms per frame. Still open: scene choice was tuned on metal only, and the wildest scenes never came up with real music. Nothing has been judged by eye on a screen. Theory: note 11 covers what was planned as `11-intensity.md`.
 
+## v1 — Aggressive, for metal
+
+Asked for between M6 and M7: a first release worth showing, with scenes as wild as MilkDrop's on metal, rock and grunge.
+
+- **No flash limiter** (D48): flashes, hard cuts and red are the scenes' to use; the README warns.
+- **An ear for heavy music** (D49): loudness against the song, grit, hits, density, chaos and impacts. The explosion in "Jezebel" is caught within a tenth of a second.
+- **Springs and cuts** (D51): hits kick stiff springs; impacts and hard hits in wild music cut to new patterns; screen effects (shake, sliced glitch, color split, relief, flash, negative).
+- **The director on impacts** (D50): a change on the explosion itself, the wildest scenes and shorter ones for heavy music.
+- **Material** (D53): the old picture sharpens itself into texture, and curl noise stirs it.
+- **Ten wild scenes**: Etch, Liquid, Shrapnel, Furnace, Static, Maelstrom, Hammer, Wire, Datamosh, Fracture; the older twelve got grounds of color and lower energies.
+- **Playing a WAV and recording frames** (D52), for judging scenes on the same passage every time, side by side with MilkDrop presets rendered by Butterchurn.
+
+**Status: done.** Judged by recordings against the developer's playlist and twenty classic MilkDrop presets, not yet by watching it live for an hour.
+
+Open: give the rest of the wild scenes layers each owned by its own signal (D54; Liquid has them); Maelstrom still sits on a flat ground; a theory note on the heavy ear, the springs and the material; the GPU cost of the new scenes is not measured (Fracture and Wire loop over up to 64 seeds or edges per pixel); the director's pacing was checked on six songs. Song memory, from the vision, has a design (by Codex, not yet reviewed) and no code.
+
 ## M7 — Living on the desktop
 
 - Borderless / fullscreen / mini modes, fading HUD with own glyph rendering, tray icon.
