@@ -1,4 +1,8 @@
-# Juglar
+<p align="center">
+  <img src="docs/media/logo.png" width="72" alt="">
+</p>
+
+<h1 align="center">Juglar</h1>
 
 **Juglar** /xuˈɣlaɾ/: Spanish for *minstrel*, the medieval performer who brought music and spectacle together.
 
@@ -112,7 +116,7 @@ Every important choice is written down in plain language, with what was measured
 
 - **New here?** Open [`explorables/00-start-here.html`](explorables/00-start-here.html) in a browser: sound, samples and what Juglar does, from zero, with interactive pages.
 - [Vision](docs/vision.md): where it is going (song structure, a look per song, harmony as color).
-- [Decisions](docs/decisions.md): fifty-four of them, D48–D54 for this release.
+- [Decisions](docs/decisions.md): fifty-five of them, D48–D55 for this release.
 - [Architecture](docs/architecture.md), [roadmap](docs/roadmap.md) and [theory notes](docs/theory/).
 
 ## Limits

@@ -12,6 +12,7 @@ The first release: aggressive scenes for metal, rock and grunge.
 - Ten scenes for loud music: Etch, Liquid, Shrapnel, Furnace, Static, Maelstrom, Hammer, Wire, Datamosh, Fracture.
 - The director changes scene on impacts, with a near cut, and picks the wildest scenes for heavy music, for shorter times (D50).
 - `JUGLAR_FILE`, `JUGLAR_RECORD` and `JUGLAR_KEEP`, to play a WAV file silently and record frames (D52).
+- An icon, for the program, its window and its tray icon, and the version in the program's file properties (D55).
 - Kick, snare and cymbals heard apart, a percussive/harmonic split and relative levels (D45–D47), from before this release cycle.
 
 ### Changed
