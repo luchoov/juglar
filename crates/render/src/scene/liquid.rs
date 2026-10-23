@@ -1,4 +1,4 @@
-//! Liquid: the screen a marbled liquid that never fades, only stirs. The
+//! Liquid: the screen a marbled liquid that barely fades, only stirs. The
 //! waveform is poured in as a ribbon across the middle and three blobs of
 //! color orbit through it; the liquid's currents (curl noise) carry it all
 //! away into swirls, and a palette that runs through its colors several
@@ -6,16 +6,30 @@
 //! Every kick surges the currents, the snare reverses their turn, and an
 //! impact blows the marble outward and shifts every band to new colors.
 //! The ink sharpens itself a little each frame, so the bands stay crisp
-//! instead of blurring into mud. Nothing here is ever black.
+//! instead of blurring into mud.
 //!
-//! | Signal   | Moves                                                     |
-//! |----------|-----------------------------------------------------------|
-//! | waveform | the ribbon poured across the middle                       |
-//! | kick, hit| a surge of the currents (spring)                          |
-//! | snare    | the currents' turn reversed, the ribbon twisted           |
-//! | impact   | the marble blown outward, the colors shifted, a flash     |
-//! | chaos    | finer, faster eddies; torn colors                         |
-//! | harmonic | how fast the bands drift through the palette              |
+//! Each layer answers to its own part of the music. The currents are the
+//! drums': the kick surges them, the snare turns them, the busier the
+//! playing the faster they run, the grittier the sound the finer the
+//! eddies. The paint is the harmony's: held chords louder than before
+//! pour more of it. The light is the band's: louder than the last few
+//! seconds, the liquid brightens and opens out. And the cymbals have a
+//! layer of their own, white sparks thrown into the current and dragged
+//! into streaks.
+//!
+//! | Signal          | Moves                                              |
+//! |-----------------|----------------------------------------------------|
+//! | waveform        | the ribbon poured across the middle                |
+//! | kick, hit       | a surge of the currents (spring)                   |
+//! | snare           | the currents' turn reversed, the ribbon twisted    |
+//! | cymbals         | sparks thrown into the current                     |
+//! | density         | how fast the currents run                          |
+//! | grit            | how fine the eddies are                            |
+//! | harmonic, rel.  | how much paint is poured (held chords, more)       |
+//! | energy, rel.    | how bright the liquid is, how far it opens out     |
+//! | impact          | the marble blown outward, the colors shifted, flash|
+//! | chaos           | torn colors                                        |
+//! | harmonic        | how fast the bands drift through the palette       |
 
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
@@ -75,29 +89,34 @@ impl Scene for Liquid {
         self.angle += moving * turn * (0.2 + 2.0 * snap.abs()) * live;
         self.hue += moving * (0.02 + 0.12 * harmony);
 
-        // How hard the currents push this frame: steady, surging on kicks.
-        let push = live * (0.05 + 0.08 * chaos + 0.5 * punch.min(1.5)) * dt;
+        // How hard the currents push this frame: with the playing's
+        // density, surging on kicks.
+        let push = live * (0.04 + 0.12 * s.density + 0.5 * punch.min(1.5)) * dt;
+        // The band louder than the last seconds, and held chords louder.
+        let swell = (s.relative.energy - 1.0).clamp(-0.5, 1.0);
+        let held = (s.relative.harmonic - 1.0).clamp(-0.5, 1.0);
         Look {
             center: [0.0, 0.0],
-            zoom: (live * (0.01 + 0.15 * punch + 2.5 * slam.max(0.0)) * dt).exp(),
+            zoom: (live * (0.01 + 0.25 * swell.max(0.0) + 0.15 * punch + 2.5 * slam.max(0.0)) * dt).exp(),
             rotation: live * turn * (0.05 + 0.6 * snap.abs()) * dt,
             swirl: live * turn * 0.4 * snap.abs() * dt,
-            decay: 1.0,
+            // Slow to fade, so the marble lasts but the sparks don't pile up.
+            decay: (-moving / 4.0).exp(),
             palette_drift: (0.04 + 0.15 * harmony) * moving,
             knobs: [
                 push,                                       // the currents' push this frame
                 self.flow,                                  // where the currents are
-                1.3 + 1.5 * chaos,                          // eddies per screen
+                1.2 + 1.6 * s.grit,                         // eddies per screen
                 self.angle,                                 // the ribbon's and blobs' turn
                 0.1 + 0.12 * s.loudness + 0.1 * punch,      // the ribbon's height
-                0.35 + 0.5 * punch.min(1.5),                // paint poured per frame
+                (0.35 + 0.5 * held).max(0.08),              // paint poured per frame
                 self.clock,                                 // the blobs' orbit
-                0.0,
+                motion * s.cymbals,                         // sparks thrown this frame
             ],
             palette: PALETTE,
             palette_shift: self.hue + (cuts % 6) as f32 * 0.17,
             palette_wrap: true,
-            exposure: 1.4,
+            exposure: 1.3 + 0.5 * swell,
             bloom: 0.25,
             waveform: self.waveform,
             spectrum: s.spectrum,

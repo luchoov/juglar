@@ -1,12 +1,13 @@
 // Liquid: a ribbon of the waveform and three blobs poured into paint that
-// never fades, stirred by curl-noise currents. Set in `liquid.rs`.
+// barely fades, stirred by curl-noise currents. Set in `liquid.rs`.
 //
 // Knobs: 0 the currents' push this frame, 1 where the currents are, 2
 // eddies per screen, 3 the ribbon's and blobs' turn, 4 the ribbon's
-// height, 5 paint poured per frame, 6 the blobs' orbit.
+// height, 5 paint poured per frame, 6 the blobs' orbit, 7 sparks thrown
+// this frame.
 
-// The currents carry the old paint along; nothing fades, so the picture
-// is all marble.
+// The currents carry the old paint along; it barely fades, so the
+// picture is mostly marble.
 fn warp(p: vec2f, q: vec2f) -> vec2f {
     return q - knob(0u) * flow(q, knob(2u), knob(1u));
 }
@@ -28,6 +29,12 @@ fn sources(p: vec2f, pixel: f32) -> vec3f {
         let color = f32(k) / 3.0 + 0.1;
         paint = paint * (1.0 - blob) + vec3f(blob, blob * 1.2, blob * 1.2 * color);
     }
+    // The cymbals' sparks: white flecks anywhere, new ones every frame,
+    // that the current drags into streaks.
+    let cell = vec2i(floor(p / (2.5 * pixel)));
+    let seed = i32(knob(6u) * 997.0);
+    let spark = step(1.0 - 0.0015 * knob(7u), grid_random(cell + vec2i(seed, seed * 31)));
+    paint = paint * (1.0 - spark) + vec3f(spark, spark * 4.0, spark * 4.0 * 0.15);
     return paint;
 }
 
