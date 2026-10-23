@@ -176,6 +176,6 @@ fn fs_analysis(@builtin(position) position: vec4f) -> @location(0) vec4f {
         }
     }
 
-    // Linear light for the flash limiter, which encodes it for the screen.
+    // Linear light for the present step, which encodes it for the screen.
     return vec4f(clamp(c, vec3f(0.0), vec3f(1.0)), 1.0);
 }

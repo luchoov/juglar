@@ -37,7 +37,7 @@ Track the tempo to **predict** where the next beat lands instead of reacting lat
 
 - **Still nearly free on the CPU.** Chroma and harmonic/percussive separation reuse the FFT already computed; structure analysis works on a few hundred feature vectors per song.
 - **Just more `Signals`.** Section, recurrence, key, tension and predicted beat are new fields of the abstract input the generator already consumes. Nothing in the architecture changes.
-- **Honest.** Focus/relaxation modes are style options, not claimed benefits (see `docs/research/focus-and-relaxation.md`). Flash and pattern limits apply in every mode.
+- **Honest.** Focus/relaxation modes are style options, not claimed benefits (see `docs/research/focus-and-relaxation.md`). They are calm by their own settings; the lively scenes have no flash limits at all (D48) and say so: aggression on loud music is the point.
 
 ## Explorables
 

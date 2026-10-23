@@ -561,9 +561,6 @@ impl App {
         if let Some(ms) = renderer.take_gpu_ms() {
             self.stats.gpu_ms.push(ms);
         }
-        if let Some(held) = renderer.take_held() {
-            self.stats.held = Some(self.stats.held.unwrap_or(0.0).max(held));
-        }
         if drawn {
             self.stats.frame(dt, analysis_time, draw_time);
         }
@@ -710,15 +707,13 @@ struct Stats {
     /// Wall-clock time spent recording, submitting and presenting frames.
     draw: Duration,
     gpu_ms: Vec<f32>,
-    /// The largest share of the screen the flash limiter held back.
-    held: Option<f32>,
     /// The beat, kick, snare and cymbal counts when this second started.
     hits: Option<[u64; 4]>,
 }
 
 impl Stats {
     fn new() -> Self {
-        Self { since: Instant::now(), frames: 0, shortest: f32::MAX, longest: 0.0, analysis: Duration::ZERO, draw: Duration::ZERO, gpu_ms: Vec::new(), held: None, hits: None }
+        Self { since: Instant::now(), frames: 0, shortest: f32::MAX, longest: 0.0, analysis: Duration::ZERO, draw: Duration::ZERO, gpu_ms: Vec::new(), hits: None }
     }
 
     fn frame(&mut self, dt: f32, analysis: Duration, draw: Duration) {
@@ -748,9 +743,6 @@ impl Stats {
         if !self.gpu_ms.is_empty() {
             let gpu = self.gpu_ms.iter().sum::<f32>() / self.gpu_ms.len() as f32;
             title += &format!(" · gpu {gpu:.3} ms");
-        }
-        if let Some(held) = self.held {
-            title += &format!(" · held {:.1}%", held * 100.0);
         }
         if let (Some(start), Some(end)) = (self.hits, hits) {
             let [beats, kick, snare, cymbals] = std::array::from_fn(|i| (end[i] - start[i]) as f32 / elapsed);

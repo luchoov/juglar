@@ -662,7 +662,6 @@ dependencies = [
  "bytemuck",
  "juglar-director",
  "juglar-signals",
- "pollster",
  "wgpu",
 ]
 

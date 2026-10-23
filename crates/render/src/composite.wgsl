@@ -9,8 +9,8 @@
 //    with a soft shoulder maps any amount of ink into 0..1, so dense paint
 //    glows (and turns toward white) instead of clipping into flat patches.
 // 3. Bloom: the glow computed by the chain in `bloom.rs` is added.
-// 4. Out to the flash limiter (`limiter.wgsl`), in linear light, which
-//    checks it, then dithers and encodes it for the screen.
+// 4. Out to the present step (`present.wgsl`), in linear light, which
+//    dithers and encodes it for the screen.
 //
 // `common.wgsl` and the scene's `overlay` function come before this file.
 
@@ -68,7 +68,7 @@ fn enlarge(image: texture_2d<f32>, uv: vec2f) -> vec3f {
     return 0.25 * c;
 }
 
-// The finished picture at a pixel, before the limiter.
+// The finished picture at a pixel, before it is dithered for the screen.
 fn composite(position: vec2f) -> vec3f {
     let uv = position / frame.resolution;
     let light = shade(position, frame.resolution);

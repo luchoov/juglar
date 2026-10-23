@@ -12,13 +12,12 @@
 //! 2. **Bloom** (`bloom.rs`): the bright parts, blurred ever wider.
 //! 3. **Composite** (`composite.wgsl`), at full size: turn that picture's
 //!    ink into colors, tone-map them and add the glow.
-//! 4. **Limiter** (`limiter.rs`): hold back any flashing beyond two flashes
-//!    a second and any saturated red, then dither onto the screen (see
-//!    `docs/theory/09-photosensitivity.md`).
+//! 4. **Present** (`present.rs`): dither the frame onto the screen.
+//!    Nothing is held back: flashes and hard cuts are the scenes' to make
+//!    (D48 in `docs/decisions.md`).
 //!
 //! The analysis view (`analysis.wgsl`) replaces the first three with
-//! Milestone 3's waveform and bars, to see what Juglar hears. It goes
-//! through the limiter too: nothing reaches the screen without it.
+//! Milestone 3's waveform and bars, to see what Juglar hears.
 //!
 //! During a transition between scenes (`begin_transition`) the first three
 //! steps run twice, once per scene, each in its own feedback loop, and the
@@ -27,7 +26,7 @@
 
 mod bloom;
 mod feedback;
-pub mod limiter;
+mod present;
 mod scene;
 mod timer;
 
@@ -38,7 +37,7 @@ use std::sync::mpsc;
 use bytemuck::{Pod, Zeroable};
 use bloom::{Bloom, Glow};
 use feedback::Feedback;
-use limiter::Limiter;
+use present::Present;
 use scene::{Look, Scene};
 use timer::GpuTimer;
 
@@ -208,9 +207,7 @@ pub struct Renderer {
     /// How many transitions have started, for their seeds.
     crossings: u32,
     bloom: Bloom,
-    limiter: Limiter,
-    /// The share of the limiter's cells held back, last time it was counted.
-    held: Option<f32>,
+    present: Present,
     view: View,
     reduced_motion: bool,
     /// The calm mode asked for, or the last one while it fades out.
@@ -347,7 +344,7 @@ impl Renderer {
                 immediate_size: 0,
             });
             let module = shader_module(&device, "analysis", [COMMON, include_str!("analysis.wgsl")].concat());
-            render_pipeline(&device, "analysis", &layout, &module, "fs_analysis", limiter::CANDIDATE_FORMAT, None)
+            render_pipeline(&device, "analysis", &layout, &module, "fs_analysis", present::CANDIDATE_FORMAT, None)
         };
 
         // Only the first scene is compiled before the first frame; a thread
@@ -377,7 +374,7 @@ impl Renderer {
                 scene: 0,
             }
         });
-        let limiter = Limiter::new(&device, config.width, config.height, format);
+        let present = Present::new(&device, config.width, config.height, format);
         let timer = timestamps.then(|| GpuTimer::new(&device, queue.get_timestamp_period()));
 
         Ok(Self {
@@ -398,8 +395,7 @@ impl Renderer {
             pending: None,
             crossings: 0,
             bloom,
-            limiter,
-            held: None,
+            present,
             view: View::Scene,
             reduced_motion: false,
             calm: Calm { motion: 1.0, saturation: 1.0, floor: 0.0, ceiling: 1.0 },
@@ -432,7 +428,7 @@ impl Renderer {
             layer.feedback = Feedback::new(&self.device, &self.image_layout, &layer.uniforms, &self.sampler, width, height);
             layer.glow = self.bloom.glow(&self.device, &self.image_layout, &layer.uniforms, &self.sampler, width, height);
         }
-        self.limiter.resize(&self.device, width, height);
+        self.present.resize(&self.device, width, height);
     }
 
     /// The names of the scenes, in order.
@@ -535,9 +531,6 @@ impl Renderer {
     pub fn render(&mut self, signals: &Signals) -> bool {
         if let Some(timer) = &mut self.timer {
             timer.collect(&self.device);
-        }
-        if let Some(held) = self.limiter.take_held(&self.device) {
-            self.held = Some(held);
         }
 
         let frame = match self.surface.get_current_texture() {
@@ -648,7 +641,7 @@ impl Renderer {
                         self.bloom.encode(&mut encoder, &layer.glow, &pipelines.bloom_source, layer.feedback.latest());
                     }
                 }
-                let mut composite = begin_pass(&mut encoder, "composite", self.limiter.candidate(), None);
+                let mut composite = begin_pass(&mut encoder, "composite", self.present.candidate(), None);
                 // With a transition, the new scene whole, then the old one
                 // over it, through the transition's shape.
                 for (n, &i) in drawn.iter().rev().enumerate() {
@@ -661,14 +654,14 @@ impl Renderer {
                 }
             }
             View::Analysis => {
-                let mut analysis = begin_pass(&mut encoder, "analysis", self.limiter.candidate(), timestamps(true, false));
+                let mut analysis = begin_pass(&mut encoder, "analysis", self.present.candidate(), timestamps(true, false));
                 analysis.set_pipeline(&self.analysis_pipeline);
                 analysis.set_bind_group(0, &self.layers[front].analysis, &[]);
                 analysis.draw(0..3, 0..1);
             }
         }
         let seed = (self.frames % (1 << 24)) as f32;
-        self.limiter.encode(&self.queue, &mut encoder, &screen, signals.dt, seed, self.encode_srgb, timestamps(false, true));
+        self.present.encode(&self.queue, &mut encoder, &screen, seed, self.encode_srgb, timestamps(false, true));
         if timed && let Some(timer) = &self.timer {
             timer.resolve(&mut encoder);
         }
@@ -676,7 +669,6 @@ impl Renderer {
         if timed && let Some(timer) = &mut self.timer {
             timer.after_submit();
         }
-        self.limiter.after_submit();
         self.queue.present(frame);
         true
     }
@@ -738,12 +730,6 @@ impl Renderer {
     pub fn take_gpu_ms(&mut self) -> Option<f32> {
         self.timer.as_mut().and_then(GpuTimer::take)
     }
-
-    /// The share of the screen the flash limiter was holding back when it
-    /// last counted (twice a second at 60 Hz), if a new count arrived.
-    pub fn take_held(&mut self) -> Option<f32> {
-        self.held.take()
-    }
 }
 
 /// A scene's four pipelines.
@@ -794,7 +780,7 @@ impl PipelineFactory {
         let device = &self.device;
         let feedback = shader_module(device, "feedback", [COMMON, shader, include_str!("feedback.wgsl")].concat());
         let composite = shader_module(device, "composite", [COMMON, shader, include_str!("composite.wgsl")].concat());
-        let candidate = limiter::CANDIDATE_FORMAT;
+        let candidate = present::CANDIDATE_FORMAT;
         ScenePipelines {
             feedback: render_pipeline(device, "feedback", &self.image, &feedback, "fs_feedback", feedback::FORMAT, None),
             bloom_source: render_pipeline(device, "bloom source", &self.image, &composite, "fs_bloom_source", feedback::FORMAT, None),

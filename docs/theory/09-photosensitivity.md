@@ -1,5 +1,7 @@
 # 09 — Flashes, red and the limiter
 
+> **Historical.** Juglar no longer has a flash limiter: it was removed in D48, with its red guard, so that scenes can flash, cut and strobe as hard as the music asks. This note explains what the limiter did and why it was built, as it stood until then. The files it names (`limiter.rs`, `limiter.wgsl`) are gone; `present.rs` keeps only the dithering.
+
 A small share of people can have a seizure triggered by light that flashes, by saturated red that flickers, or by bold stripes. Many more get headaches or feel sick from the same things. A music visualizer is exactly the kind of program that can produce them by accident: it reacts to drums, and drums are fast. This note explains the rules Juglar follows, how the **flash limiter** enforces the first of them on every frame, and what it can't see. The code is in `crates/render/src/limiter.rs` and `limiter.wgsl`.
 
 No set of limits makes a picture safe for every viewer, and this one hasn't been checked by an independent analyzer. Juglar never calls itself "epilepsy-safe".

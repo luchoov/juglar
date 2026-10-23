@@ -36,7 +36,7 @@ Play anything on the system. Juglar listens to what the speakers play, with no s
 
 `cargo run --release -- --fullscreen` starts in fullscreen; `-- --wallpaper`, as the wallpaper.
 
-The window title shows the frame rate, frame intervals, the analysis (CPU) and drawing (GPU) time per frame, the share of the screen the flash limiter is holding back (`held`), beats per second, the tempo when there is a steady beat, the mode, the intensity, and the scene's name, marked *(kept)* while `Space` holds it.
+The window title shows the frame rate, frame intervals, the analysis (CPU) and drawing (GPU) time per frame, beats per second, the tempo when there is a steady beat, the mode, the intensity, and the scene's name, marked *(kept)* while `Space` holds it.
 
 **Focus** and **relax** are style options for when the music matters more than the picture: motion slowed to a crawl and no camera flow, colors muted, the picture dimmed and low in contrast, scenes held for minutes and changed by a slow seep, and the music followed only faintly. They come from the limits in `docs/research/focus-and-relaxation.md` and claim nothing about attention or stress.
 

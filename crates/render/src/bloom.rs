@@ -15,8 +15,6 @@
 //! The usual chain also goes back up, enlarging each level onto the one
 //! above in a pass of its own. Here the composite step enlarges them as it
 //! reads them instead: three passes instead of five.
-//!
-//! It all happens before the flash limiter, which checks the result.
 
 use crate::feedback;
 

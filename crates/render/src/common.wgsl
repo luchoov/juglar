@@ -145,7 +145,7 @@ fn rotate(p: vec2f, angle: f32) -> vec2f {
     return vec2f(c * p.x - s * p.y, s * p.x + c * p.y);
 }
 
-// A well-mixed 32-bit hash (PCG), as in `limiter.wgsl`.
+// A well-mixed 32-bit hash (PCG), as in `present.wgsl`.
 fn pcg(n: u32) -> u32 {
     let state = n * 747796405u + 2891336453u;
     let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;

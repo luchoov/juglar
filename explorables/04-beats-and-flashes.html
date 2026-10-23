@@ -81,7 +81,7 @@
 <header>
   <p class="meta">juglar / explorables / 04</p>
   <h1>Beats and flashes</h1>
-  <p class="lede">Juglar can tell when something happens in the music, a kick, a snare, a drop, and it makes sure the picture never answers with flashing. This page is about both. The first half mirrors <code>crates/dsp/src/onset.rs</code>, the detector of onsets, beats and novelty; the second, <code>crates/render/src/limiter.rs</code> and <code>limiter.wgsl</code>, the flash limiter every frame passes through. The theory is in notes 07 and 09.</p>
+  <p class="lede">Juglar can tell when something happens in the music, a kick, a snare, a drop, and, until decision D48, it made sure the picture never answered with flashing. This page is about both. The first half mirrors <code>crates/dsp/src/onset.rs</code>, the detector of onsets, beats and novelty; the second, <code>crates/render/src/limiter.rs</code> and <code>limiter.wgsl</code>, the flash limiter every frame passed through until D48 removed it. The theory is in notes 07 and 09.</p>
 </header>
 
 <h2><span class="num">01</span>Loud is not the same as new</h2>
@@ -160,6 +160,7 @@
 </figure>
 
 <h2><span class="num">05</span>What counts as a flash</h2>
+<p><b>Historical.</b> From here on, this page shows the flash limiter Juglar had until decision D48, which removed it, with its red guard, so that scenes can flash, cut and strobe as hard as the music asks. The code it mirrors (<code>limiter.rs</code>, <code>limiter.wgsl</code>) is gone; the rules and the simulations are kept because they explain what a flash is.</p>
 <p>Now the other side: what the picture does with all this. A small share of people can have a seizure triggered by flashing light, and many more get headaches from it. Juglar's rule (from its research notes, built on WCAG 2.3.1) is <b>at most two flashes in any second, anywhere on the screen</b>. A flash is a pair of opposing changes in luminance of <b>0.1 or more</b> (black is 0, white 1): two <b>transitions</b>. Four transitions per rolling second is the limit.</p>
 <p>Counting them is not comparing frames: a brightness that rises 0.03 per frame for five frames never changes much from one frame to the next, but it swung by 0.15. So the counter follows the luminance, remembers its last extreme, and counts a transition when it swings back from that extreme by 0.1 or more.</p>
 <figure>

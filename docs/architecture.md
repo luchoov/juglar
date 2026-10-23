@@ -25,9 +25,7 @@ NowPlaying ──track info─────────────────�
                                                                            2 bloom (bright parts at 1/4 size, halved twice)
                                                                            3 composite (sources sharp on top, palette,
                                                                              tonemap, glow) ─► candidate (rgba16f, linear)
-                                                                           4 flash limiter (per cell: count flashes,
-                                                                             hold back; per pixel: red guard,
-                                                                             dither) ─► swapchain
+                                                                           4 present (dither, encode) ─► swapchain
 ```
 
 ### Threads
@@ -105,7 +103,7 @@ Planned levels: random parameters per block (1), procedural composition (2), mus
 
 A single `intensity` value in `0..1` bounds the generator: motion speed, amplitude, reactivity, scene length, transition style (long crossfades vs. cuts on beats), symmetry complexity and saturation. Presets map to fixed points (`gentle ≈ 0.2`, `medium ≈ 0.5`, `strong ≈ 0.9`); `auto` derives it from energy, onset density, bass weight and novelty, smoothed over several seconds.
 
-A global flash limiter applies in every mode and every view: at most two flashes in any second, in any 8×8-pixel cell, and no saturated red (`docs/research/focus-and-relaxation.md` section 9 for the numbers, `docs/theory/09-photosensitivity.md` for how).
+There is no flash limiter (D48): flashes, hard cuts and saturated red are part of what scenes may do. The focus and relax modes are calm by their own settings (D41). Note 09 describes the limiter Juglar had until then.
 
 ## Platform traits
 

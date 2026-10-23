@@ -213,7 +213,7 @@ fn overlay(p: vec2f, pixel: f32) -&gt; vec3f {
   <figcaption>From the top: the palette from t = 0 to 1; the same colors as dim trails look (a little ink, after tone mapping); each channel's wave; and the share of the light that is red, against Juglar's limit.</figcaption>
 </figure>
 <p>Tide's palette makes only half a swing per channel (<code>c = 0.5</code>), so each channel moves one way the whole time: from sand (#dcc69a) through silver to steel blue (#6f9bd1), never through green. The first try went from blue through teal to sand, the colors of these pages brightened. On screen its yellow-greens turned to <b>mud</b> when dim, and trails are dim almost everywhere. Compare the second strip of the two presets. (The first try's exact numbers weren't kept; this preset is rebuilt from its description.)</p>
-<p>The last plot is a safety check. A flashing saturated red is the most dangerous kind of flash for photosensitive viewers; a color counts as saturated red when red carries 80% or more of its light. Juglar keeps every animated color at 75% or less, and a test sweeps the whole palette. The rainbow fails it.</p>
+<p>The last plot is a safety check. A flashing saturated red is the most dangerous kind of flash for photosensitive viewers; a color counts as saturated red when red carries 80% or more of its light. Juglar kept every animated color at 75% or less, and a test swept the whole palette; the rainbow fails it. Decision D48 dropped that rule along with the flash limiter, so the check here is history.</p>
 <details>
   <summary>Optional, for the curious: Tide's palette and its test (<code>crates/render/src/scene/tide.rs</code>)</summary>
 <pre>const PALETTE: Palette = Palette {

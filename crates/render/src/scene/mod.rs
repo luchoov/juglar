@@ -85,17 +85,6 @@ pub(crate) struct Palette {
     pub d: [f32; 3],
 }
 
-impl Palette {
-    /// The color at `t`, as the shader computes it. Only tests need it on
-    /// the CPU.
-    #[cfg(test)]
-    pub fn at(&self, t: f32) -> [f32; 3] {
-        std::array::from_fn(|i| {
-            (self.a[i] + self.b[i] * (std::f32::consts::TAU * (self.c[i] * t + self.d[i])).cos()).clamp(0.0, 1.0)
-        })
-    }
-}
-
 /// What a scene decides for one frame. Warp values are this frame's step,
 /// already scaled by its duration, so motion keeps the same speed at any
 /// frame rate.
@@ -138,20 +127,6 @@ mod tests {
 
     fn loud() -> Signals {
         Signals { dt: 1.0 / 60.0, bass: 1.0, mid: 1.0, treble: 1.0, energy: 1.0, beat: 1.0, novelty: 1.0, intensity: 1.0, ..Signals::default() }
-    }
-
-    #[test]
-    fn no_palette_turns_saturated_red() {
-        // Research policy: animated colors keep red under 75% of the light.
-        for mut scene in all() {
-            let look = scene.update(&loud(), 1.0);
-            for i in 0..=1000 {
-                let c = look.palette.at(i as f32 / 1000.0);
-                let linear = c.map(|c| if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) });
-                let red_share = linear[0] / linear.iter().sum::<f32>();
-                assert!(red_share <= 0.75, "{}: {red_share} at {i}", scene.name());
-            }
-        }
     }
 
     #[test]
