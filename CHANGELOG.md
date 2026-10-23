@@ -10,6 +10,7 @@
 - `JUGLAR_VIEW=analysis` starts on the analysis view.
 - An installer beside the zip: per user, Start menu shortcuts, an optional start with Windows as the wallpaper, a clean uninstall (D60).
 - Citadel, a scene that is a place: a flight through a city carved out of a fractal, raymarched, with a camera that finds its own way (D61).
+- Bore: a tunnel drilled through fractal rock toward a white-hot core; snares reshape the rock, impacts blast it open (D63).
 
 ### Changed
 
