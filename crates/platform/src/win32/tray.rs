@@ -9,15 +9,15 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
 
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CW_USEDEFAULT, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-    GetCursorPos, IDI_APPLICATION, LoadIconW, MF_CHECKED, MF_SEPARATOR, MF_STRING, MF_UNCHECKED, PostMessageW,
-    RegisterClassW, SetForegroundWindow, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, WM_APP, WM_LBUTTONUP, WM_NULL, WM_RBUTTONUP, WNDCLASSW, WS_EX_TOOLWINDOW, WS_OVERLAPPED,
+    GetCursorPos, GetSystemMetrics, HICON, IDI_APPLICATION, IMAGE_ICON, LR_SHARED, LoadIconW, LoadImageW, MF_CHECKED, MF_SEPARATOR, MF_STRING, MF_UNCHECKED, PostMessageW,
+    RegisterClassW, SM_CXSMICON, SM_CYSMICON, SetForegroundWindow, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, WM_APP, WM_LBUTTONUP, WM_NULL, WM_RBUTTONUP, WNDCLASSW, WS_EX_TOOLWINDOW, WS_OVERLAPPED,
 };
 use windows::core::{PCWSTR, w};
 
@@ -93,7 +93,7 @@ impl Tray {
                 uID: 1,
                 uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP,
                 uCallbackMessage: ICON_MESSAGE,
-                hIcon: LoadIconW(None, IDI_APPLICATION).unwrap_or_default(),
+                hIcon: logo(instance.into()),
                 ..Default::default()
             };
             for (slot, unit) in icon.szTip.iter_mut().zip(tip.encode_utf16().take(127)) {
@@ -125,6 +125,23 @@ impl Drop for Tray {
         unsafe {
             let _ = Shell_NotifyIconW(NIM_DELETE, &self.icon);
             let _ = DestroyWindow(self.window);
+        }
+    }
+}
+
+/// Juglar's logo at the tray's size, from the icon build.rs puts in the
+/// program (resource 1); Windows' generic icon if it has none.
+///
+/// # Safety
+/// `instance` must be this program's module.
+unsafe fn logo(instance: HINSTANCE) -> HICON {
+    // SAFETY: resource 1 is looked up in this program; LR_SHARED leaves
+    // the icon to Windows, so it is never destroyed by hand.
+    unsafe {
+        let (width, height) = (GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
+        match LoadImageW(Some(instance), PCWSTR(1 as *const u16), IMAGE_ICON, width, height, LR_SHARED) {
+            Ok(icon) => HICON(icon.0),
+            Err(_) => LoadIconW(None, IDI_APPLICATION).unwrap_or_default(),
         }
     }
 }

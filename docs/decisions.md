@@ -362,3 +362,10 @@ Every important decision in Juglar, in plain language: what was decided, why, wh
 **Considered:** a generic layer system that combines parts (a generator of scenes, Codex's proposal; for after v1).
 **Cost:** each scene's table of signals gets longer, and has to be kept honest.
 
+
+### D55 — An icon, bardo's sibling, built into the program
+
+**Decided:** Juglar's icon is a lowercase *j* leaving two fading copies behind it, like the feedback its scenes are made of, flat off-white and grays on a near-black rounded tile: the tile, ink and weight of bardo's icon (the developer's other program), so the two read as a family. `app/icon/logo.py` draws it (the small sizes on their own, thicker and with one copy) into `app/icon/juglar.ico` and `docs/media/logo.png`. `build.rs` compiles `app/icon/juglar.rc` with the Windows SDK's `rc.exe` (the icon and the version shown in the file's properties) and hands the result to the linker; the window, the taskbar and the tray load the icon from the program.
+**Why:** v1 is the first release; without an icon the program, its window and its tray icon showed Windows' generic one. A neon waveform in a colored ring was tried first and turned down as a generic app's look; so were textured metal-band marks: the developer wanted bardo's quiet style.
+**Considered:** a crate for resources (`winres`, `embed-resource`: a dependency for one file); drawing the icon at run time from the PNG (the program file would still show the generic icon).
+**Cost:** building with an icon needs the Windows SDK, which the MSVC toolchain installs; without it, `build.rs` warns and the program gets the generic icon.

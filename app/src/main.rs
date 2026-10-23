@@ -336,6 +336,15 @@ impl ApplicationHandler for App {
             .with_title("Juglar")
             .with_inner_size(LogicalSize::new(960.0, 540.0))
             .with_min_inner_size(LogicalSize::new(320.0, 180.0));
+        // The logo, from the icon build.rs puts in the program (resource 1).
+        #[cfg(windows)]
+        let attributes = {
+            use winit::platform::windows::{IconExtWindows, WindowAttributesExtWindows};
+            use winit::window::Icon;
+            attributes
+                .with_window_icon(Icon::from_resource(1, None).ok())
+                .with_taskbar_icon(Icon::from_resource(1, None).ok())
+        };
         let window = Arc::new(event_loop.create_window(attributes).expect("window"));
         let size = window.inner_size();
         let renderer = match pollster::block_on(Renderer::new(window.clone(), size.width, size.height)) {

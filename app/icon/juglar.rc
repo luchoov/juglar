@@ -1,0 +1,35 @@
+// Compiled by build.rs into juglar.exe: the icon Explorer, the taskbar,
+// the window and the tray show, and the version in the file's properties.
+// VERSION and VERSION_TEXT come from Cargo.toml through rc.exe's /D.
+
+// The numbers winver.h names, written out so no SDK headers are needed.
+#define VOS_NT_WINDOWS32 0x40004L
+#define VFT_APP 0x1L
+
+1 ICON "juglar.ico"
+
+1 VERSIONINFO
+FILEVERSION VERSION
+PRODUCTVERSION VERSION
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "luchoov"
+      VALUE "FileDescription", "Juglar, a music visualizer"
+      VALUE "FileVersion", VERSION_TEXT
+      VALUE "InternalName", "juglar"
+      VALUE "LegalCopyright", "Copyright (c) 2026 luchoov, MIT license"
+      VALUE "OriginalFilename", "juglar.exe"
+      VALUE "ProductName", "Juglar"
+      VALUE "ProductVersion", VERSION_TEXT
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END
