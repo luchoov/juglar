@@ -21,6 +21,7 @@ mod julia;
 mod kaleido;
 mod lasers;
 mod lenses;
+mod liquid;
 mod maelstrom;
 mod melt;
 mod monolith;
@@ -56,6 +57,7 @@ pub(crate) trait Scene {
 pub(crate) fn all() -> Vec<Box<dyn Scene>> {
     vec![
         Box::new(etch::Etch::new()),
+        Box::new(liquid::Liquid::new()),
         Box::new(shrapnel::Shrapnel::new()),
         Box::new(furnace::Furnace::new()),
         Box::new(static_::Static::new()),
