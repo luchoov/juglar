@@ -19,12 +19,10 @@ mod hammer;
 mod harmonograph;
 mod julia;
 mod kaleido;
-mod lasers;
 mod lenses;
 mod liquid;
 mod maelstrom;
 mod melt;
-mod monolith;
 mod oil;
 mod orbits;
 mod plasma;
@@ -66,8 +64,6 @@ pub(crate) fn all() -> Vec<Box<dyn Scene>> {
         Box::new(wire::Wire::new()),
         Box::new(datamosh::Datamosh::new()),
         Box::new(fracture::Fracture::new()),
-        Box::new(lasers::Lasers::new()),
-        Box::new(monolith::Monolith::new()),
         Box::new(Tide::new()),
         Box::new(orbits::Orbits::new()),
         Box::new(kaleido::Kaleido::new()),
