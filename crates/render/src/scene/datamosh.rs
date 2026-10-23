@@ -60,7 +60,7 @@ impl Scene for Datamosh {
     fn update(&mut self, s: &Signals, motion: f32) -> Look {
         let dt = s.dt.clamp(0.0, 0.1);
         let moving = dt * motion;
-        let Pulse { punch, snap, shake, flash, turn, cuts, chaos, harmony, kicked, .. } = self.reactor.update(s, motion);
+        let Pulse { punch, snap, shake, flash, turn, cuts, chaos, harmony, kicked, impacted, .. } = self.reactor.update(s, motion);
         let follow = 1.0 - (-moving / 0.03).exp();
         for (smooth, &raw) in self.spectrum.iter_mut().zip(&s.spectrum) {
             *smooth += (raw - *smooth) * follow;
@@ -81,7 +81,8 @@ impl Scene for Datamosh {
             zoom: 1.0,
             rotation: 0.0,
             swirl: 0.0,
-            decay: (-moving / fade).exp(),
+            // An impact is a key frame: the smear is gone at once.
+            decay: if impacted && motion > 0.0 { 0.0 } else { (-moving / fade).exp() },
             palette_drift: (0.15 + 0.4 * harmony) * moving,
             knobs: [
                 live * (0.8 + 6.0 * punch + 2.0 * chaos) * dt, // block drift this frame

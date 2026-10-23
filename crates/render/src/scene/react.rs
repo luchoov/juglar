@@ -174,6 +174,16 @@ impl Reactor {
     /// motion, which stops everything.
     pub fn update(&mut self, s: &Signals, motion: f32) -> Pulse {
         let dt = s.dt.clamp(0.0, 0.1) * motion;
+        // Stopped, everything rests: a spring or a flash frozen mid-swing
+        // would hold a jolt or a negative on screen.
+        if motion <= 0.0 {
+            let [x, y] = &mut self.shake;
+            for spring in [&mut self.punch, &mut self.snap, &mut self.shimmer, &mut self.slam, x, y] {
+                spring.x = 0.0;
+                spring.v = 0.0;
+            }
+            self.flash = 0.0;
+        }
         let events = [s.kick, s.snare, s.cymbals, s.hit, s.impact];
         let mut rises = [0.0; 5];
         for ((rise, edge), event) in rises.iter_mut().zip(&mut self.edges).zip(events) {
@@ -217,7 +227,9 @@ impl Reactor {
         // `CUT_REST`, and every fourth snare reverses the turn.
         self.since_cut += dt;
         let mut cut = impact > 0.0;
-        if wild && strike.max(snare) > 0.8 && self.since_cut >= CUT_REST {
+        // Judged on the attack itself: the generic hit only stands in at
+        // 0.6 for the spring, and a buried kick must still be able to cut.
+        if wild && kick.max(hit).max(snare) > 0.8 && self.since_cut >= CUT_REST {
             cut = true;
         }
         if impact > 0.0 || (wild && snare > 0.0 && self.snares % 4 == 0) {
@@ -298,5 +310,31 @@ mod tests {
         assert_eq!(pulse.cuts, 0);
         assert_eq!(pulse.punch, 0.0);
         assert_eq!(pulse.flash, 0.0);
+    }
+
+    #[test]
+    fn stopping_mid_swing_rests_at_once() {
+        // An impact flashes and jolts; reduced motion turned on right
+        // after must not leave the flash or the jolt frozen on screen.
+        let mut reactor = Reactor::new(1);
+        let quiet = Signals { dt: 1.0 / 60.0, ..Signals::default() };
+        reactor.update(&quiet, 1.0);
+        let slam = reactor.update(&Signals { impact: 1.0, kick: 1.0, ..quiet.clone() }, 1.0);
+        assert!(slam.flash > 0.9);
+        let still = reactor.update(&quiet, 0.0);
+        assert_eq!((still.flash, still.punch, still.slam, still.shake), (0.0, 0.0, 0.0, [0.0, 0.0]));
+    }
+
+    #[test]
+    fn a_buried_kick_can_still_cut() {
+        // Wild music whose drums go unheard: the generic hit alone cuts.
+        let mut reactor = Reactor::new(1);
+        let wall = Signals { dt: 1.0 / 60.0, chaos: 0.9, ..Signals::default() };
+        for _ in 0..60 {
+            reactor.update(&wall, 1.0);
+        }
+        let before = reactor.update(&wall, 1.0).cuts;
+        let hit = reactor.update(&Signals { hit: 1.0, ..wall.clone() }, 1.0);
+        assert_eq!(hit.cuts, before + 1);
     }
 }

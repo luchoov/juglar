@@ -76,14 +76,14 @@ impl Scene for Furnace {
         }
         self.crack *= (-moving / 0.35).exp();
 
-        // Slag lasts; an impact clears most of it in a few frames.
+        // Slag lasts; an impact clears it at once, then cools the rest fast.
         let fade = (1.6 + 1.2 * harmony) * (1.0 - 0.9 * flash);
         Look {
             center: [0.0, 0.05],
             zoom: (live * (-0.15 + 2.2 * punch + 3.0 * slam) * dt).exp(),
             rotation: live * turn * 1.2 * snap * dt,
             swirl: live * turn * 2.0 * snap.abs() * dt,
-            decay: (-moving / fade.max(0.05)).exp(),
+            decay: if impacted && motion > 0.0 { 0.0 } else { (-moving / fade.max(0.05)).exp() },
             palette_drift: (0.25 - 0.12 * harmony) * moving,
             knobs: [
                 live * (0.12 + 0.5 * chaos + 0.5 * punch) * dt, // churn this frame

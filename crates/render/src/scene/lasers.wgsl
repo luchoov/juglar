@@ -29,8 +29,18 @@ fn lasers_beams(p: vec2f, pixel: f32, thin: f32) -> vec2f {
         let full = spread > 6.2;
         let step = select(spread / (beams - 1.0), TAU / beams, full);
         let start = select(-0.5 * spread, 0.0, full);
-        let index = clamp(round((off - start) / step), 0.0, beams - 1.0);
-        let along = off - (start + index * step);
+        var index: f32;
+        var along: f32;
+        if full {
+            // Around the circle, the nearest beam may be on either side of
+            // the first; its number wraps for its color and flicker.
+            let nearest = round(off / step);
+            along = off - nearest * step;
+            index = nearest - beams * floor(nearest / beams);
+        } else {
+            index = clamp(round((off - start) / step), 0.0, beams - 1.0);
+            along = off - (start + index * step);
+        }
         // Distance to the beam's line, on the emitter's side only.
         let dist = select(1e6, r * abs(sin(along)), abs(along) < 1.5);
         // Beams widen as they travel, like light through haze.

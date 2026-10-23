@@ -45,7 +45,14 @@ fn fs_feedback(@builtin(position) position: vec4f) -> @location(0) vec4f {
 
     // New paint goes over the old: `paint` is (coverage, ink × coverage,
     // ink × palette position × coverage).
+    // Coverage is what one frame lays down at 60 fps; at other rates it is
+    // compounded, so the same paint lands each second (at 144 Hz a
+    // constant 0.04 would otherwise cover twice as fast, at 30 fps half).
     let paint = sources(p, 1.0 / unit);
-    ink = ink * (1.0 - paint.x) + paint.yz;
+    let coverage = clamp(paint.x, 0.0, 1.0);
+    let frames = 60.0 * clamp(frame.dt, 0.0, 0.25);
+    let laid = 1.0 - pow(1.0 - coverage, frames);
+    let scale = select(laid / coverage, frames, coverage < 1e-5);
+    ink = ink * (1.0 - laid) + paint.yz * scale;
     return vec4f(ink, 0.0, 1.0);
 }

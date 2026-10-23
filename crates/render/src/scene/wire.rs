@@ -142,7 +142,9 @@ impl Scene for Wire {
         // direction by the kick, so the solid bursts and springs back.
         let (outer, inner) = PAIRS[cuts as usize % PAIRS.len()];
         let size = 0.28 + 0.08 * s.loudness + 0.05 * punch + 0.15 * slam.max(0.0);
-        let burst = 0.6 * punch.max(-0.3) + 1.2 * slam.max(0.0);
+        // At most a radius out: a vertex then stays in front of the eye
+        // (the projection divides by 3 + 1.2 z, and z stays above -2).
+        let burst = (0.6 * punch.max(-0.3) + 1.2 * slam.max(0.0)).min(1.0);
         let mut slots = [0.0; WAVEFORM_POINTS];
         let mut count = 0;
         for (which, scale, sign) in [(outer, size, 1.0), (inner, 0.45 * size, -1.0)] {
@@ -161,7 +163,7 @@ impl Scene for Wire {
                     [p[0] * scale * depth, p[1] * scale * depth]
                 };
                 let (a, b) = (project(push(a)), project(push(b)));
-                slots[4 * count..4 * count + 4].copy_from_slice(&[a[0] * motion, a[1] * motion, b[0] * motion, b[1] * motion]);
+                slots[4 * count..4 * count + 4].copy_from_slice(&[a[0], a[1], b[0], b[1]]);
                 count += 1;
             }
         }

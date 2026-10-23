@@ -31,7 +31,7 @@ use super::{Character, Fx, Look, Palette, Scene};
 const PALETTE: Palette = Palette {
     a: [0.55, 0.5, 0.75],
     b: [0.45, 0.5, 0.3],
-    c: [1.0, 1.0, 0.5],
+    c: [1.0, 1.0, 1.0],
     d: [0.75, 0.5, 0.0],
 };
 
