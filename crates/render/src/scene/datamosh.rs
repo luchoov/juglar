@@ -101,7 +101,7 @@ impl Scene for Datamosh {
             bloom: 0.3,
             waveform: s.waveform,
             spectrum: self.spectrum,
-            material: Material::NONE,
+            material: Material { sharpen: 0.2 + 0.2 * chaos, cap: 1.8, erode: 0.002, reach: 1.5 },
             fx: Fx {
                 shake: [0.015 * shake[0], 0.01 * shake[1]],
                 chroma: 0.003 + 0.015 * chaos,
@@ -110,7 +110,7 @@ impl Scene for Datamosh {
                 glitch: (0.5 * snap.abs().min(1.0) * (0.3 + chaos)).min(0.7) * motion,
                 glitch_seed: self.blocks as f32 * 3.0 + (self.clock * 6.0).floor(),
                 relief: 0.0,
-                ground: 0.1,
+                ground: 0.0,
                 ground_hue: 0.6,
                 stencil: 0.0,
             },

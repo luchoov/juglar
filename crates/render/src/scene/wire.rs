@@ -1,21 +1,20 @@
 //! Wire: two solids drawn as wireframes, one inside the other, turning
-//! against each other, on a field of flat color. Every kick blows the
+//! against each other in the dark. Every kick blows the
 //! edges apart, each flung out from the middle and springing back into
 //! place; the snare spins them, reversing on impacts and every fourth
 //! snare; at every hard cut the solids change (icosahedron, cube,
-//! octahedron, tetrahedron), the field jumps to a new color, and the
-//! picture swaps between bright lines over a dim field and a bright field
-//! cut by dark lines, like a screen print. The echoes of the lines fly
-//! outward behind them. Geometry for riffs: hard edges, hard cuts.
+//! octahedron, tetrahedron) and the colors jump. The echoes of the lines
+//! fly outward behind them and sharpen into neon grain. Geometry for
+//! riffs: hard edges, hard cuts.
 //!
 //! | Signal   | Moves                                                     |
 //! |----------|-----------------------------------------------------------|
 //! | kick, hit| the edges blown apart, the echoes thrown outward (springs)|
 //! | snare    | the spin                                                  |
-//! | impact   | new solids, a new field, a flash, a big blast             |
+//! | impact   | new solids, new colors, a flash, a big blast              |
 //! | chaos    | torn colors, thicker lines, sliced glitches               |
 //! | loudness | how big the solids are                                    |
-//! | harmonic | how fast the field's color drifts                         |
+//! | harmonic | how fast the colors drift                                 |
 
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
@@ -168,9 +167,6 @@ impl Scene for Wire {
             }
         }
 
-        // Every other cut: bright lines on a dim field, or a bright field
-        // cut by dark lines.
-        let print = cuts % 2 == 1;
         Look {
             center: [0.0, 0.0],
             zoom: (live * (0.3 + 3.0 * punch.max(0.0) + 5.0 * slam.max(0.0)) * dt).exp(),
@@ -192,10 +188,10 @@ impl Scene for Wire {
             palette_shift: self.hue + (cuts % 7) as f32 * 0.29,
             palette_wrap: true,
             exposure: 1.3,
-            bloom: if print { 0.15 } else { 0.5 },
+            bloom: 0.5,
             waveform: slots,
             spectrum: s.spectrum,
-            material: Material::NONE,
+            material: Material { sharpen: 0.2, cap: 1.6, erode: 0.003, reach: 1.5 },
             fx: Fx {
                 shake: [0.025 * shake[0], 0.025 * shake[1]],
                 chroma: 0.002 + 0.008 * chaos + 0.006 * punch.max(0.0).min(1.0),
@@ -204,9 +200,9 @@ impl Scene for Wire {
                 glitch: if chaos > 0.6 { 0.3 * snap.abs().min(1.0) } else { 0.0 },
                 glitch_seed: cuts as f32 * 13.0 + (self.clock * 10.0).floor(),
                 relief: 0.0,
-                ground: if print { 0.85 } else { 0.18 },
-                ground_hue: 0.5,
-                stencil: if print { 1.0 } else { 0.0 },
+                ground: 0.0,
+                ground_hue: 0.0,
+                stencil: 0.0,
             },
         }
     }

@@ -105,7 +105,7 @@ impl Scene for Static {
             bloom: 0.35,
             waveform: self.waveform,
             spectrum: s.spectrum,
-            material: Material::NONE,
+            material: Material { sharpen: 0.25 + 0.25 * chaos, cap: 1.6, erode: 0.003, reach: 2.0 },
             fx: Fx {
                 shake: [0.02 * shake[0], 0.012 * shake[1]],
                 chroma: 0.003 + 0.02 * chaos + 0.01 * punch.min(1.0),
@@ -114,7 +114,7 @@ impl Scene for Static {
                 glitch: (0.6 * chaos * snap.min(1.0) + 0.25 * punch.min(1.0)).min(0.8) * motion,
                 glitch_seed: self.tear as f32,
                 relief: 0.0,
-                ground: 0.14,
+                ground: 0.0,
                 ground_hue: 0.6,
                 stencil: 0.0,
             },
