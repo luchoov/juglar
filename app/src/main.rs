@@ -522,8 +522,14 @@ impl App {
                 let name = renderer.scene_names()[change.scene];
                 let feel = self.director.feel();
                 println!(
-                    "Director: {:?} at {:.1} s → {name}, {:?} (pulse {:.2}, brightness {:.2}, swell {:.2})",
-                    change.moment, self.signals.time, change.transition.style, feel.pulse, feel.brightness, feel.swell
+                    "Director: {:?} at {:.2} s → {name}, {:?} (pulse {:.2}, brightness {:.2}, swell {:.2}, tension {:.2})",
+                    change.moment,
+                    self.signals.time,
+                    change.transition.style,
+                    feel.pulse,
+                    feel.brightness,
+                    feel.swell,
+                    feel.tension
                 );
             }
         }
@@ -581,12 +587,13 @@ impl App {
                 // Also what the director hears, to tune it by.
                 let feel = self.director.feel();
                 println!(
-                    "{title} · pulse {:.2} loudness {:.2} swell {:.2} brightness {:.2} rise {:+.2}{}",
+                    "{title} · pulse {:.2} loudness {:.2} swell {:.2} brightness {:.2} rise {:+.2} tension {:.2}{}",
                     feel.pulse,
                     feel.loudness,
                     feel.swell,
                     feel.brightness,
                     feel.rise,
+                    feel.tension,
                     self.alignment.report()
                 );
             }

@@ -1,6 +1,6 @@
 //! What the music feels like over the last several seconds, as opposed to
-//! this instant: how fast it pulses, how loud and how bright it is, and
-//! whether it is rising or falling.
+//! this instant: how fast it pulses, how loud and how bright it is, whether
+//! it is rising or falling, and whether it is building up to something.
 //!
 //! The analysis' signals react within a frame: `beat` is 1 on a kick and
 //! gone a quarter of a second later, `energy` follows every note. Decisions
@@ -25,6 +25,25 @@ const SWELL_SECONDS: f32 = 30.0;
 /// Beats per second that count as the busiest pulse: a kick and a snare
 /// on every beat at 120 per minute, or anything faster.
 const BUSIEST_PULSE: f32 = 4.0;
+/// The two averages of treble and of bass whose differences say whether
+/// the music is building up (see `Feel::tension`).
+const BUILD_FAST: f32 = 1.0;
+const BUILD_SLOW: f32 = 6.0;
+/// How much the treble must outgrow the bass (difference of the two
+/// averages) for full tension. The synthetic build-up, a gentle one, gets
+/// to about 0.05 in its last seconds.
+const BUILD_FULL: f32 = 0.06;
+/// Spectrum bands that make the deep bass: below about 120 Hz, the kick
+/// and the bass line. The `bass` level goes up to 250 Hz, where a snare's
+/// body is: a snare roll speeding up in a build-up made it rise, and the
+/// tension let go seven seconds before the drop.
+const DEEP_BANDS: usize = 7;
+/// Spectrum bands of the middle, 260 Hz to 4 kHz: snares, voices, chords.
+const MIDDLE_BANDS: std::ops::Range<usize> = 11..25;
+/// Tension rises in about this long and lets go in this long: a build-up
+/// takes many seconds, a drop ends it at once.
+const TENSION_RISE: f32 = 2.0;
+const TENSION_FALL: f32 = 0.3;
 
 /// Slow summaries of the music. Every value is in `0..=1` except `rise`,
 /// in `-1..=1`.
@@ -46,6 +65,18 @@ pub struct Feel {
     /// Positive while the music grows (a build-up), negative while it
     /// thins out (a breakdown).
     pub rise: f32,
+    /// How much the music is building up to something, `0..=1`: the
+    /// treble growing for several seconds (a riser, a snare roll, hi-hats
+    /// getting louder) while the deep bass doesn't grow with it (in a
+    /// build-up the kick and the bass line are held back for the drop). It
+    /// lets go within a fraction of a second when they come in.
+    pub tension: f32,
+    /// How much harder the deep bass hits now than over the last few
+    /// seconds, beyond what the middle does, `-1..=1`: high on the first
+    /// beat of a drop. A snare has deep bass too, but jumps as much in the
+    /// middle; in a build-up, a snare roll's hits counted as drops until
+    /// the middle was taken off.
+    pub punch: f32,
     /// Whether anything is playing at all.
     pub sounding: bool,
 }
@@ -62,8 +93,15 @@ pub struct Listener {
     fast: f32,
     slow: f32,
     long: f32,
+    /// Treble and deep bass, each followed quickly and slowly, for
+    /// `tension`.
+    treble: [f32; 2],
+    deep: [f32; 2],
+    /// The middle, followed slowly, for `punch`.
+    middle: f32,
     /// Seconds of silence so far.
     quiet: f32,
+    last_phase: f32,
 }
 
 impl Listener {
@@ -81,6 +119,13 @@ impl Listener {
         s.beat > 0.5 && s.beat > self.last_beat_signal + 0.3
     }
 
+    /// Whether `s` holds a beat to land a change on: one detected, or one
+    /// the tempo's count says is here (the music may leave it out, or the
+    /// detector miss it in a dense mix).
+    pub fn on_beat(&self, s: &Signals) -> bool {
+        self.is_beat(s) || (s.tempo > 0.0 && s.beat_phase < self.last_phase - 0.5)
+    }
+
     pub fn update(&mut self, s: &Signals) -> Feel {
         let dt = s.dt.clamp(0.0, 0.25);
         self.beats *= (-dt / PULSE_SECONDS).exp();
@@ -90,6 +135,7 @@ impl Listener {
             self.since_beat = 0.0;
         }
         self.last_beat_signal = s.beat;
+        self.last_phase = s.beat_phase;
 
         let follow = |value: &mut f32, target: f32, seconds: f32| *value += (target - *value) * (1.0 - (-dt / seconds).exp());
         let loudness_seconds = if s.energy > self.feel.loudness { LOUDNESS_RISE } else { LOUDNESS_FALL };
@@ -98,6 +144,20 @@ impl Listener {
         follow(&mut self.fast, s.energy, RISE_FAST);
         follow(&mut self.slow, s.energy, RISE_SLOW);
         follow(&mut self.long, self.feel.loudness, SWELL_SECONDS);
+        let [treble_fast, treble_slow] = &mut self.treble;
+        follow(treble_fast, s.treble, BUILD_FAST);
+        follow(treble_slow, s.treble, BUILD_SLOW);
+        let deep = s.spectrum[..DEEP_BANDS].iter().sum::<f32>() / DEEP_BANDS as f32;
+        let [deep_fast, deep_slow] = &mut self.deep;
+        follow(deep_fast, deep, BUILD_FAST);
+        follow(deep_slow, deep, BUILD_SLOW);
+        let middle = s.spectrum[MIDDLE_BANDS].iter().sum::<f32>() / MIDDLE_BANDS.len() as f32;
+        follow(&mut self.middle, middle, BUILD_SLOW);
+        self.feel.punch = (deep - self.deep[1] - 0.5 * (middle - self.middle).max(0.0)).clamp(-1.0, 1.0);
+        let building = (self.treble[0] - self.treble[1]) - (self.deep[0] - self.deep[1]).max(0.0);
+        let target = if self.feel.sounding { (building / BUILD_FULL).clamp(0.0, 1.0) } else { 0.0 };
+        let seconds = if target > self.feel.tension { TENSION_RISE } else { TENSION_FALL };
+        follow(&mut self.feel.tension, target, seconds);
 
         self.quiet = if s.energy < 0.02 { self.quiet + dt } else { 0.0 };
         self.feel.pulse = (self.beats / PULSE_SECONDS / BUSIEST_PULSE).min(1.0);
@@ -153,6 +213,17 @@ mod tests {
         // Louder than the half minute before it, and quieter.
         assert!(drop.swell > 0.6, "{}", drop.swell);
         assert!(breakdown.swell < 0.4, "{}", breakdown.swell);
+    }
+
+    #[test]
+    fn tension_builds_before_the_drop_and_lets_go_at_it() {
+        // The build runs from 16 to 32 s, the drop from 32 to 48.
+        let feels = feel_at(&[12.0, 26.0, 29.0, 31.9, 33.0, 40.0, 56.0]);
+        let tension: Vec<f32> = feels.iter().map(|f| f.tension).collect();
+        let [intro, build, late, last, drop, later, breakdown] = tension[..] else { unreachable!() };
+        assert!(intro < 0.1, "{tension:?}");
+        assert!(build > 0.3 && late > 0.5 && last > 0.6, "{tension:?}");
+        assert!(drop < 0.3 && later < 0.1 && breakdown < 0.1, "{tension:?}");
     }
 
     #[test]

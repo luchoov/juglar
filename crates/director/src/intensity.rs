@@ -92,7 +92,7 @@ mod tests {
     fn changes_slowly() {
         // From silence to the loudest music, a frame moves it by little.
         let mut natural = NaturalIntensity::new(LOWEST);
-        let loud = Feel { pulse: 1.0, loudness: 1.0, brightness: 1.0, swell: 1.0, rise: 0.0, sounding: true };
+        let loud = Feel { pulse: 1.0, loudness: 1.0, brightness: 1.0, swell: 1.0, rise: 0.0, tension: 0.0, punch: 0.0, sounding: true };
         let before = natural.value();
         natural.update(&loud, 1.0 / 60.0);
         assert!(natural.value() - before < 0.01);

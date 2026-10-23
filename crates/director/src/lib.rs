@@ -104,7 +104,7 @@ impl Director {
     /// Returns a scene change when one is due. `scene` is the scene
     /// showing; `busy` says a transition is under way.
     pub fn update(&mut self, s: &mut Signals, scene: usize, busy: bool) -> Option<Change> {
-        let beat = self.listener.is_beat(s);
+        let beat = self.listener.on_beat(s);
         let feel = self.listener.update(s);
         let natural = self.natural.update(&feel, s.dt);
         s.intensity = match (self.mode.intensity(), self.intensity) {

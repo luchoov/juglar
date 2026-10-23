@@ -8,7 +8,16 @@
 //! - **When:** at a *moment*, once the scene has had its time: the analysis'
 //!   novelty jumping (a new song, a drop), or the feel of the music shifting
 //!   (pulse, brightness and swell, against six seconds earlier). If no
-//!   moment comes, after a while anyway. Always on a beat when there is one.
+//!   moment comes, after a while anyway, but not in the middle of a
+//!   build-up: a VJ waits for the drop. Always on a beat when there is one,
+//!   detected or counted.
+//! - **Drops:** the deep bass hitting hard during a build-up, or just as
+//!   it lets go, is the drop: a moment of its own, since novelty often
+//!   stays high through a build-up and has nothing left to jump with. It
+//!   needs no listening to tell what it is, so the change lands on the
+//!   drop's first beat, and a scene may give way to it at half its time.
+//!   Other moments in a build-up (the snare roll speeding up) are part of
+//!   it, and change nothing.
 //! - **To what:** the scene whose character (`Character`) is closest to the
 //!   music now, among those not shown lately.
 //! - **How:** by what the moment is (`Transition`): rising music opens the
@@ -43,7 +52,9 @@ pub struct Character {
 /// What made the director change scene.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Moment {
-    /// The music grew suddenly: a drop, a song starting.
+    /// The music let go of a build-up: the drop it was building to.
+    Drop,
+    /// The music grew suddenly: a drop nobody built up to, a song starting.
     Rise,
     /// It thinned out: a breakdown, an ending.
     Fall,
@@ -102,6 +113,24 @@ const BEAT_WAIT: f32 = 0.75;
 const MOMENT_KEEP: f32 = 4.0;
 /// Scenes shown within the last this many changes are avoided.
 const RECENT: usize = 4;
+/// Tension (`Feel::tension`) above this is a build-up.
+const TENSE: f32 = 0.4;
+/// The deep bass hitting within this long of a build-up can be its drop.
+const DROP_WINDOW: f32 = 1.5;
+/// How much harder than lately the deep bass must hit (`Feel::punch`) to
+/// be the drop, and how much harder than anything in the build-up's last
+/// few seconds: some build-ups keep a kick. Measured on a build-up and
+/// drop played through the speakers, a snare roll's hits reached 0.13 and
+/// the drop's first kick 0.62; in the synthetic song, the build-up's kicks
+/// reach 0.32-0.41 and the drop 0.54.
+const DROP_PUNCH: f32 = 0.3;
+const DROP_OVER_BUILD: f32 = 1.25;
+/// The build-up's punches are remembered in slots of this long, this many.
+const PUNCH_SLOT: f32 = 0.25;
+const PUNCH_SLOTS: usize = 16;
+/// A change due during a build-up waits for the drop, at most this much
+/// longer.
+const DROP_WAIT: f32 = 30.0;
 
 /// How much the music changed between two feels: pulse and brightness in
 /// full, swell at half (it moves with every long crescendo).
@@ -121,6 +150,11 @@ pub struct Schedule {
     since_snapshot: f32,
     last_novelty: f32,
     last_shift: f32,
+    last_punch: f32,
+    /// The strongest punch in each of the last `PUNCH_SLOTS` slots, the
+    /// current one first, and how far into it we are.
+    punches: [f32; PUNCH_SLOTS],
+    punch_slot: f32,
     /// Loudness over about the last two seconds, and over the last few
     /// tenths: what a moment is compared across.
     steady: f32,
@@ -132,6 +166,8 @@ pub struct Schedule {
     remembered: Option<(Moment, f32)>,
     /// A change waiting for a beat, and for how long it has waited.
     due: Option<(Moment, f32)>,
+    /// Seconds since the music was last building up.
+    since_tense: f32,
     holding: bool,
 }
 
@@ -146,11 +182,15 @@ impl Schedule {
             since_snapshot: 0.0,
             last_novelty: 0.0,
             last_shift: 0.0,
+            last_punch: 0.0,
+            punches: [0.0; PUNCH_SLOTS],
+            punch_slot: 0.0,
             steady: 0.0,
             quick: 0.0,
             listening: None,
             remembered: None,
             due: None,
+            since_tense: f32::MAX,
             holding: false,
         }
     }
@@ -206,7 +246,26 @@ impl Schedule {
         let follow = |value: &mut f32, seconds: f32| *value += (s.energy - *value) * (1.0 - (-dt / seconds).exp());
         follow(&mut self.quick, 0.25);
         self.remembered = self.remembered.map(|(moment, age)| (moment, age + dt)).filter(|&(_, age)| age <= MOMENT_KEEP);
-        if (jumped || shifted) && feel.sounding && self.listening.is_none() {
+        let building = feel.tension > TENSE;
+        self.since_tense = if building { 0.0 } else { self.since_tense + dt };
+        // Compared with the build-up's punches from half a second ago and
+        // earlier: the last two slots may hold this same kick's attack.
+        let before = self.punches[2..].iter().copied().fold(0.0, f32::max);
+        let needed = DROP_PUNCH.max(DROP_OVER_BUILD * before);
+        let punched = feel.punch > needed && self.last_punch <= needed;
+        self.last_punch = feel.punch;
+        self.punch_slot += dt;
+        if self.punch_slot >= PUNCH_SLOT {
+            self.punch_slot = 0.0;
+            self.punches.rotate_right(1);
+            self.punches[0] = 0.0;
+        }
+        self.punches[0] = self.punches[0].max(feel.punch);
+        if punched && self.since_tense <= DROP_WINDOW && feel.sounding {
+            // The build-up already said what this is.
+            self.remembered = Some((Moment::Drop, 0.0));
+            self.listening = None;
+        } else if (jumped || shifted) && feel.sounding && self.listening.is_none() && !building {
             self.listening = Some((self.steady, 0.0));
         }
         if let Some((before, age)) = self.listening {
@@ -233,10 +292,15 @@ impl Schedule {
             self.due = None;
             return None;
         }
-        if self.due.is_none() && self.shown >= self.pacing.shortest {
-            if let Some((moment, _)) = self.remembered.take() {
+        if self.due.is_none() {
+            let drop = matches!(self.remembered, Some((Moment::Drop, _)));
+            let shortest = if drop { 0.5 * self.pacing.shortest } else { self.pacing.shortest };
+            let waited_for_drop = !building || self.shown >= self.pacing.longest + DROP_WAIT;
+            if self.shown >= shortest
+                && let Some((moment, _)) = self.remembered.take()
+            {
                 self.due = Some((moment, 0.0));
-            } else if self.shown >= self.pacing.longest {
+            } else if self.shown >= self.pacing.longest && waited_for_drop {
                 self.due = Some((Moment::Long, 0.0));
             }
         }
@@ -284,6 +348,7 @@ impl Schedule {
             return Transition { style: Style::Seep, seconds, per_beat: 0.0 };
         }
         match moment {
+            Moment::Drop => Transition { style: Style::Bloom, seconds: 1.5, per_beat: 0.12 },
             _ if arousal(feel) < 0.35 => Transition { style: Style::Seep, seconds: 6.0, per_beat: 0.0 },
             Moment::Rise => Transition { style: Style::Bloom, seconds: 2.5, per_beat: 0.12 },
             Moment::Fall => Transition { style: Style::Iris, seconds: 4.0, per_beat: 0.06 },
@@ -296,7 +361,7 @@ impl Schedule {
 mod tests {
     use super::*;
     use crate::feel::Listener;
-    use juglar_signals::Synthetic;
+    use juglar_signals::{SPECTRUM_BANDS, Synthetic};
 
     fn characters() -> Vec<Character> {
         [(0.5, 0.6, true), (0.2, 0.2, false), (0.85, 0.7, true), (0.3, 0.3, false), (0.6, 0.5, false), (0.9, 0.8, true)]
@@ -316,7 +381,7 @@ mod tests {
         let mut t = 0.0;
         while t < seconds {
             next(&mut s);
-            let beat = listener.is_beat(&s);
+            let beat = listener.on_beat(&s);
             let feel = listener.update(&s);
             if let Some(change) = schedule.update(&s, &feel, beat, scene, false) {
                 scene = change.scene;
@@ -333,17 +398,52 @@ mod tests {
     }
 
     #[test]
-    fn changes_at_the_drop_on_a_beat() {
-        // Sections of 16 s: the first change waits for the scene's 30 s,
-        // then for the next moment, the drop at 32 s, listens half a second
-        // and lands on the next beat.
+    fn changes_on_the_drop() {
+        // Sections of 16 s: the build-up from 16 s announces the drop at
+        // 32 s, and the change lands on its first beat.
         let changes = run(40.0, Pacing::LIVELY, song());
         let &(t, change) = changes.first().expect("a change");
-        assert!((32.4..33.1).contains(&t), "at {t}");
-        assert_eq!(change.moment, Moment::Rise);
+        assert!((31.95..32.05).contains(&t), "at {t}");
+        assert_eq!(change.moment, Moment::Drop);
         assert_eq!(change.transition.style, Style::Bloom);
-        // On the beat: the drop's beats fall on whole half seconds.
-        assert!(((t * 2.0).round() - t * 2.0).abs() < 0.05, "at {t}");
+    }
+
+    #[test]
+    fn a_build_up_holds_back_a_change_that_is_due() {
+        // Steady music for 90 s, a build-up for 20 s (hi-hats growing, the
+        // bass held), then the drop. The change due at 100 s waits for it.
+        let mut t = 0.0f32;
+        let changes = run(130.0, Pacing::LIVELY, move |s| {
+            t += 1.0 / 60.0;
+            let since = (t * 2.0).fract() / 2.0;
+            let beat = (-since / 0.15).exp();
+            let (bass, treble, novelty) = match t {
+                ..90.0 => (0.5, 0.3, 0.0),
+                ..110.0 => (0.2, 0.3 + 0.4 * (t - 90.0) / 20.0, 0.0),
+                _ => (0.9, 0.6, (-(t - 110.0) / 0.8).exp()),
+            };
+            let spectrum = [bass; SPECTRUM_BANDS];
+            *s = Signals { dt: 1.0 / 60.0, energy: 0.6, bass, mid: 0.5, treble, beat, novelty, spectrum, ..Signals::default() };
+        });
+        let times: Vec<(f32, Moment)> = changes.iter().map(|&(t, c)| (t, c.moment)).collect();
+        assert_eq!(times.len(), 1, "{times:?}");
+        let (t, moment) = times[0];
+        assert!((109.95..110.6).contains(&t) && moment == Moment::Drop, "{times:?}");
+    }
+
+    #[test]
+    fn changes_on_a_counted_beat_when_none_is_heard() {
+        // A steady tempo with no detected beats at all: changes still land
+        // where the count puts the beat.
+        let mut t = 0.0f32;
+        let changes = run(220.0, Pacing::LIVELY, move |s| {
+            t += 1.0 / 60.0;
+            *s = Signals { dt: 1.0 / 60.0, energy: 0.6, bass: 0.6, mid: 0.5, treble: 0.4, tempo: 120.0, beat_phase: (t * 2.0).fract(), ..Signals::default() };
+        });
+        assert!(!changes.is_empty());
+        for (t, _) in changes {
+            assert!(((t * 2.0).round() - t * 2.0).abs() < 0.05, "at {t}");
+        }
     }
 
     #[test]
@@ -396,8 +496,8 @@ mod tests {
     #[test]
     fn lively_music_gets_a_lively_scene() {
         let schedule = Schedule::new(characters(), Pacing::LIVELY);
-        let loud = Feel { pulse: 0.9, loudness: 0.9, brightness: 0.8, swell: 0.8, rise: 0.0, sounding: true };
-        let quiet = Feel { pulse: 0.0, loudness: 0.5, brightness: 0.1, swell: 0.4, rise: 0.0, sounding: true };
+        let loud = Feel { pulse: 0.9, loudness: 0.9, brightness: 0.8, swell: 0.8, rise: 0.0, tension: 0.0, punch: 0.0, sounding: true };
+        let quiet = Feel { pulse: 0.0, loudness: 0.5, brightness: 0.1, swell: 0.4, rise: 0.0, tension: 0.0, punch: 0.0, sounding: true };
         assert_eq!(schedule.choose(&loud, 0), 5);
         assert_eq!(schedule.choose(&quiet, 0), 1);
     }
