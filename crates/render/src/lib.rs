@@ -95,9 +95,19 @@ struct Uniforms {
     reveal: [f32; 4],
     /// A calm mode: saturation, floor, ceiling, how far it has come in.
     calm: [f32; 4],
+    /// Kick, snare and cymbals; the percussive and harmonic levels.
+    drums: [f32; 4],
+    layers: [f32; 4],
+    /// The same over the last `HISTORY` frames, oldest first, for the
+    /// analysis view.
+    kick_history: [[f32; 4]; HISTORY / 4],
+    snare_history: [[f32; 4]; HISTORY / 4],
+    cymbals_history: [[f32; 4]; HISTORY / 4],
+    percussive_history: [[f32; 4]; HISTORY / 4],
+    harmonic_history: [[f32; 4]; HISTORY / 4],
 }
 
-/// Frames of beat and novelty the analysis view shows: about two seconds.
+/// Frames of history the analysis view shows: about two seconds.
 const HISTORY: usize = 128;
 /// Seconds a calm mode takes to fade in or out.
 const CALM_FADE: f32 = 3.0;
@@ -209,8 +219,9 @@ pub struct Renderer {
     /// How far the calm mode has faded in, 0..1.
     calm_amount: f32,
     frames: u32,
-    /// Beat and novelty of the last `HISTORY` frames, circular.
-    history: [[f32; 2]; HISTORY],
+    /// Beat, novelty, kick, snare, cymbals, percussive and harmonic of the
+    /// last `HISTORY` frames, circular.
+    history: [[f32; 7]; HISTORY],
     encode_srgb: bool,
     timer: Option<GpuTimer>,
     adapter: wgpu::AdapterInfo,
@@ -395,7 +406,7 @@ impl Renderer {
             calm_on: false,
             calm_amount: 0.0,
             frames: 0,
-            history: [[0.0; 2]; HISTORY],
+            history: [[0.0; 7]; HISTORY],
             encode_srgb: !format.is_srgb(),
             timer,
             adapter: adapter.get_info(),
@@ -571,7 +582,8 @@ impl Renderer {
             (signals, 1.0 + (self.calm.motion - 1.0) * calm)
         };
         self.frames = self.frames.wrapping_add(1);
-        self.history[self.frames as usize % HISTORY] = [scene_signals.beat, scene_signals.novelty];
+        let s = scene_signals;
+        self.history[self.frames as usize % HISTORY] = [s.beat, s.novelty, s.kick, s.snare, s.cymbals, s.percussive, s.harmonic];
 
         // The layers to draw, the showing one first: with a transition, the
         // arriving one too.
@@ -705,10 +717,17 @@ impl Renderer {
             novelty_history: bytemuck::cast(self.history_of(1)),
             reveal,
             calm: [self.calm.saturation, self.calm.floor, self.calm.ceiling, self.calm_amount],
+            drums: [s.kick, s.snare, s.cymbals, 0.0],
+            layers: [s.percussive, s.harmonic, 0.0, 0.0],
+            kick_history: bytemuck::cast(self.history_of(2)),
+            snare_history: bytemuck::cast(self.history_of(3)),
+            cymbals_history: bytemuck::cast(self.history_of(4)),
+            percussive_history: bytemuck::cast(self.history_of(5)),
+            harmonic_history: bytemuck::cast(self.history_of(6)),
         }
     }
 
-    /// One of the two histories, oldest first.
+    /// One of the histories, oldest first.
     fn history_of(&self, which: usize) -> [f32; HISTORY] {
         let newest = self.frames as usize % HISTORY;
         std::array::from_fn(|i| self.history[(newest + 1 + i) % HISTORY][which])
@@ -911,6 +930,10 @@ mod tests {
         assert_eq!(std::mem::offset_of!(Uniforms, novelty_history), 1344 + 32 * 16);
         assert_eq!(std::mem::offset_of!(Uniforms, reveal), 1344 + 64 * 16);
         assert_eq!(std::mem::offset_of!(Uniforms, calm), 1344 + 64 * 16 + 16);
-        assert_eq!(size_of::<Uniforms>(), 1344 + 64 * 16 + 32);
+        assert_eq!(std::mem::offset_of!(Uniforms, drums), 2400);
+        assert_eq!(std::mem::offset_of!(Uniforms, layers), 2416);
+        assert_eq!(std::mem::offset_of!(Uniforms, kick_history), 2432);
+        assert_eq!(std::mem::offset_of!(Uniforms, harmonic_history), 2432 + 4 * 32 * 16);
+        assert_eq!(size_of::<Uniforms>(), 2432 + 5 * 32 * 16);
     }
 }

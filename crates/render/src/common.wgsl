@@ -55,6 +55,17 @@ struct Frame {
     // A calm mode (`composite.wgsl`): x = how much color is kept, y and z =
     // the luminance floor and ceiling, w = how far it has faded in.
     calm: vec4f,
+
+    // Each drum: x = kick, y = snare, z = cymbals, 1 at a hit, falling to 0.
+    drums: vec4f,
+    // x = how loud the percussive part is, y = the harmonic part.
+    layers: vec4f,
+    // The last 128 frames of each, oldest first.
+    kick_history: array<vec4f, 32>,
+    snare_history: array<vec4f, 32>,
+    cymbals_history: array<vec4f, 32>,
+    percussive_history: array<vec4f, 32>,
+    harmonic_history: array<vec4f, 32>,
 }
 
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -97,6 +108,25 @@ fn beat_history(i: u32) -> f32 {
 
 fn novelty_history(i: u32) -> f32 {
     return frame.novelty_history[i / 4u][i % 4u];
+}
+
+// Drum `d` (0 kick, 1 snare, 2 cymbals) at history frame `i`.
+fn drum_history(d: u32, i: u32) -> f32 {
+    if d == 0u {
+        return frame.kick_history[i / 4u][i % 4u];
+    }
+    if d == 1u {
+        return frame.snare_history[i / 4u][i % 4u];
+    }
+    return frame.cymbals_history[i / 4u][i % 4u];
+}
+
+fn percussive_history(i: u32) -> f32 {
+    return frame.percussive_history[i / 4u][i % 4u];
+}
+
+fn harmonic_history(i: u32) -> f32 {
+    return frame.harmonic_history[i / 4u][i % 4u];
 }
 
 fn knob(i: u32) -> f32 {

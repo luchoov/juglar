@@ -4,7 +4,7 @@
 // One triangle covers the screen. For every pixel, the GPU runs `fs_analysis`,
 // which works out what that pixel shows (part of the waveform, a spectrum
 // bar, a band meter, or background) from the numbers in `frame`. Millions of
-// pixels run this in parallel; the CPU only uploads ~1 KB per frame.
+// pixels run this in parallel; the CPU only uploads ~5 KB per frame.
 // `common.wgsl` comes first and defines `frame` and the helpers used here.
 
 // The explorables' palette, as sRGB hex.
@@ -19,6 +19,13 @@ const TREBLE: u32 = 0xa39a78u;
 // would itself be a flashing light (see docs/research/focus-and-relaxation.md).
 const BEAT: u32 = 0x45454du;
 const NOVELTY: u32 = 0x8b8b94u;
+// The drums are dim for the same reason: a double kick lights its meter
+// sixteen times a second. Each takes its region's hue.
+const KICK: u32 = 0x3b4a5cu;
+const SNARE: u32 = 0x3d5550u;
+const CYMBALS: u32 = 0x57533fu;
+const PERCUSSIVE: u32 = 0xa07c62u;
+const HARMONIC: u32 = 0x7486a8u;
 
 // Spectrum bars below this index are in the bass range (under 250 Hz), from
 // it up to `FIRST_TREBLE_BAR` in the mid range (under 4 kHz). The 32 bars are
@@ -62,9 +69,9 @@ fn fs_analysis(@builtin(position) position: vec4f) -> @location(0) vec4f {
 
     var c = color(BACKGROUND);
 
-    // Waveform: the upper part of the screen.
-    let wave_center = floor(top + height * 0.2) + 0.5;
-    let wave_amplitude = height * 0.18;
+    // Waveform: the top of the screen.
+    let wave_center = floor(top + height * 0.13) + 0.5;
+    let wave_amplitude = height * 0.11;
     if p.x >= left && p.x < right {
         if abs(p.y - wave_center) < 0.5 {
             c = color(LINE);
@@ -87,7 +94,7 @@ fn fs_analysis(@builtin(position) position: vec4f) -> @location(0) vec4f {
     // Spectrum bars and meters: the lower half.
     let bars_top = top + height * 0.5;
     let bars_height = bottom - bars_top;
-    let meters_width = floor((right - left) * 0.2);
+    let meters_width = floor((right - left) * 0.34);
     let spectrum_right = right - meters_width - floor(margin * 0.5);
     if p.y >= bars_top && p.y < bottom {
         if p.x >= left && p.x < spectrum_right {
@@ -99,24 +106,62 @@ fn fs_analysis(@builtin(position) position: vec4f) -> @location(0) vec4f {
                 c = mix(c, bar_color(i), below(p.y, bottom - spectrum(i) * bars_height));
             }
         }
-        // Six meters: bass, mid, treble, energy, beat, novelty.
+        // Eleven meters: bass, mid, treble, energy, beat, novelty; kick,
+        // snare, cymbals; percussive, harmonic.
         let meters_left = right - meters_width;
         if p.x >= meters_left && p.x < right {
-            let step = meters_width / 6.0;
-            let i = min(u32((p.x - meters_left) / step), 5u);
+            let step = meters_width / 11.0;
+            let i = min(u32((p.x - meters_left) / step), 10u);
             let gap = max(1.0, floor(step * 0.25));
             if p.x < floor(meters_left + f32(i + 1u) * step) - gap {
-                var meter = array<vec3f, 6>(color(BASS), color(MID), color(TREBLE), color(FOREGROUND), color(BEAT), color(NOVELTY));
-                var level = array<f32, 6>(frame.bands.x, frame.bands.y, frame.bands.z, frame.bands.w, frame.beat, frame.novelty);
+                var meter = array<vec3f, 11>(
+                    color(BASS), color(MID), color(TREBLE), color(FOREGROUND), color(BEAT), color(NOVELTY),
+                    color(KICK), color(SNARE), color(CYMBALS), color(PERCUSSIVE), color(HARMONIC),
+                );
+                var level = array<f32, 11>(
+                    frame.bands.x, frame.bands.y, frame.bands.z, frame.bands.w, frame.beat, frame.novelty,
+                    frame.drums.x, frame.drums.y, frame.drums.z, frame.layers.x, frame.layers.y,
+                );
                 c = color(TRACK);
                 c = mix(c, meter[i], below(p.y, bottom - level[i] * bars_height));
             }
         }
     }
 
-    // Timeline between the waveform and the bars: the last two seconds of
-    // beats (dim spikes) and novelty (a line), newest on the right.
-    let strip_top = top + height * 0.41;
+    // Timeline between the waveform and the bars, the last two seconds,
+    // newest on the right. First the percussive and harmonic levels (two
+    // lines), then a lane of dim spikes for each drum.
+    if p.x >= left && p.x < right {
+        let t = (p.x - left) / (right - left) * f32(HISTORY - 1u);
+        let i = min(u32(t), HISTORY - 2u);
+        let layers_top = top + height * 0.26;
+        let layers_bottom = floor(top + height * 0.32) + 0.5;
+        if p.y >= layers_top - 1.0 && p.y < layers_bottom + 1.0 {
+            let strip = layers_bottom - layers_top;
+            let h = mix(harmonic_history(i), harmonic_history(i + 1u), t - f32(i));
+            c = mix(c, color(HARMONIC), 1.0 - smoothstep(0.4, 1.4, abs(p.y - (layers_bottom - h * strip))));
+            let q = mix(percussive_history(i), percussive_history(i + 1u), t - f32(i));
+            c = mix(c, color(PERCUSSIVE), 1.0 - smoothstep(0.4, 1.4, abs(p.y - (layers_bottom - q * strip))));
+            if abs(p.y - layers_bottom) < 0.5 {
+                c = max(c, color(LINE));
+            }
+        }
+        var lane_color = array<vec3f, 3>(color(KICK), color(SNARE), color(CYMBALS));
+        for (var d = 0u; d < 3u; d++) {
+            let lane_top = top + height * (0.335 + 0.03 * f32(d));
+            let lane_bottom = floor(top + height * (0.36 + 0.03 * f32(d))) + 0.5;
+            if p.y >= lane_top && p.y < lane_bottom + 1.0 {
+                let strip = lane_bottom - lane_top;
+                c = mix(c, lane_color[d], below(p.y, lane_bottom - drum_history(d, u32(round(t))) * strip));
+                if abs(p.y - lane_bottom) < 0.5 {
+                    c = max(c, color(LINE));
+                }
+            }
+        }
+    }
+
+    // Then beats (dim spikes) and novelty (a line).
+    let strip_top = top + height * 0.43;
     let strip_bottom = floor(top + height * 0.47) + 0.5;
     if p.x >= left && p.x < right && p.y >= strip_top && p.y < strip_bottom + 1.0 {
         let t = (p.x - left) / (right - left) * f32(HISTORY - 1u);
