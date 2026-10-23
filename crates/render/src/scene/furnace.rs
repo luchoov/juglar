@@ -1,10 +1,12 @@
-//! Furnace: flames of the spectrum rising into a churning molten mass, lit
-//! from the side as if it were metal poured into a mold. The mass keeps
-//! its paint for a long time, slowly cooling from white through orange to
-//! dark red, so it builds into heavy, ridged slag; every kick bulges it out
-//! from the middle and an impact tears a white-hot crack across it, empties
-//! the furnace and lets the slam fill it again. Made for sludge, doom and
-//! grunge: weight, heat and slowness, broken open by the drums.
+//! Furnace: a wall of fire. Flames are fed all along the bottom edge, the
+//! spectrum rising out of them as tongues, and climb through curl-noise
+//! turbulence that tosses them into billows, slowing as they rise so the
+//! fire piles up; sparks fly up with them. The paint cools as it ages,
+//! from white through yellow and orange to dark red. Every kick makes the
+//! fire roar (it climbs faster and bulges out from the middle) and an
+//! impact tears a white-hot crack across it, empties the furnace and lets
+//! the slam fill it again. Made for sludge, doom and grunge: weight and
+//! heat, broken open by the drums.
 //!
 //! | Signal   | Moves                                                     |
 //! |----------|-----------------------------------------------------------|
@@ -12,21 +14,22 @@
 //! | kick, hit| the bulge (a spring)                                      |
 //! | snare    | a twist, one way or the other                             |
 //! | impact   | a crack drawn by the waveform, the old slag cleared, a jolt|
-//! | chaos    | how hard the mass churns, torn colors, shifted slices     |
+//! | chaos    | how hard the fire churns, torn colors, shifted slices     |
 //! | loudness | how fast it rises, how tall the flames are                |
-//! | harmonic | how slowly the slag cools                                 |
+//! | harmonic | how slowly the fire cools                                 |
 
 use juglar_signals::{SPECTRUM_BANDS, Signals};
 
 use super::react::{Pulse, Reactor};
 use super::{Character, Fx, Look, Material, Palette, Scene};
 
-/// From white-hot (0) through yellow and orange to dark red (1), never
-/// looping: paint starts hot and cools as it ages.
+/// From yellow (0) through orange to dark red and violet smoke (1), never
+/// looping: paint starts hot and cools as it ages. Green falls faster than
+/// red, so the middle is orange, not brown.
 const PALETTE: Palette = Palette {
-    a: [0.6, 0.45, 0.3],
-    b: [0.45, 0.55, 0.6],
-    c: [0.5, 0.6, 0.7],
+    a: [0.65, 0.43, 0.15],
+    b: [0.35, 0.42, 0.15],
+    c: [0.4, 0.6, 0.8],
     d: [0.0, 0.0, 0.0],
 };
 
@@ -76,33 +79,33 @@ impl Scene for Furnace {
         }
         self.crack *= (-moving / 0.35).exp();
 
-        // Slag lasts; an impact clears it at once, then cools the rest fast.
-        let fade = (1.6 + 1.2 * harmony) * (1.0 - 0.9 * flash);
+        // Fire lasts about a second; an impact clears it at once.
+        let fade = (0.6 + 0.4 * harmony) * (1.0 - 0.9 * flash);
         Look {
             center: [0.0, 0.05],
             zoom: (live * (-0.15 + 2.2 * punch + 3.0 * slam) * dt).exp(),
             rotation: live * turn * 1.2 * snap * dt,
             swirl: live * turn * 2.0 * snap.abs() * dt,
             decay: if impacted && motion > 0.0 { 0.0 } else { (-moving / fade.max(0.05)).exp() },
-            palette_drift: (0.25 - 0.12 * harmony) * moving,
+            palette_drift: (0.6 - 0.25 * harmony) * moving,
             knobs: [
-                live * (0.12 + 0.5 * chaos + 0.5 * punch) * dt, // churn this frame
-                live * (0.04 + 0.12 * s.loudness) * dt,          // rise this frame
+                live * (0.04 + 0.08 * chaos + 0.1 * punch) * dt, // turbulence this frame
+                live * (0.35 + 0.3 * s.loudness + 0.8 * punch) * dt, // rise this frame
                 live * 0.9 * punch * dt,                          // bulge this frame
-                motion * (0.08 + 0.3 * s.loudness),               // flame height
+                motion * (0.12 + 0.4 * s.loudness),               // flame height
                 self.crack,                                       // crack ink
                 self.churn,                                       // the churn's clock
                 motion * (0.05 + 0.12 * slam),                    // crack height
-                1.0,                                              // flame ink
+                0.75,                                             // flame ink
             ],
             palette: PALETTE,
             palette_shift: 0.0,
             palette_wrap: false,
-            exposure: 0.8 + 0.4 * s.loudness,
-            bloom: 0.45 + 0.4 * self.crack,
+            exposure: 0.7 + 0.35 * s.loudness,
+            bloom: 0.35 + 0.4 * self.crack,
             waveform: s.waveform,
             spectrum: self.spectrum,
-            material: Material::NONE,
+            material: Material { sharpen: 0.06, cap: 2.5, erode: 0.0, reach: 1.5 },
             fx: Fx {
                 shake: [0.04 * shake[0], 0.04 * shake[1]],
                 chroma: 0.002 + 0.006 * punch.min(1.5) + 0.006 * chaos,
@@ -110,7 +113,7 @@ impl Scene for Furnace {
                 flash: 0.5 * flash,
                 glitch: if chaos > 0.65 { 0.2 * snap.abs().min(1.0) } else { 0.0 },
                 glitch_seed: (self.clock * 15.0).floor(),
-                relief: 0.85,
+                relief: 0.3,
                 ground: 0.0,
                 ground_hue: 0.0,
                 stencil: 0.0,
