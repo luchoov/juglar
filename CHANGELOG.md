@@ -8,9 +8,11 @@
 - Text on screen: a note for each change a key makes, the keys on `H`, `?` or `F1`; the tray's menu shows and sets the scene, mode and intensity (D57).
 - The wallpaper on every display: a scene on each, one across all, or one display, laid out again when a display comes or goes; `Ctrl`+`Alt` keys that work while Juglar is the wallpaper (D58).
 - `JUGLAR_VIEW=analysis` starts on the analysis view.
+- An installer beside the zip: per user, Start menu shortcuts, an optional start with Windows as the wallpaper, a clean uninstall (D60).
 
 ### Changed
 
+- Doom's fuzz now reads as gritty: Electric Wizard's loud parts go from grit 0.09 to 0.78, so they get heavy pacing (D62).
 - `Esc` asks first: from a window, press it twice to close (D57).
 - The window's title names the scene; the numbers go there only with `JUGLAR_STATS=1`.
 - The analysis view (`Tab`) is redone: what Juglar hears, labeled, eight seconds of the heavy ear and the drums, and why the scene last changed (D59).

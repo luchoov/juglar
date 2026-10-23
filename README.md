@@ -128,14 +128,14 @@ Every important choice is written down in plain language, with what was measured
 
 - **New here?** Open [`explorables/00-start-here.html`](explorables/00-start-here.html) in a browser: sound, samples and what Juglar does, from zero, with interactive pages.
 - [Vision](docs/vision.md): where it is going (song structure, a look per song, harmony as color).
-- [Decisions](docs/decisions.md): fifty-nine of them, D48–D55 for v1 and D56–D59 for 1.1.
+- [Decisions](docs/decisions.md): sixty-two of them, D48–D55 for v1 and D56–D62 for 1.1.
 - [Architecture](docs/architecture.md), [roadmap](docs/roadmap.md) and [theory notes](docs/theory/).
 
 ## Limits
 
 - Windows only for now (the core builds for the web; nothing runs there yet).
 - Tuned on one playlist: metal, sludge, doom, grunge and classic rock. Electronic music and hip-hop work but nothing was tuned for them.
-- Doom whose fuzz is rich in harmonics reads as clean as classic rock, so it gets no heavy pacing.
+- Doom's fuzz is heard since 1.1 (D62), but that was tuned on two doom songs by one band.
 - Measured on one GPU (a GTX 1060).
 
 ## License

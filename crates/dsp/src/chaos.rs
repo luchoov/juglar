@@ -28,8 +28,18 @@
 //!   their arithmetic mean. Clean notes are a few peaks (flatness near 0),
 //!   distortion fills the gaps between harmonics. Averaged over 0.5 s and
 //!   mapped from 0.10 (0) to 0.40 (1): over 21 songs the loud parts of
-//!   classic rock sit at 0.10–0.17, thrash and sludge at 0.29–0.36. Fuzz
-//!   piled into the low middle (doom) reads lower than it sounds.
+//!   classic rock sit at 0.10–0.17, thrash and sludge at 0.29–0.36.
+//! - **Fuzz** (D62), for what grit misses. A fuzz pedal makes a dense comb
+//!   of harmonics, not noise, piled into the low middle, so flatness reads
+//!   Electric Wizard's wall as clean as classic rock. Two cues together
+//!   catch it: the same band's flatness after dividing each bin by the
+//!   mean of its neighbors within 250 Hz (whitened, so the slope of the
+//!   spectrum no longer hides the valleys between harmonics), 0.40 to
+//!   0.55; and how compressed the sound is, its RMS over its peak in the
+//!   window (a wall of fuzz barely peaks above itself), 0.40 to 0.48.
+//!   Each averaged over 0.5 s; the smaller of the two raises grit, never
+//!   lowers it. Over 21 songs it lifts Electric Wizard's loud parts from
+//!   0.09 to 0.78, and leaves clean intros and classic rock where they were.
 //! - **Hits.** Any attack, wherever it is: the mean rise over all of
 //!   `onset`'s bands, peaking above the median of its last second by more
 //!   than 1.5 median deviations, at most one per 60 ms. Medians don't rise
@@ -69,6 +79,11 @@ const SILENCE_DB: f32 = -60.0;
 /// Grit: the flatness's time constant, and the flatness at 0 and 1.
 const GRIT_SECONDS: f32 = 0.5;
 const GRIT_FLATNESS: (f32, f32) = (0.10, 0.40);
+/// Fuzz: how far around each bin its neighbors are averaged, the whitened
+/// flatness at 0 and 1, and the RMS over peak at 0 and 1.
+const FUZZ_REACH_HZ: f32 = 250.0;
+const FUZZ_FLATNESS: (f32, f32) = (0.40, 0.55);
+const FUZZ_PRESSED: (f32, f32) = (0.40, 0.48);
 /// Hits: seconds of flux their median is taken over, how many median
 /// deviations above it a peak must be, the shortest gap, and the fall.
 const HIT_SECONDS: f32 = 1.0;
@@ -87,6 +102,13 @@ pub struct Chaos {
     hop_seconds: f32,
     full: Bins,
     grit_bins: Bins,
+    /// Fuzz: bins on either side a bin is whitened against, the bins'
+    /// powers from `reach` below the grit band to `reach` above it, and
+    /// the averaged whitened flatness and RMS over peak.
+    reach: usize,
+    powers: Vec<f32>,
+    whitened: f32,
+    pressed: f32,
     /// Fast power (a mean square); the steady level and the reference, in
     /// decibels.
     fast: f32,
@@ -137,10 +159,16 @@ impl Chaos {
             Bins { start: ((low / bin).round() as usize).max(1), end: ((high / bin).round() as usize).min(size / 2) }
         };
         let flux_len = (HIT_SECONDS / hop_seconds).round() as usize;
+        let grit_bins = bins(GRIT_HZ);
+        let reach = ((FUZZ_REACH_HZ * size as f32 / sample_rate).round() as usize).max(1);
         Self {
             hop_seconds,
             full: bins(FULL_HZ),
-            grit_bins: bins(GRIT_HZ),
+            reach,
+            powers: vec![0.0; grit_bins.end - grit_bins.start + 2 * reach],
+            whitened: 0.0,
+            pressed: 0.0,
+            grit_bins,
             fast: 0.0,
             steady: SILENCE_DB,
             reference: SILENCE_DB,
@@ -165,9 +193,9 @@ impl Chaos {
     }
 
     /// One hop: the transform (`power_scale` turns a sum of bin powers into
-    /// a mean square), `onset`'s flux over all its bands, and whether this
-    /// is sound right after real silence.
-    pub(crate) fn hop(&mut self, scratch: &[Complex], power_scale: f32, flux: f32, waking: bool) {
+    /// a mean square), the window's RMS over its peak, `onset`'s flux over
+    /// all its bands, and whether this is sound right after real silence.
+    pub(crate) fn hop(&mut self, scratch: &[Complex], power_scale: f32, pressed: f32, flux: f32, waking: bool) {
         let dt = self.hop_seconds;
         let follow = |tau: f32| 1.0 - (-dt / tau).exp();
 
@@ -220,6 +248,30 @@ impl Chaos {
         let flatness = (log_sum / n).exp() / (sum / n);
         self.flatness += (flatness - self.flatness) * follow(GRIT_SECONDS);
 
+        // Fuzz: the same flatness once each bin is divided by the mean of
+        // its neighbors, which takes the spectrum's slope away and leaves
+        // the valleys between harmonics; and how little the sound peaks.
+        // Past the transform's ends, its last bin stands in.
+        let last = scratch.len() / 2;
+        let low = self.grit_bins.start as isize - self.reach as isize;
+        for (i, power) in self.powers.iter_mut().enumerate() {
+            let bin = (low + i as isize).clamp(1, last as isize) as usize;
+            *power = scratch[bin].norm_sqr();
+        }
+        let width = 2 * self.reach + 1;
+        let mut around: f32 = self.powers[..width].iter().sum();
+        let (mut log_sum, mut sum) = (0.0, 0.0);
+        for i in self.reach..self.powers.len() - self.reach {
+            if i > self.reach {
+                around += self.powers[i + self.reach] - self.powers[i - self.reach - 1];
+            }
+            let q = self.powers[i] / (around.max(0.0) / width as f32 + 1e-20) + 1e-20;
+            (log_sum, sum) = (log_sum + q.ln(), sum + q);
+        }
+        let whitened = (log_sum / n).exp() / (sum / n);
+        self.whitened += (whitened - self.whitened) * follow(GRIT_SECONDS);
+        self.pressed += (pressed - self.pressed) * follow(GRIT_SECONDS);
+
         // Hits: a peak of the flux above its last second's median.
         self.recent = [self.recent[1], self.recent[2], flux];
         self.since_hit += dt;
@@ -250,7 +302,8 @@ impl Chaos {
 
     /// What was heard on the last hop.
     pub fn heavy(&self) -> Heavy {
-        let grit = ramp(GRIT_FLATNESS, self.flatness);
+        let fuzz = ramp(FUZZ_FLATNESS, self.whitened).min(ramp(FUZZ_PRESSED, self.pressed));
+        let grit = ramp(GRIT_FLATNESS, self.flatness).max(fuzz);
         let density = ramp(DENSITY_RATE, self.rate / DENSITY_SECONDS);
         Heavy {
             loudness: self.loudness,
@@ -260,6 +313,13 @@ impl Chaos {
             impact: self.impact,
             hit: self.hit,
         }
+    }
+
+    /// Grit's parts, for tests: the flatness, whitened flatness and RMS
+    /// over peak, each averaged.
+    #[cfg(test)]
+    fn parts(&self) -> [f32; 3] {
+        [self.flatness, self.whitened, self.pressed]
     }
 
     /// Impacts and hits found so far.
@@ -331,6 +391,50 @@ mod tests {
         assert!(hiss[350].grit > 0.9, "{}", hiss[350].grit);
         assert!(chord[350].grit < 0.1, "{}", chord[350].grit);
         assert!(hiss[350].chaos > chord[350].chaos + 0.5);
+    }
+
+    #[test]
+    fn a_wall_of_fuzz_is_gritty_and_a_ringing_chord_is_not() {
+        // Doom's fuzz: a low power chord clipped hard and darkened, a comb
+        // of harmonics with almost no noise, that never decays. Plain grit
+        // reads it as clean (its flatness stays near 0.06).
+        let low_pass = |signal: &mut Vec<f32>, hz: f32| {
+            let k = 1.0 - (-std::f32::consts::TAU * hz / RATE as f32).exp();
+            let mut y = 0.0;
+            signal.iter_mut().for_each(|x| {
+                y += (*x - y) * k;
+                *x = y;
+            });
+        };
+        let chord = |i: usize| {
+            let t = i as f32 / RATE as f32;
+            [55.0, 82.4, 110.0].iter().map(|hz| (hz * t).fract() * 2.0 - 1.0).sum::<f32>()
+        };
+        let mut fuzz: Vec<f32> = (0..4 * RATE as usize).map(|i| 0.5 * (12.0 * chord(i)).tanh()).collect();
+        low_pass(&mut fuzz, 1_500.0);
+        // A clean guitar's open chord: eight harmonics falling off as 1/n²,
+        // picked twice a second.
+        let clean: Vec<f32> = (0..4 * RATE as usize)
+            .map(|i| {
+                let t = i as f32 / RATE as f32;
+                let ring = (-(t % 0.5) / 0.4).exp();
+                let notes = [196.0, 247.0, 294.0].iter().map(|hz| {
+                    (1..=8).map(|n| (std::f32::consts::TAU * hz * n as f32 * t).sin() / (n * n) as f32).sum::<f32>()
+                });
+                0.2 * ring * notes.sum::<f32>()
+            })
+            .collect();
+        let parts = |signal: &[f32]| {
+            let mut onsets = Onsets::new(RATE);
+            onsets.push(signal);
+            onsets.chaos().parts()
+        };
+        // Plain flatness alone would give the fuzz no grit at all.
+        assert!(parts(&fuzz[..350 * 480])[0] < 0.1, "{:?}", parts(&fuzz[..350 * 480]));
+        let (fuzz, _) = run(&fuzz);
+        let (clean, _) = run(&clean);
+        assert!(fuzz[350].grit > 0.6, "{}", fuzz[350].grit);
+        assert!(clean[350].grit < 0.2, "{}", clean[350].grit);
     }
 
     #[test]

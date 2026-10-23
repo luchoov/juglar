@@ -363,7 +363,10 @@ impl Onsets {
         }
         self.change_db = (difference / self.bands.len() as f32).sqrt();
         let flux = self.rises.iter().sum::<f32>() / self.rises.len() as f32;
-        self.chaos.hop(&self.scratch, self.power_scale, flux, waking);
+        // How compressed the window is: its RMS over its peak, unwindowed.
+        let (squares, peak) = self.history.iter().fold((0.0f32, 0.0f32), |(sq, pk), &x| (sq + x * x, pk.max(x.abs())));
+        let pressed = if peak > 0.0 { (squares / self.history.len() as f32).sqrt() / peak } else { 0.0 };
+        self.chaos.hop(&self.scratch, self.power_scale, pressed, flux, waking);
         self.novelty = smoothstep(NOVELTY_DB.0, NOVELTY_DB.1, self.change_db);
 
         // The refractory time, less the hop the onset is reported late by.
