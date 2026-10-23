@@ -17,8 +17,9 @@
 //!    Nothing is held back: flashes and hard cuts are the scenes' to make
 //!    (D48 in `docs/decisions.md`).
 //!
-//! The analysis view (`analysis.wgsl`) replaces the first three with
-//! Milestone 3's waveform and bars, to see what Juglar hears.
+//! The analysis view (`ear.rs`) replaces the first three with what Juglar
+//! hears, drawn by `ink.rs`: the signals over the last seconds, labeled,
+//! and when and why the director changed scene.
 //!
 //! During a transition between scenes (`begin_transition`) the first three
 //! steps run twice, once per scene, each in its own feedback loop, and the
@@ -26,6 +27,7 @@
 //! transition's shape (`fs_fade` in `composite.wgsl`).
 
 mod bloom;
+mod ear;
 mod feedback;
 mod hud;
 mod ink;
@@ -39,6 +41,7 @@ use std::sync::mpsc;
 
 use bytemuck::{Pod, Zeroable};
 use bloom::{Bloom, Glow};
+use ear::Ear;
 use feedback::Feedback;
 use hud::Hud;
 use ink::Ink;
@@ -91,10 +94,6 @@ struct Uniforms {
     bands: [f32; 4],
     spectrum: [[f32; 4]; SPECTRUM_BANDS / 4],
     waveform: [[f32; 4]; WAVEFORM_POINTS / 4],
-    /// The last `HISTORY` frames' beat and novelty, oldest first, for the
-    /// analysis view's timeline.
-    beat_history: [[f32; 4]; HISTORY / 4],
-    novelty_history: [[f32; 4]; HISTORY / 4],
     /// The transition: progress, style, edge softness, seed.
     reveal: [f32; 4],
     /// A calm mode: saturation, floor, ceiling, how far it has come in.
@@ -102,13 +101,6 @@ struct Uniforms {
     /// Kick, snare and cymbals; the percussive and harmonic levels.
     drums: [f32; 4],
     layers: [f32; 4],
-    /// The same over the last `HISTORY` frames, oldest first, for the
-    /// analysis view.
-    kick_history: [[f32; 4]; HISTORY / 4],
-    snare_history: [[f32; 4]; HISTORY / 4],
-    cymbals_history: [[f32; 4]; HISTORY / 4],
-    percussive_history: [[f32; 4]; HISTORY / 4],
-    harmonic_history: [[f32; 4]; HISTORY / 4],
     /// The scene's screen effects, and chaos, impact, hit and loudness.
     fx: [[f32; 4]; 3],
     heavy: [f32; 4],
@@ -116,8 +108,6 @@ struct Uniforms {
     material: [f32; 4],
 }
 
-/// Frames of history the analysis view shows: about two seconds.
-const HISTORY: usize = 128;
 /// Seconds a calm mode takes to fade in or out.
 const CALM_FADE: f32 = 3.0;
 
@@ -182,7 +172,6 @@ struct Layer {
     uniforms: wgpu::Buffer,
     feedback: Feedback,
     glow: Glow,
-    analysis: wgpu::BindGroup,
     /// Which scene this layer draws.
     scene: usize,
 }
@@ -213,7 +202,6 @@ pub struct Renderer {
     factory: PipelineFactory,
     /// Pipelines compiled by the background thread, as they are ready.
     compiled: Option<mpsc::Receiver<(usize, ScenePipelines)>>,
-    analysis_pipeline: wgpu::RenderPipeline,
     layers: [Layer; 2],
     /// The layer whose scene is showing (the old one, during a transition).
     front: usize,
@@ -227,6 +215,7 @@ pub struct Renderer {
     present: Present,
     ink: Ink,
     hud: Hud,
+    ear: Ear,
     view: View,
     reduced_motion: bool,
     /// The calm mode asked for, or the last one while it fades out.
@@ -235,9 +224,6 @@ pub struct Renderer {
     /// How far the calm mode has faded in, 0..1.
     calm_amount: f32,
     frames: u32,
-    /// Beat, novelty, kick, snare, cymbals, percussive and harmonic of the
-    /// last `HISTORY` frames, circular.
-    history: [[f32; 7]; HISTORY],
     encode_srgb: bool,
     timer: Option<GpuTimer>,
     adapter: wgpu::AdapterInfo,
@@ -323,10 +309,6 @@ impl Renderer {
             },
             count: None,
         };
-        let analysis_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("analysis"),
-            entries: &[uniform_entry],
-        });
         let image_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("image"),
             entries: &[
@@ -359,15 +341,6 @@ impl Renderer {
 
         let bloom = Bloom::new(&device, &image_layout, COMMON);
         let factory = PipelineFactory::new(&device, &image_layout, bloom.apply_layout());
-        let analysis_pipeline = {
-            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("analysis"),
-                bind_group_layouts: &[Some(&analysis_layout)],
-                immediate_size: 0,
-            });
-            let module = shader_module(&device, "analysis", [COMMON, include_str!("analysis.wgsl")].concat());
-            render_pipeline(&device, "analysis", &layout, &module, "fs_analysis", present::CANDIDATE_FORMAT, None)
-        };
 
         // Only the first scene is compiled before the first frame; a thread
         // compiles the rest while it shows (see `PipelineFactory`).
@@ -387,11 +360,6 @@ impl Renderer {
             Layer {
                 feedback: Feedback::new(&device, &image_layout, &uniforms, &sampler, config.width, config.height),
                 glow: bloom.glow(&device, &image_layout, &uniforms, &sampler, config.width, config.height),
-                analysis: device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("analysis"),
-                    layout: &analysis_layout,
-                    entries: &[wgpu::BindGroupEntry { binding: 0, resource: uniforms.as_entire_binding() }],
-                }),
                 uniforms,
                 scene: 0,
             }
@@ -411,7 +379,6 @@ impl Renderer {
             pipelines,
             factory,
             compiled,
-            analysis_pipeline,
             layers,
             front: 0,
             crossing: None,
@@ -421,13 +388,13 @@ impl Renderer {
             present,
             ink,
             hud: Hud::default(),
+            ear: Ear::default(),
             view: View::Scene,
             reduced_motion: false,
             calm: Calm { motion: 1.0, saturation: 1.0, floor: 0.0, ceiling: 1.0 },
             calm_on: false,
             calm_amount: 0.0,
             frames: 0,
-            history: [[0.0; 7]; HISTORY],
             encode_srgb: !format.is_srgb(),
             timer,
             adapter: adapter.get_info(),
@@ -616,8 +583,7 @@ impl Renderer {
             (signals, 1.0 + (self.calm.motion - 1.0) * calm)
         };
         self.frames = self.frames.wrapping_add(1);
-        let s = scene_signals;
-        self.history[self.frames as usize % HISTORY] = [s.beat, s.novelty, s.kick, s.snare, s.cymbals, s.percussive, s.harmonic];
+        self.ear.hear(signals);
 
         // The layers to draw, the showing one first: with a transition, the
         // arriving one too.
@@ -695,10 +661,10 @@ impl Renderer {
                 }
             }
             View::Analysis => {
-                let mut analysis = begin_pass(&mut encoder, "analysis", self.present.candidate(), timestamps(true, false));
-                analysis.set_pipeline(&self.analysis_pipeline);
-                analysis.set_bind_group(0, &self.layers[front].analysis, &[]);
-                analysis.draw(0..3, 0..1);
+                // A cleared image; `ear.rs` draws the whole view with `ink`.
+                begin_pass(&mut encoder, "analysis", self.present.candidate(), timestamps(true, false));
+                let name = self.scenes[self.layers[front].scene].name();
+                self.ear.draw(&mut self.ink, &self.queue, [self.config.width as f32, self.config.height as f32], signals, name);
             }
         }
         let size = [self.config.width as f32, self.config.height as f32];
@@ -797,31 +763,16 @@ impl Renderer {
             beat: s.beat,
             novelty: s.novelty,
             bands: [s.bass, s.mid, s.treble, s.energy],
-            spectrum: bytemuck::cast(if self.view == View::Scene { look.spectrum } else { s.spectrum }),
-            // The analysis view shows the waveform and spectrum as heard; a
-            // scene may draw calmer ones.
-            waveform: bytemuck::cast(if self.view == View::Scene { look.waveform } else { s.waveform }),
-            beat_history: bytemuck::cast(self.history_of(0)),
-            novelty_history: bytemuck::cast(self.history_of(1)),
+            spectrum: bytemuck::cast(look.spectrum),
+            waveform: bytemuck::cast(look.waveform),
             reveal,
             calm: [self.calm.saturation, self.calm.floor, self.calm.ceiling, self.calm_amount],
             drums: [s.kick, s.snare, s.cymbals, 0.0],
             layers: [s.percussive, s.harmonic, 0.0, 0.0],
-            kick_history: bytemuck::cast(self.history_of(2)),
-            snare_history: bytemuck::cast(self.history_of(3)),
-            cymbals_history: bytemuck::cast(self.history_of(4)),
-            percussive_history: bytemuck::cast(self.history_of(5)),
-            harmonic_history: bytemuck::cast(self.history_of(6)),
             fx: look.fx.packed(),
             heavy: [s.chaos, s.impact, s.hit, s.loudness],
             material: look.material.packed(),
         }
-    }
-
-    /// One of the histories, oldest first.
-    fn history_of(&self, which: usize) -> [f32; HISTORY] {
-        let newest = self.frames as usize % HISTORY;
-        std::array::from_fn(|i| self.history[(newest + 1 + i) % HISTORY][which])
     }
 
     /// The fonts for text on screen, as font files: a regular weight, then
@@ -833,6 +784,13 @@ impl Renderer {
     /// Says on screen, for a moment, that something changed: `label: value`.
     pub fn note(&mut self, label: &str, value: &str) {
         self.hud.note(label, value);
+    }
+
+    /// The director changed to `scene` at a moment of the music (`why`),
+    /// for the analysis view's record.
+    pub fn director_changed(&mut self, why: &str, scene: usize) {
+        let name = self.scenes.get(scene).map_or("", |s| s.name());
+        self.ear.changed(why, name);
     }
 
     /// Shows the keys and what each does, or hides them (an empty list).
@@ -1032,17 +990,13 @@ mod tests {
         assert_eq!(std::mem::offset_of!(Uniforms, bands), 176);
         assert_eq!(std::mem::offset_of!(Uniforms, spectrum), 192);
         assert_eq!(std::mem::offset_of!(Uniforms, waveform), 320);
-        assert_eq!(std::mem::offset_of!(Uniforms, beat_history), 1344);
-        assert_eq!(std::mem::offset_of!(Uniforms, novelty_history), 1344 + 32 * 16);
-        assert_eq!(std::mem::offset_of!(Uniforms, reveal), 1344 + 64 * 16);
-        assert_eq!(std::mem::offset_of!(Uniforms, calm), 1344 + 64 * 16 + 16);
-        assert_eq!(std::mem::offset_of!(Uniforms, drums), 2400);
-        assert_eq!(std::mem::offset_of!(Uniforms, layers), 2416);
-        assert_eq!(std::mem::offset_of!(Uniforms, kick_history), 2432);
-        assert_eq!(std::mem::offset_of!(Uniforms, harmonic_history), 2432 + 4 * 32 * 16);
-        assert_eq!(std::mem::offset_of!(Uniforms, fx), 2432 + 5 * 32 * 16);
-        assert_eq!(std::mem::offset_of!(Uniforms, heavy), 2432 + 5 * 32 * 16 + 48);
-        assert_eq!(std::mem::offset_of!(Uniforms, material), 2432 + 5 * 32 * 16 + 64);
-        assert_eq!(size_of::<Uniforms>(), 2432 + 5 * 32 * 16 + 80);
+        assert_eq!(std::mem::offset_of!(Uniforms, reveal), 1344);
+        assert_eq!(std::mem::offset_of!(Uniforms, calm), 1360);
+        assert_eq!(std::mem::offset_of!(Uniforms, drums), 1376);
+        assert_eq!(std::mem::offset_of!(Uniforms, layers), 1392);
+        assert_eq!(std::mem::offset_of!(Uniforms, fx), 1408);
+        assert_eq!(std::mem::offset_of!(Uniforms, heavy), 1456);
+        assert_eq!(std::mem::offset_of!(Uniforms, material), 1472);
+        assert_eq!(size_of::<Uniforms>(), 1488);
     }
 }

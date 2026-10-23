@@ -77,7 +77,7 @@ impl Hud {
             let alpha = smooth(alpha);
             let (label, value) = (format!("{label}  "), value.clone());
             let width = ink.width(queue, &label, unit, Weight::Regular) + ink.width(queue, &value, unit, Weight::Strong);
-            let (ascent, descent) = ink.line(unit);
+            let (ascent, descent) = ink.metrics(unit);
             let (pad_x, pad_y) = (unit * 0.9, unit * 0.55);
             let height = ascent + descent + 2.0 * pad_y;
             let left = (size[0] - width) * 0.5 - pad_x;
@@ -103,9 +103,9 @@ impl Hud {
         let left = ((size[0] - width) * 0.5).max(0.0);
         let top = ((size[1] - height) * 0.5).max(0.0);
         ink.panel([left, top, width, height], unit * 0.7, PANEL, 0.95 * alpha);
-        let (ascent, _) = ink.line(title);
+        let (ascent, _) = ink.metrics(title);
         ink.text(queue, "juglar", [left + pad, top + pad + ascent], title, Weight::Strong, INK, alpha);
-        let mut y = top + pad + title * 1.8 + ink.line(text).0;
+        let mut y = top + pad + title * 1.8 + ink.metrics(text).0;
         for (key, does) in &self.help {
             let key_width = ink.width(queue, key, text, Weight::Strong);
             ink.text(queue, key, [left + pad + keys - key_width, y], text, Weight::Strong, INK, alpha);

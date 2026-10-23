@@ -274,6 +274,7 @@ impl App {
             let busy = other.renderer.in_transition() || self.still;
             if let Some(change) = other.director.update(&mut signals, other.renderer.scene(), busy) {
                 other.renderer.begin_transition(change.scene, change.transition);
+                other.renderer.director_changed(crate::moment_name(change.moment), change.scene);
             }
             if !other.covered {
                 other.renderer.render(&signals);

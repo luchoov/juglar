@@ -18,7 +18,7 @@ mod wav;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use juglar_director::{Director, Intensity, Mode, Style, Transition};
+use juglar_director::{Director, Intensity, Mode, Moment, Style, Transition};
 use juglar_dsp::{Analyzer, Consumer, FFT_SIZE, SCOPE_POINTS, Scope, ring};
 use desktop::{Other, SPREADS, Spread, hotkey_help, spread_names};
 use juglar_platform::{AudioCapture, PlatformError, ScreenRect, SystemAudio, Tray, TrayChoice, TrayState, Wallpaper};
@@ -441,6 +441,10 @@ impl ApplicationHandler for App {
                 None => eprintln!("juglar: no scene called {name:?}; there are {:?}", renderer.scene_names()),
             }
         }
+        // `JUGLAR_VIEW=analysis` starts on what Juglar hears, as `Tab` does.
+        if std::env::var("JUGLAR_VIEW").is_ok_and(|v| v == "analysis") {
+            renderer.set_view(View::Analysis);
+        }
         // `JUGLAR_KEEP=1` keeps the first scene, as `Space` does.
         if std::env::var("JUGLAR_KEEP").is_ok_and(|v| v != "0") {
             self.director.hold(true);
@@ -767,6 +771,7 @@ impl App {
         let Some(renderer) = &mut self.renderer else { return };
         if let Some(change) = change {
             renderer.begin_transition(change.scene, change.transition);
+            renderer.director_changed(moment_name(change.moment), change.scene);
             if self.print_stats {
                 let name = renderer.scene_names()[change.scene];
                 let feel = self.director.feel();
@@ -905,6 +910,18 @@ impl Recorder {
             return true;
         }
         self.saved >= self.frames
+    }
+}
+
+/// A moment of the music as the analysis view names it.
+fn moment_name(moment: Moment) -> &'static str {
+    match moment {
+        Moment::Drop => "drop",
+        Moment::Rise => "rise",
+        Moment::Fall => "breakdown",
+        Moment::Turn => "turn",
+        Moment::Impact => "impact",
+        Moment::Long => "time",
     }
 }
 

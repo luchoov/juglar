@@ -44,9 +44,6 @@ struct Frame {
     // Four values per row: GPU uniform memory is laid out in 16-byte rows.
     spectrum: array<vec4f, 8>,
     waveform: array<vec4f, 64>,
-    // The last 128 frames of beat and novelty, oldest first.
-    beat_history: array<vec4f, 32>,
-    novelty_history: array<vec4f, 32>,
 
     // A transition between two scenes (`composite.wgsl`): x = how far it
     // has come, 0..1; y = its style; z = how soft its edge is; w = a seed
@@ -60,12 +57,6 @@ struct Frame {
     drums: vec4f,
     // x = how loud the percussive part is, y = the harmonic part.
     layers: vec4f,
-    // The last 128 frames of each, oldest first.
-    kick_history: array<vec4f, 32>,
-    snare_history: array<vec4f, 32>,
-    cymbals_history: array<vec4f, 32>,
-    percussive_history: array<vec4f, 32>,
-    harmonic_history: array<vec4f, 32>,
 
     // The scene's screen effects (`Fx` in `scene/mod.rs`, applied in
     // `composite.wgsl`): [0] = shake x, shake y, chromatic split, invert;
@@ -111,35 +102,6 @@ fn spectrum(i: u32) -> f32 {
 
 fn waveform(i: u32) -> f32 {
     return frame.waveform[i / 4u][i % 4u];
-}
-
-const HISTORY: u32 = 128u;
-
-fn beat_history(i: u32) -> f32 {
-    return frame.beat_history[i / 4u][i % 4u];
-}
-
-fn novelty_history(i: u32) -> f32 {
-    return frame.novelty_history[i / 4u][i % 4u];
-}
-
-// Drum `d` (0 kick, 1 snare, 2 cymbals) at history frame `i`.
-fn drum_history(d: u32, i: u32) -> f32 {
-    if d == 0u {
-        return frame.kick_history[i / 4u][i % 4u];
-    }
-    if d == 1u {
-        return frame.snare_history[i / 4u][i % 4u];
-    }
-    return frame.cymbals_history[i / 4u][i % 4u];
-}
-
-fn percussive_history(i: u32) -> f32 {
-    return frame.percussive_history[i / 4u][i % 4u];
-}
-
-fn harmonic_history(i: u32) -> f32 {
-    return frame.harmonic_history[i / 4u][i % 4u];
 }
 
 fn knob(i: u32) -> f32 {

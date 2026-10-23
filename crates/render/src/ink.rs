@@ -34,7 +34,8 @@ struct Quad {
     uv: [f32; 4],
     /// sRGB color, and opacity.
     color: [f32; 4],
-    /// Corner radius in pixels, and 1 for a glyph or 0 for a panel.
+    /// Corner radius (or a line's half width) in pixels, and 0 for a panel,
+    /// 1 for a glyph, 2 for a line from `rect`'s first point to its second.
     shape: [f32; 4],
 }
 
@@ -213,6 +214,14 @@ impl Ink {
         }
     }
 
+    /// A line from `a` to `b`, `width` pixels wide, with round ends.
+    pub(crate) fn line(&mut self, a: [f32; 2], b: [f32; 2], width: f32, color: [f32; 3], alpha: f32) {
+        if alpha > 0.0 {
+            let shape = [width * 0.5, 2.0, 0.0, 0.0];
+            self.quads.push(Quad { rect: [a[0], a[1], b[0], b[1]], uv: [0.0; 4], color: [color[0], color[1], color[2], alpha], shape });
+        }
+    }
+
     /// How wide `text` is at `size` pixels.
     pub(crate) fn width(&mut self, queue: &wgpu::Queue, text: &str, size: f32, weight: Weight) -> f32 {
         text.chars().filter_map(|c| self.glyph(queue, weight, c, size)).map(|g| g.advance).sum()
@@ -250,7 +259,7 @@ impl Ink {
     }
 
     /// The font's ascent and descent at `size`, for centering lines.
-    pub(crate) fn line(&self, size: f32) -> (f32, f32) {
+    pub(crate) fn metrics(&self, size: f32) -> (f32, f32) {
         self.fonts
             .first()
             .and_then(|font| font.horizontal_line_metrics(size))
