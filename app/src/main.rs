@@ -177,6 +177,12 @@ impl Listening {
             percussive: r.percussive,
             harmonic: r.harmonic,
         };
+        out.loudness = analysis.loudness;
+        out.grit = analysis.grit;
+        out.density = analysis.density;
+        out.chaos = analysis.chaos;
+        out.impact = analysis.impact;
+        out.hit = analysis.hit;
         self.analyzer.recent(&mut self.recent);
         out.waveform = *self.scope.update(&self.recent, dt);
     }

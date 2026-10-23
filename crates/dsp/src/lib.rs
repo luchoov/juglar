@@ -2,6 +2,7 @@
 //! also build for `wasm32-unknown-unknown`.
 
 pub mod analyzer;
+pub mod chaos;
 pub mod fft;
 pub mod level;
 pub mod onset;
@@ -13,6 +14,7 @@ pub mod tempo;
 pub mod window;
 
 pub use analyzer::{Analysis, Analyzer, FFT_SIZE, RelativeLevels, SPECTRUM_BANDS};
+pub use chaos::{Chaos, Heavy};
 pub use level::{Level, to_dbfs};
 pub use onset::Onsets;
 pub use percussion::{DRUMS, Percussion};

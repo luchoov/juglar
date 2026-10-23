@@ -56,6 +56,24 @@ pub struct Signals {
     pub harmonic: f32,
     /// The levels against their own last few seconds (see `Relative`).
     pub relative: Relative,
+    /// How loud the music is against its own loudest moments: 1 at full
+    /// blast, 0 in a break 20 dB down. Unlike `energy`, a break reads as one.
+    pub loudness: f32,
+    /// How noise-like the middle of the sound is: 0 for clean notes, 1 for
+    /// a wall of distortion.
+    pub grit: f32,
+    /// Attacks per second, from 0 (three or fewer) to 1 (twelve or more).
+    pub density: f32,
+    /// How heavy and wild the music is, in one number: about 0.2 for an
+    /// acoustic intro, 0.7–0.85 for a wall of distorted guitars.
+    pub chaos: f32,
+    /// 1 at an explosion (the band slamming back in after a break, a song
+    /// starting loud), falling back to 0 over about half a second.
+    pub impact: f32,
+    /// 1 at any attack, wherever it is in the spectrum, falling back to 0
+    /// within a few hundredths of a second. Unlike the drums, it doesn't go
+    /// deaf in a wall of sound. Its height says how sharp the attack was.
+    pub hit: f32,
     /// How lively the visuals may be: 0 is calm, 1 is strong. Set by the
     /// user, or derived from the music in auto mode (Milestone 6).
     pub intensity: f32,
@@ -83,6 +101,12 @@ impl Default for Signals {
             percussive: 0.0,
             harmonic: 0.0,
             relative: Relative::default(),
+            loudness: 0.0,
+            grit: 0.0,
+            density: 0.0,
+            chaos: 0.0,
+            impact: 0.0,
+            hit: 0.0,
             intensity: 0.5,
             spectrum: [0.0; SPECTRUM_BANDS],
             waveform: [0.0; WAVEFORM_POINTS],

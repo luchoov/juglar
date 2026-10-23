@@ -29,6 +29,8 @@ const NOVELTY_DECAY: f32 = 0.8;
 /// How fast the drum events fall back to 0, in seconds (as from audio).
 const KICK_EVENT_DECAY: f32 = 0.04;
 const DRUM_EVENT_DECAY: f32 = 0.05;
+/// How fast the drop's impact falls back to 0, in seconds (as from audio).
+const IMPACT_DECAY: f32 = 0.6;
 /// Seconds the relative levels are measured against (as from audio).
 const RELATIVE_SECONDS: f32 = 4.0;
 
@@ -125,6 +127,23 @@ impl Synthetic {
         out.percussive = (0.7 * kick + 0.6 * snare + if hats_on { 0.3 * hat } else { 0.0 }).min(1.0);
         out.harmonic = (0.3 + 0.5 * mid + 0.2 * swell).min(1.0);
         out.relative = self.relative(dt, [bass, mid, treble, out.energy, out.percussive, out.harmonic]);
+
+        // The heavy side: the drop slams in and is the loudest and wildest
+        // part; every drum is a hit.
+        out.loudness = match section {
+            Section::Intro | Section::Breakdown => 0.45,
+            Section::Build => 0.6 + 0.3 * progress,
+            Section::Drop => 1.0,
+        };
+        out.grit = if section == Section::Drop { 0.7 } else { 0.15 };
+        out.density = match section {
+            Section::Intro | Section::Breakdown => 0.0,
+            Section::Build => 0.2,
+            Section::Drop => 0.45,
+        };
+        out.chaos = out.loudness * (0.7 * out.grit + 0.3 * out.density);
+        out.impact = if section == Section::Drop { (-since_section / IMPACT_DECAY).exp() } else { 0.0 };
+        out.hit = out.kick.max(out.snare).max(0.6 * out.cymbals);
 
         self.spectrum(dt, bass, mid, treble, &mut out.spectrum);
         waveform(beats, bass, mid, treble, &mut out.waveform);

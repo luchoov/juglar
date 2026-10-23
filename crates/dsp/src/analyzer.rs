@@ -72,6 +72,15 @@ pub struct Analysis {
     pub harmonic: f32,
     /// The levels against their own last four seconds.
     pub relative: RelativeLevels,
+    /// Loudness against the song, grit, density and chaos, `0..=1`, and
+    /// two events, 1 at an impact (an explosion after a break) or at any
+    /// attack, falling back to 0 (see `chaos`).
+    pub loudness: f32,
+    pub grit: f32,
+    pub density: f32,
+    pub chaos: f32,
+    pub impact: f32,
+    pub hit: f32,
 }
 
 /// Levels against their own recent past (see `Relative`): 1 is usual for
@@ -266,6 +275,13 @@ impl Analyzer {
             let gained = self.spectrum_gain.relative(db);
             *out = band.envelope.update(gained, dt);
         }
+        let heavy = self.onsets.chaos().heavy();
+        self.output.loudness = heavy.loudness;
+        self.output.grit = heavy.grit;
+        self.output.density = heavy.density;
+        self.output.chaos = heavy.chaos;
+        self.output.impact = heavy.impact;
+        self.output.hit = heavy.hit;
         self.output.beat = self.onsets.beat();
         self.output.novelty = self.onsets.novelty();
         self.output.tempo = self.onsets.tempo().bpm();
@@ -282,6 +298,11 @@ impl Analyzer {
     /// Hits of each drum found since the start: kick, snare, cymbals.
     pub fn drum_hits(&self) -> [u64; crate::percussion::DRUMS] {
         self.onsets.percussion().counts()
+    }
+
+    /// Impacts and hits found since the start.
+    pub fn impacts_and_hits(&self) -> (u64, u64) {
+        self.onsets.chaos().counts()
     }
 
     /// Copies the newest `out.len()` samples (at most `FFT_SIZE`) into `out`,

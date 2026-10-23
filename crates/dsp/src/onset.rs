@@ -45,6 +45,7 @@
 //! don't depend on the frame rate or on how samples are batched.
 
 use crate::analyzer::{Bins, log_bands};
+use crate::chaos::Chaos;
 use crate::fft::{Complex, Fft};
 use crate::percussion::Percussion;
 use crate::tempo::Tempo;
@@ -179,6 +180,7 @@ pub struct Onsets {
     novelty: f32,
     tempo: Tempo,
     percussion: Percussion,
+    chaos: Chaos,
 }
 
 impl Onsets {
@@ -235,6 +237,7 @@ impl Onsets {
             novelty: 0.0,
             tempo: Tempo::new(hop as f32 / sample_rate),
             percussion: Percussion::new(sample_rate, size, hop),
+            chaos: Chaos::new(sample_rate, size, hop),
         }
     }
 
@@ -305,6 +308,12 @@ impl Onsets {
         &self.percussion
     }
 
+    /// Loudness against the song, grit, density, hits and impacts (see
+    /// `chaos`).
+    pub fn chaos(&self) -> &Chaos {
+        &self.chaos
+    }
+
     /// Seconds between hops.
     pub fn hop_seconds(&self) -> f32 {
         self.hop as f32 / self.sample_rate
@@ -353,6 +362,8 @@ impl Onsets {
             difference += (self.short[i].max(audible) - self.long[i].max(audible)).powi(2);
         }
         self.change_db = (difference / self.bands.len() as f32).sqrt();
+        let flux = self.rises.iter().sum::<f32>() / self.rises.len() as f32;
+        self.chaos.hop(&self.scratch, self.power_scale, flux, waking);
         self.novelty = smoothstep(NOVELTY_DB.0, NOVELTY_DB.1, self.change_db);
 
         // The refractory time, less the hop the onset is reported late by.

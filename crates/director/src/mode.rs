@@ -99,7 +99,8 @@ impl Mode {
 /// Makes the signals the scenes see as faint as a calm mode asks: levels
 /// follow the music only slowly (seconds, not tenths) and swing only a
 /// fraction of their range around a middle value (relative levels around
-/// 1); beats, drum hits and novelty are gone. The director's own listening
+/// 1); beats, drum hits, hits, impacts and novelty are gone, and the heavy
+/// levels shrink to a tint. The director's own listening
 /// is unaffected.
 #[derive(Clone, Debug)]
 pub struct Quieter {
@@ -146,6 +147,10 @@ impl Quieter {
         s.beat = 0.0;
         s.novelty = 0.0;
         (s.kick, s.snare, s.cymbals) = (0.0, 0.0, 0.0);
+        // No slams and no hits; the heavy side only as a faint tint.
+        (s.impact, s.hit) = (0.0, 0.0);
+        s.loudness = MIDDLE + depth * (s.loudness - MIDDLE);
+        (s.grit, s.density, s.chaos) = (depth * s.grit, depth * s.density, depth * s.chaos);
     }
 }
 
