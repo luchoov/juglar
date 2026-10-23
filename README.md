@@ -37,7 +37,7 @@ Juglar listens for other things:
 
 ## The scenes
 
-Ten made for loud music, and twelve older, calmer ones for everything else; the focus and relax modes use the stillest of them.
+Eleven made for loud music, and twelve older, calmer ones for everything else; the focus and relax modes use the stillest of them.
 
 <table>
   <tr>
@@ -69,6 +69,12 @@ Ten made for loud music, and twelve older, calmer ones for everything else; the 
     <td><b>Shrapnel</b>: a barbed ring blown apart, folded into mirror wedges when the music turns to a wall.</td>
     <td><b>Hammer</b>: a frame thrown down a tunnel at every kick.</td>
     <td><b>Wire</b>: wireframe solids burst apart by the kick, new solids at every cut.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/citadel.webp" alt="Citadel"></td>
+  </tr>
+  <tr>
+    <td><b>Citadel</b>: a flight through a city carved out of a fractal; the kick shoves the camera, the snare lights the cracks.</td>
   </tr>
 </table>
 

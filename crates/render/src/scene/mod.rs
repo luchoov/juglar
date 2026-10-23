@@ -9,6 +9,7 @@
 //! the scenes are hand-made, each trying a different idea, and the arrow
 //! keys switch between them.
 
+mod citadel;
 mod corona;
 mod crystal;
 mod datamosh;
@@ -28,6 +29,7 @@ mod orbits;
 mod plasma;
 pub(crate) mod react;
 mod shrapnel;
+mod space;
 mod static_;
 mod tide;
 mod vortex;
@@ -64,6 +66,7 @@ pub(crate) fn all() -> Vec<Box<dyn Scene>> {
         Box::new(wire::Wire::new()),
         Box::new(datamosh::Datamosh::new()),
         Box::new(fracture::Fracture::new()),
+        Box::new(citadel::Citadel::new()),
         Box::new(Tide::new()),
         Box::new(orbits::Orbits::new()),
         Box::new(kaleido::Kaleido::new()),
