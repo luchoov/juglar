@@ -7,14 +7,18 @@ use std::time::{Duration, Instant};
 
 use juglar_director::{Director, Intensity, Mode, Style, Transition};
 use juglar_dsp::{Analyzer, Consumer, FFT_SIZE, SCOPE_POINTS, Scope, ring};
-use juglar_platform::{AudioCapture, PlatformError, SystemAudio};
+use juglar_platform::{
+    AudioCapture, PlatformError, ScreenRect, SystemAudio, Tray, TrayChoice, TrayState, Wallpaper, desktop_covered,
+};
 use juglar_render::{Renderer, View};
 use juglar_signals::{Signals, Synthetic};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
+use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use winit::window::{Fullscreen, Window, WindowId};
 
 const _: () = assert!(juglar_dsp::SPECTRUM_BANDS == juglar_signals::SPECTRUM_BANDS);
@@ -66,6 +70,10 @@ fn main() {
         last_frame: Instant::now(),
         stats: Stats::new(),
         start_fullscreen: std::env::args().any(|arg| arg == "--fullscreen"),
+        start_wallpaper: std::env::args().any(|arg| arg == "--wallpaper"),
+        wallpaper: None,
+        tray: None,
+        covered: false,
         modifiers: ModifiersState::empty(),
         last_click: None,
         pointer_moved: Instant::now(),
@@ -194,6 +202,16 @@ struct App {
     stats: Stats,
     /// `--fullscreen` on the command line.
     start_fullscreen: bool,
+    /// `--wallpaper` on the command line.
+    start_wallpaper: bool,
+    /// While Juglar is the wallpaper: the window's place in the desktop,
+    /// the display it covers, and where it was as a window.
+    wallpaper: Option<(Wallpaper, ScreenRect, ScreenRect)>,
+    /// The notification-area icon, while Juglar is the wallpaper.
+    tray: Option<Tray>,
+    /// Whether something covers the desktop (wallpaper mode only), as last
+    /// checked: then nothing is drawn.
+    covered: bool,
     /// Shift, Ctrl, Alt and the Windows key, as last reported.
     modifiers: ModifiersState,
     /// When the left button was last pressed, to tell double clicks.
@@ -255,6 +273,16 @@ impl ApplicationHandler for App {
         }
         self.renderer = Some(renderer);
         self.last_frame = Instant::now();
+        if self.start_wallpaper {
+            self.enter_wallpaper();
+        }
+    }
+
+    /// Leaves the desktop as it was: the window comes out of it before it
+    /// is destroyed.
+    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        self.wallpaper = None;
+        self.tray = None;
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -303,6 +331,15 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        while let Some(choice) = self.tray.as_ref().and_then(Tray::take) {
+            match choice {
+                TrayChoice::NextScene => self.key(&Key::Named(NamedKey::ArrowRight)),
+                TrayChoice::KeepScene => self.key(&Key::Named(NamedKey::Space)),
+                TrayChoice::NextMode => self.key(&Key::Character("m".into())),
+                TrayChoice::Window => self.leave_wallpaper(),
+                TrayChoice::Quit => event_loop.exit(),
+            }
+        }
         let Some(window) = &self.window else { return };
         if Instant::now() >= self.pacer.next {
             window.request_redraw();
@@ -329,6 +366,48 @@ impl App {
         match refresh_hz {
             Some(hz) => println!("Display: {hz:.0} Hz, drawing at {:.1} fps.", self.pacer.fps()),
             None => println!("Display refresh rate unknown, drawing at {:.1} fps.", self.pacer.fps()),
+        }
+    }
+
+    /// Moves the window behind the desktop icons, over the display it is
+    /// on, with an icon in the notification area to control it.
+    fn enter_wallpaper(&mut self) {
+        if self.wallpaper.is_some() {
+            return;
+        }
+        if self.is_fullscreen() {
+            self.toggle_fullscreen();
+        }
+        let Some(window) = &self.window else { return };
+        let Some(monitor) = window.current_monitor() else { return };
+        let display = rect(monitor.position(), monitor.size());
+        let windowed = rect(window.outer_position().unwrap_or_default(), window.outer_size());
+        let Ok(handle) = window.window_handle() else { return };
+        let RawWindowHandle::Win32(handle) = handle.as_raw() else { return };
+        match Wallpaper::attach(handle.hwnd.get(), display) {
+            Ok(wallpaper) => {
+                self.wallpaper = Some((wallpaper, display, windowed));
+                if self.tray.is_none() {
+                    match Tray::new("Juglar") {
+                        Ok(tray) => self.tray = Some(tray),
+                        Err(e) => eprintln!("juglar: no tray icon ({e}); quit from the Task Manager"),
+                    }
+                }
+                println!("Wallpaper mode: drawing behind the desktop icons. The tray icon has the controls.");
+            }
+            Err(e) => eprintln!("juglar: could not become the wallpaper: {e}"),
+        }
+    }
+
+    /// Back to an ordinary window, where it was before.
+    fn leave_wallpaper(&mut self) {
+        if let Some((wallpaper, _, windowed)) = self.wallpaper.take() {
+            wallpaper.restore(windowed);
+        }
+        self.tray = None;
+        self.covered = false;
+        if let Some(window) = &self.window {
+            window.focus_window();
         }
     }
 
@@ -360,7 +439,7 @@ impl App {
     /// right arrows go through the scenes, and space keeps the one showing;
     /// 1, 2 and 3 fix the intensity at gentle, medium or strong, and A lets
     /// the music set it; M goes through the modes (lively, focus, relax);
-    /// F11 and Alt+Enter switch fullscreen.
+    /// F11 and Alt+Enter switch fullscreen, W makes Juglar the wallpaper.
     fn key(&mut self, key: &Key) {
         match key {
             Key::Named(NamedKey::F11) => self.toggle_fullscreen(),
@@ -391,6 +470,7 @@ impl App {
                     renderer.set_view(next);
                 }
             }
+            Key::Character(c) if c.eq_ignore_ascii_case("w") => self.enter_wallpaper(),
             Key::Character(c) if c.eq_ignore_ascii_case("m") => {
                 if let Some(mut renderer) = self.renderer.take() {
                     self.set_mode(self.director.mode().next(), &mut renderer);
@@ -443,7 +523,7 @@ impl App {
         // frames, so drawing them would cost as much as drawing visible ones.
         let minimized = self.window.as_ref().and_then(|w| w.is_minimized()).unwrap_or(false);
         let work = Instant::now();
-        let drawn = !minimized && renderer.render(&self.signals);
+        let drawn = !minimized && !self.covered && renderer.render(&self.signals);
         let draw_time = work.elapsed();
         self.pacer.frame_done(now, drawn);
         if let Some(ms) = renderer.take_gpu_ms() {
@@ -473,6 +553,12 @@ impl App {
             // Once a second: cheap enough to follow the OS setting live.
             self.still = reduced_motion();
             renderer.set_reduced_motion(self.still);
+            if let Some((_, display, _)) = &self.wallpaper {
+                self.covered = desktop_covered(*display);
+            }
+            if let Some(tray) = &self.tray {
+                tray.set_state(TrayState { keeping: self.director.holding(), mode: self.director.mode().name().into() });
+            }
             if let Some(window) = &self.window
                 && window.fullscreen().is_some()
                 && now - self.pointer_moved > POINTER_HIDES
@@ -492,6 +578,10 @@ impl App {
             }
         }
     }
+}
+
+fn rect(position: PhysicalPosition<i32>, size: PhysicalSize<u32>) -> ScreenRect {
+    ScreenRect { left: position.x, top: position.y, width: size.width, height: size.height }
 }
 
 /// Decides when each frame starts.

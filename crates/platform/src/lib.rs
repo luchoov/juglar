@@ -16,6 +16,12 @@ pub use win32::WasapiLoopback as SystemAudio;
 #[cfg(windows)]
 pub use win32::reduced_motion;
 
+/// Wallpaper mode (drawing behind the desktop icons), the tray icon that
+/// controls it, and whether anything covers the desktop. Windows only for
+/// now.
+#[cfg(windows)]
+pub use win32::{ScreenRect, Tray, TrayChoice, TrayState, Wallpaper, desktop_covered};
+
 /// Without a known OS preference, motion is allowed.
 #[cfg(not(windows))]
 pub fn reduced_motion() -> bool {

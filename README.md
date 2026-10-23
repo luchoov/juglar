@@ -32,8 +32,9 @@ Play anything on the system. Juglar listens to what the speakers play, with no s
 | `M` | mode: lively (the default), focus, relax: calmer, dimmer and muted, changing scenes rarely (see below) |
 | `F11`, `Alt`+`Enter` or double click | fullscreen on / off |
 | `Esc` | leave fullscreen; from a window, close |
+| `W` | wallpaper mode: Juglar draws behind the desktop icons; the tray icon has the controls |
 
-`cargo run --release -- --fullscreen` starts in fullscreen.
+`cargo run --release -- --fullscreen` starts in fullscreen; `-- --wallpaper`, as the wallpaper.
 
 The window title shows the frame rate, frame intervals, the analysis (CPU) and drawing (GPU) time per frame, the share of the screen the flash limiter is holding back (`held`), beats per second, the intensity, and the scene's name, marked *(kept)* while `Space` holds it.
 
