@@ -46,6 +46,7 @@
 
 use crate::analyzer::{Bins, log_bands};
 use crate::fft::{Complex, Fft};
+use crate::percussion::Percussion;
 use crate::tempo::Tempo;
 use crate::window::hann;
 
@@ -177,6 +178,7 @@ pub struct Onsets {
     change_db: f32,
     novelty: f32,
     tempo: Tempo,
+    percussion: Percussion,
 }
 
 impl Onsets {
@@ -232,6 +234,7 @@ impl Onsets {
             change_db: 0.0,
             novelty: 0.0,
             tempo: Tempo::new(hop as f32 / sample_rate),
+            percussion: Percussion::new(sample_rate, size, hop),
         }
     }
 
@@ -243,6 +246,7 @@ impl Onsets {
             for since in self.regions.iter_mut().filter_map(|r| r.since.as_mut()).chain(self.since_beat.as_mut()) {
                 *since += 1;
             }
+            self.percussion.advance(1);
             self.since_hop += 1;
             if self.since_hop == self.hop {
                 self.since_hop = 0;
@@ -296,6 +300,11 @@ impl Onsets {
         &self.tempo
     }
 
+    /// The drums and the harmonic/percussive split (see `percussion`).
+    pub fn percussion(&self) -> &Percussion {
+        &self.percussion
+    }
+
     /// Seconds between hops.
     pub fn hop_seconds(&self) -> f32 {
         self.hop as f32 / self.sample_rate
@@ -323,6 +332,7 @@ impl Onsets {
         let waking = self.peak <= SILENCE_DB && loudest > SILENCE_DB;
         self.peak = loudest.max(self.peak - PEAK_FALL_DB_PER_S * hop_seconds);
         let floor = (self.peak - RANGE_DB).max(SILENCE_DB);
+        self.percussion.hop(&self.scratch, self.power_scale, floor, waking);
         let audible = (self.peak - NOVELTY_RANGE_DB).max(SILENCE_DB);
         let mut difference = 0.0;
         for i in 0..self.bands.len() {
@@ -372,7 +382,7 @@ impl Onsets {
 /// Merges neighboring bands, from the lowest up, until each has at least
 /// `MIN_BINS` bins. Bands that ended up with the same bins merge too, so no
 /// bin counts twice.
-fn merged(bands: Vec<Bins>) -> Vec<Bins> {
+pub(crate) fn merged(bands: Vec<Bins>) -> Vec<Bins> {
     let mut out: Vec<Bins> = Vec::new();
     for band in bands {
         match out.last_mut() {
@@ -485,6 +495,118 @@ pub(crate) mod tests_support {
     pub fn tempo(bpm: f32, length: f32, offset: f32) -> Vec<f32> {
         let period = 60.0 / bpm;
         (0..).map(|i| offset + i as f32 * period).take_while(|&t| t < length - 0.1).collect()
+    }
+
+    /// A two-pole resonant filter (a biquad band-pass) around `hz`, for
+    /// shaping noise into the sound of a drum.
+    pub struct Resonance {
+        coefficients: [f32; 5],
+        state: [f32; 4],
+    }
+
+    impl Resonance {
+        pub fn new(hz: f32, q: f32) -> Self {
+            let w = TAU * hz / RATE as f32;
+            let alpha = w.sin() / (2.0 * q);
+            let a0 = 1.0 + alpha;
+            Self { coefficients: [alpha / a0, 0.0, -alpha / a0, -2.0 * w.cos() / a0, (1.0 - alpha) / a0], state: [0.0; 4] }
+        }
+
+        pub fn next(&mut self, x: f32) -> f32 {
+            let [b0, b1, b2, a1, a2] = self.coefficients;
+            let [x1, x2, y1, y2] = self.state;
+            let y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+            self.state = [x, x1, y, y1];
+            y
+        }
+    }
+
+    /// Adds kick drums as metal records them: a tone falling from 100 to
+    /// 50 Hz within a few hundredths of a second and fading over `decay`
+    /// seconds, with the beater's click on top (a few milliseconds of noise
+    /// ringing around 4 kHz).
+    pub fn add_kick_drums(signal: &mut [f32], kicks: &[f32], level: f32, decay: f32) {
+        let mut noise = Noise(11);
+        for &t in kicks {
+            let mut phase = 0.0;
+            let mut click = Resonance::new(4_000.0, 1.5);
+            for k in 0..seconds(6.0 * decay) {
+                let time = k as f32 / RATE as f32;
+                phase += TAU * (50.0 + 50.0 * (-time / 0.01).exp()) / RATE as f32;
+                let tick = click.next(noise.next() * (-time / 0.003).exp());
+                if let Some(s) = signal.get_mut(seconds(t) + k) {
+                    *s += level * (phase.sin() * (-time / decay).exp() + 1.5 * tick);
+                }
+            }
+        }
+    }
+
+    /// Adds snares as they sit in a loud metal mix: a 185 Hz body fading
+    /// over 0.04 s, the crack (noise around 1.2 kHz) over 0.05 s, and a
+    /// little rattle of the wires around 5 kHz over 0.08 s. In real mixes a
+    /// snare hit rises most below 2.5 kHz; the guitars bury the rest.
+    pub fn add_snares(signal: &mut [f32], snares: &[f32], level: f32) {
+        let mut noise = Noise(13);
+        for &t in snares {
+            let mut crack = Resonance::new(1_200.0, 0.8);
+            let mut wires = Resonance::new(5_000.0, 0.7);
+            for k in 0..seconds(0.4) {
+                let time = k as f32 / RATE as f32;
+                let body = 0.6 * (TAU * 185.0 * time).sin() * (-time / 0.04).exp();
+                let snap = 0.6 * crack.next(noise.next()) * (-time / 0.05).exp();
+                let rattle = 0.15 * wires.next(noise.next()) * (-time / 0.08).exp();
+                if let Some(s) = signal.get_mut(seconds(t) + k) {
+                    *s += level * (body + snap + rattle);
+                }
+            }
+        }
+    }
+
+    /// A distorted guitar playing power chords (root, fifth and octave as
+    /// sawtooth waves, through hard saturation) with a bass an octave
+    /// below, tremolo picked `picks` times a second. Each pick strikes the
+    /// strings harder, then they ring down; the saturation flattens most of
+    /// that, as high gain does, leaving a small dip between picks and a
+    /// scrape of pick noise on each. The bass, barely distorted, keeps
+    /// more of its picking. The riff moves through four roots, one every
+    /// half second. `length` seconds of amplitude `level`.
+    pub fn distorted_guitar(length: f32, picks: f32, level: f32) -> Vec<f32> {
+        let roots = [61.7, 73.4, 65.4, 82.4];
+        let mut noise = Noise(17);
+        let mut scrape = Resonance::new(3_000.0, 1.0);
+        let mut phases = [0.0f32; 4];
+        (0..seconds(length))
+            .map(|i| {
+                let time = i as f32 / RATE as f32;
+                let root = roots[(time / 0.5) as usize % roots.len()];
+                for (phase, ratio) in phases.iter_mut().zip([1.0, 1.5, 2.0, 0.5]) {
+                    *phase = (*phase + root * ratio / RATE as f32).fract();
+                }
+                let saw = |p: f32| 2.0 * p - 1.0;
+                let chord = saw(phases[0]) + saw(phases[1]) + saw(phases[2]);
+                let since_pick = (time * picks).fract() / picks;
+                let pick = (-since_pick / 0.02).exp();
+                let guitar = (6.0 * (0.6 + 0.4 * pick) * chord + 0.3 * noise.next()).tanh() * (0.85 + 0.15 * pick);
+                let bass = 0.6 * (3.0 * saw(phases[3])).tanh() * (0.6 + 0.4 * pick);
+                let attack = scrape.next(noise.next()) * (-since_pick / 0.004).exp();
+                level * (0.7 * guitar + 0.3 * bass + 0.3 * attack)
+            })
+            .collect()
+    }
+
+    /// A mastering limiter: the whole mix pushed `drive` times louder, and
+    /// turned down at once wherever it would pass full scale, coming back
+    /// up over 0.05 s. Loud metal is mastered like this, and every drum
+    /// hit ducks the guitars a little.
+    pub fn limit(signal: &mut [f32], drive: f32) {
+        let release = (-1.0 / (0.05 * RATE as f32)).exp();
+        let mut gain = 1.0f32;
+        for s in signal {
+            let x = *s * drive;
+            let needed = if x.abs() > 0.95 { 0.95 / x.abs() } else { 1.0 };
+            gain = needed.min(1.0 - (1.0 - gain) * release);
+            *s = x * gain;
+        }
     }
 
     /// How many expected times are matched by exactly one beat within
