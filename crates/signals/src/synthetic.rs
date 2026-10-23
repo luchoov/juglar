@@ -101,6 +101,8 @@ impl Synthetic {
         out.treble = treble;
         out.energy = (0.5 * bass + 0.35 * mid + 0.15 * treble).min(1.0);
         out.beat = if kick_on_this_beat { (-since_beat / BEAT_DECAY).exp() } else { 0.0 };
+        out.tempo = BEATS_PER_MINUTE;
+        out.beat_phase = beats.fract();
         out.novelty = (-since_section / NOVELTY_DECAY).exp();
 
         self.spectrum(dt, bass, mid, treble, &mut out.spectrum);

@@ -52,6 +52,10 @@ pub struct Analysis {
     pub beat: f32,
     /// How much the music is changing character (see `onset`).
     pub novelty: f32,
+    /// Beats per minute, 0 while unknown, and where the music is within
+    /// the beat (see `tempo`).
+    pub tempo: f32,
+    pub beat_phase: f32,
 }
 
 /// A half-open range of FFT bins.
@@ -207,6 +211,8 @@ impl Analyzer {
         }
         self.output.beat = self.onsets.beat();
         self.output.novelty = self.onsets.novelty();
+        self.output.tempo = self.onsets.tempo().bpm();
+        self.output.beat_phase = self.onsets.tempo().beat_phase();
 
         &self.output
     }

@@ -29,7 +29,7 @@
 //! Confirming a peak needs the next hop, so onsets are reported 10.7 ms
 //! late, and a region can't fire again within 100 ms.
 //!
-//! **Beat.** Juglar doesn't track the tempo yet (Milestone 5.5), so `beat` is
+//! **Beat.** `beat` is
 //! 1 at every onset in the low or middle region (kicks and snares, what you
 //! tap your foot to) and falls back to 0 with a time constant of 0.15 s.
 //! High-region onsets (hi-hats, often four per beat) are counted but don't
@@ -46,6 +46,7 @@
 
 use crate::analyzer::{Bins, log_bands};
 use crate::fft::{Complex, Fft};
+use crate::tempo::Tempo;
 use crate::window::hann;
 
 /// The three regions, in Hz (the same split as `Analyzer`'s bass, mid and
@@ -105,6 +106,9 @@ const NOVELTY_RANGE_DB: f32 = 30.0;
 pub const REGIONS: usize = 3;
 /// Regions whose onsets are beats: low and middle.
 const BEAT_REGIONS: [bool; REGIONS] = [true, true, false];
+/// How much each region's flux counts toward the tempo: hi-hats help count
+/// the beat but shouldn't decide where it falls.
+const TEMPO_WEIGHTS: [f32; REGIONS] = [1.0, 1.0, 0.5];
 
 /// One region's flux and its peak picking.
 struct Region {
@@ -172,6 +176,7 @@ pub struct Onsets {
     /// How far apart the short and long averages are, in decibels.
     change_db: f32,
     novelty: f32,
+    tempo: Tempo,
 }
 
 impl Onsets {
@@ -226,6 +231,7 @@ impl Onsets {
             peak: SILENCE_DB,
             change_db: 0.0,
             novelty: 0.0,
+            tempo: Tempo::new(hop as f32 / sample_rate),
         }
     }
 
@@ -285,6 +291,11 @@ impl Onsets {
         std::array::from_fn(|r| (self.regions[r].recent[2], self.regions[r].threshold))
     }
 
+    /// The tempo and where the beat is (see `tempo`).
+    pub fn tempo(&self) -> &Tempo {
+        &self.tempo
+    }
+
     /// Seconds between hops.
     pub fn hop_seconds(&self) -> f32 {
         self.hop as f32 / self.sample_rate
@@ -337,9 +348,11 @@ impl Onsets {
         // The refractory time, less the hop the onset is reported late by.
         let refractory = ((REFRACTORY - hop_seconds) * self.sample_rate) as u64;
         let mut beat = false;
-        for (region, is_beat) in self.regions.iter_mut().zip(BEAT_REGIONS) {
+        let mut strength = 0.0;
+        for ((region, is_beat), weight) in self.regions.iter_mut().zip(BEAT_REGIONS).zip(TEMPO_WEIGHTS) {
             let rises = &self.rises[region.first..region.end];
             let flux = if rises.is_empty() { 0.0 } else { rises.iter().sum::<f32>() / rises.len() as f32 };
+            strength += weight * flux;
             if region.hop(flux, refractory) {
                 // The onset happened one hop ago.
                 region.since = Some(self.hop as u64);
@@ -347,6 +360,7 @@ impl Onsets {
                 beat |= is_beat;
             }
         }
+        self.tempo.hop(strength);
         // A kick that also reaches the middle region is one beat, not two.
         if beat && self.since_beat.is_none_or(|since| since >= refractory) {
             self.since_beat = Some(self.hop as u64);
@@ -380,7 +394,7 @@ fn smoothstep(low: f32, high: f32, x: f32) -> f32 {
 }
 
 #[cfg(test)]
-mod tests_support {
+pub(crate) mod tests_support {
     use super::*;
     use std::f32::consts::TAU;
 
@@ -447,6 +461,25 @@ mod tests_support {
             done += chunk.len();
         }
         times
+    }
+
+    /// Adds hi-hats (short bursts of noise with the lows taken out: three
+    /// first differences in a row) of amplitude `level` at every time in
+    /// `hats`.
+    pub fn add_hats(signal: &mut [f32], hats: &[f32], level: f32) {
+        let mut noise = Noise(3);
+        for &t in hats {
+            let mut previous = [0.0; 3];
+            for k in 0..seconds(0.03) {
+                let mut x = noise.next();
+                for p in &mut previous {
+                    (x, *p) = (x - *p, x);
+                }
+                if let Some(s) = signal.get_mut(seconds(t) + k) {
+                    *s += level * x * (-(k as f32) / seconds(0.008) as f32).exp();
+                }
+            }
+        }
     }
 
     pub fn tempo(bpm: f32, length: f32, offset: f32) -> Vec<f32> {
@@ -519,20 +552,9 @@ mod tests {
 
     #[test]
     fn hi_hats_alone_are_onsets_but_not_beats() {
-        // Short bursts of noise with the lows taken out (three first
-        // differences in a row), on eighths, over a quiet bed of hiss.
+        // Hi-hats on eighths, over a quiet bed of hiss.
         let mut hats = clicks(6.0, &[], 0.01);
-        let mut noise = Noise(3);
-        for t in tempo(240.0, 6.0, 0.2) {
-            let mut previous = [0.0; 3];
-            for k in 0..seconds(0.03) {
-                let mut x = noise.next();
-                for p in &mut previous {
-                    (x, *p) = (x - *p, x);
-                }
-                hats[seconds(t) + k] += 0.15 * x * (-(k as f32) / seconds(0.008) as f32).exp();
-            }
-        }
+        add_hats(&mut hats, &tempo(240.0, 6.0, 0.2), 0.15);
         // The hiss starting at 0 s is an onset; count from just after it.
         let mut detector = Onsets::new(RATE);
         detector.push(&hats[..seconds(0.15)]);

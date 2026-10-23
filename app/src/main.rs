@@ -77,6 +77,7 @@ fn main() {
         modifiers: ModifiersState::empty(),
         last_click: None,
         pointer_moved: Instant::now(),
+        alignment: Alignment::default(),
         still: false,
     };
     if let Err(e) = event_loop.run_app(&mut app) {
@@ -155,6 +156,8 @@ impl Listening {
         out.energy = analysis.energy;
         out.beat = analysis.beat;
         out.novelty = analysis.novelty;
+        out.tempo = analysis.tempo;
+        out.beat_phase = analysis.beat_phase;
         out.spectrum = analysis.spectrum;
         self.analyzer.recent(&mut self.recent);
         out.waveform = *self.scope.update(&self.recent, dt);
@@ -200,6 +203,8 @@ struct App {
     print_stats: bool,
     last_frame: Instant,
     stats: Stats,
+    /// How well the counted beat matches the detected one (stats only).
+    alignment: Alignment,
     /// `--fullscreen` on the command line.
     start_fullscreen: bool,
     /// `--wallpaper` on the command line.
@@ -498,6 +503,9 @@ impl App {
         // buffer keeps draining and the envelopes stay current.
         let work = Instant::now();
         self.source.update(dt, &mut self.signals);
+        if self.print_stats {
+            self.alignment.frame(&self.signals);
+        }
         // Nothing to change before there is a picture, and no automatic
         // changes with reduced motion: the picture stays as it is.
         let (scene, busy) = match &self.renderer {
@@ -545,8 +553,12 @@ impl App {
                 Mode::Lively => String::new(),
                 calm => format!(" · {}", calm.name()),
             };
+            let tempo = match self.signals.tempo {
+                0.0 => String::new(),
+                bpm => format!(" · {bpm:.0} bpm"),
+            };
             let title = format!(
-                "{stats}{mode} · {intensity} {:.2} · {}{kept}",
+                "{stats}{tempo}{mode} · {intensity} {:.2} · {}{kept}",
                 self.signals.intensity,
                 renderer.scene_names()[renderer.scene()]
             );
@@ -569,8 +581,13 @@ impl App {
                 // Also what the director hears, to tune it by.
                 let feel = self.director.feel();
                 println!(
-                    "{title} · pulse {:.2} loudness {:.2} swell {:.2} brightness {:.2} rise {:+.2}",
-                    feel.pulse, feel.loudness, feel.swell, feel.brightness, feel.rise
+                    "{title} · pulse {:.2} loudness {:.2} swell {:.2} brightness {:.2} rise {:+.2}{}",
+                    feel.pulse,
+                    feel.loudness,
+                    feel.swell,
+                    feel.brightness,
+                    feel.rise,
+                    self.alignment.report()
                 );
             }
             if let Some(window) = &self.window {
@@ -628,6 +645,37 @@ impl Pacer {
 }
 
 /// Per-second numbers for the window title, until the HUD exists (M7).
+/// Of the beats detected while the tempo is known, how many fall within a
+/// tenth of a beat of where the count puts the beat: whether the tempo
+/// tracker counts along with the music.
+#[derive(Default)]
+struct Alignment {
+    last_beat: f32,
+    on: u32,
+    all: u32,
+}
+
+impl Alignment {
+    fn frame(&mut self, s: &Signals) {
+        if s.beat > 0.5 && s.beat > self.last_beat + 0.3 && s.tempo > 0.0 {
+            self.all += 1;
+            // The phase rises from 0 at the beat, and the detector reports a
+            // beat a little after it happens.
+            if s.beat_phase.min(1.0 - s.beat_phase) < 0.1 {
+                self.on += 1;
+            }
+        }
+        self.last_beat = s.beat;
+    }
+
+    /// The last second's count, and a fresh start.
+    fn report(&mut self) -> String {
+        let text = if self.all > 0 { format!(" · on the count {}/{}", self.on, self.all) } else { String::new() };
+        (self.on, self.all) = (0, 0);
+        text
+    }
+}
+
 struct Stats {
     since: Instant,
     frames: u32,

@@ -8,6 +8,7 @@ pub mod onset;
 pub mod ring;
 pub mod scope;
 pub mod smoothing;
+pub mod tempo;
 pub mod window;
 
 pub use analyzer::{Analysis, Analyzer, FFT_SIZE, SPECTRUM_BANDS};
@@ -15,3 +16,4 @@ pub use level::{Level, to_dbfs};
 pub use onset::Onsets;
 pub use ring::{Consumer, Producer, ring};
 pub use scope::{SCOPE_POINTS, SCOPE_SPAN, Scope};
+pub use tempo::Tempo;

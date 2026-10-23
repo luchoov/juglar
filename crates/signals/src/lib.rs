@@ -30,9 +30,15 @@ pub struct Signals {
     /// Overall loudness.
     pub energy: f32,
     /// 1 on a beat, falling back to 0 before the next one. From audio, a
-    /// beat is a detected onset in the low or middle range (kicks, snares);
-    /// the tempo isn't tracked yet (Milestone 5.5).
+    /// beat is a detected onset in the low or middle range (kicks, snares),
+    /// so a beat the music leaves out isn't one here.
     pub beat: f32,
+    /// Beats per minute, or 0 while there is no steady beat to count.
+    pub tempo: f32,
+    /// Where the music is within the beat while `tempo` is known: 0 on the
+    /// beat, rising to 1 just before the next, and carrying on through
+    /// beats the music leaves out. 0 while the tempo is unknown.
+    pub beat_phase: f32,
     /// High when the music changes character (a drop, a new section),
     /// fading over a few seconds as the change becomes the new normal.
     pub novelty: f32,
@@ -54,6 +60,8 @@ impl Default for Signals {
             treble: 0.0,
             energy: 0.0,
             beat: 0.0,
+            tempo: 0.0,
+            beat_phase: 0.0,
             novelty: 0.0,
             intensity: 0.5,
             spectrum: [0.0; SPECTRUM_BANDS],
