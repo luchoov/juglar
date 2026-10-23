@@ -12,7 +12,7 @@
 //! | mid     | how fast the tuning drifts (the figure turns)              |
 //! | treble  | the line's thickness                                       |
 //! | beat    | a push in the drift                                        |
-//! | novelty | the next ratio, crossfaded over three seconds              |
+//! | novelty | the next ratio, crossfaded over eight seconds              |
 //!
 //! The figure is computed here, 128 points of it, and sent to the shader
 //! in place of the waveform (`Look::waveform`), which this scene doesn't
@@ -39,8 +39,9 @@ const RATIOS: [(f32, f32); 6] = [(2.0, 3.0), (3.0, 4.0), (1.0, 2.0), (3.0, 5.0),
 /// Points along the figure; two numbers each fill the waveform's slots.
 pub(crate) const POINTS: usize = WAVEFORM_POINTS / 2;
 const LEVEL_SECONDS: f32 = 0.15;
-/// Seconds to crossfade from one ratio to the next.
-const CROSSFADE: f32 = 3.0;
+/// Seconds to crossfade from one ratio to the next. Over 3 s the strands
+/// swept across the screen fast enough that the limiter held 0.1% of it.
+const CROSSFADE: f32 = 8.0;
 /// The shortest time between two ratios, and the longest.
 const MIN_HOLD: f32 = 12.0;
 const MAX_HOLD: f32 = 40.0;
