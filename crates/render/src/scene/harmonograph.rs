@@ -126,7 +126,10 @@ impl Scene for Harmonograph {
             zoom: (-live * 0.06 * moving).exp(),
             rotation: live * 0.05 * (self.clock * TAU / 45.0).sin() * moving,
             swirl: 0.0,
-            decay: (-dt / 0.3).exp(),
+            // Trails fade over 0.6 s. At 0.3 s each strand crossing a spot
+            // lit and dimmed it fully, and with real music the limiter held
+            // up to 0.1% of the screen; at 0.6 s, nothing in three runs.
+            decay: (-dt / 0.6).exp(),
             palette_drift: 0.1 * moving,
             knobs: [
                 0.0015 + 0.001 * treble,  // line half-width
