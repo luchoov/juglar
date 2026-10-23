@@ -9,12 +9,12 @@
 //! |-------|-----------|--------------------------------------------------|
 //! | 1–8   | intro     | a soft chord swelling once per bar               |
 //! | 9–16  | build     | hi-hats getting louder, kick on every other beat |
-//! | 17–24 | drop      | kick on every beat, heavy bass, everything loud  |
+//! | 17–24 | drop      | kick on every beat, snare on 2 and 4, loud       |
 //! | 25–32 | breakdown | chords only, quiet                               |
 
 use std::f32::consts::{PI, TAU};
 
-use crate::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
+use crate::{Relative, SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
 
 const BEATS_PER_MINUTE: f32 = 120.0;
 const BEATS_PER_BAR: f32 = 4.0;
@@ -26,6 +26,11 @@ const KICK_DECAY: f32 = 0.12;
 const HAT_DECAY: f32 = 0.035;
 const BEAT_DECAY: f32 = 0.15;
 const NOVELTY_DECAY: f32 = 0.8;
+/// How fast the drum events fall back to 0, in seconds (as from audio).
+const KICK_EVENT_DECAY: f32 = 0.04;
+const DRUM_EVENT_DECAY: f32 = 0.05;
+/// Seconds the relative levels are measured against (as from audio).
+const RELATIVE_SECONDS: f32 = 4.0;
 
 /// Spectrum bands below this one count as bass, and from it up to
 /// `FIRST_TREBLE_BAND` as mid (the same split as the audio analysis).
@@ -47,11 +52,15 @@ pub struct Synthetic {
     noise: Noise,
     /// Per-band flicker, smoothed so it wanders instead of jumping.
     flicker: [f32; SPECTRUM_BANDS],
+    /// Recent averages of bass, mid, treble, energy, percussive and
+    /// harmonic, and seconds averaged so far, for the relative levels.
+    averages: [f32; 6],
+    averaged: f32,
 }
 
 impl Synthetic {
     pub fn new(seed: u64) -> Self {
-        Self { time: 0.0, noise: Noise(seed | 1), flicker: [1.0; SPECTRUM_BANDS] }
+        Self { time: 0.0, noise: Noise(seed | 1), flicker: [1.0; SPECTRUM_BANDS], averages: [0.0; 6], averaged: 0.0 }
     }
 
     /// Starts the song `seconds` in, e.g. at the drop.
@@ -105,8 +114,31 @@ impl Synthetic {
         out.beat_phase = beats.fract();
         out.novelty = (-since_section / NOVELTY_DECAY).exp();
 
+        // The drums apart: the kick as above, a snare on 2 and 4 in the
+        // drop, hi-hats on the eighths from the build on.
+        let snare_on_this_beat = section == Section::Drop && (beats as u32) % 2 == 1;
+        let hats_on = matches!(section, Section::Build | Section::Drop);
+        out.kick = if kick_on_this_beat { (-since_beat / KICK_EVENT_DECAY).exp() } else { 0.0 };
+        out.snare = if snare_on_this_beat { (-since_beat / DRUM_EVENT_DECAY).exp() } else { 0.0 };
+        out.cymbals = if hats_on { (-since_eighth / DRUM_EVENT_DECAY).exp() } else { 0.0 };
+        let snare = if snare_on_this_beat { (-since_beat / KICK_DECAY).exp() } else { 0.0 };
+        out.percussive = (0.7 * kick + 0.6 * snare + if hats_on { 0.3 * hat } else { 0.0 }).min(1.0);
+        out.harmonic = (0.3 + 0.5 * mid + 0.2 * swell).min(1.0);
+        out.relative = self.relative(dt, [bass, mid, treble, out.energy, out.percussive, out.harmonic]);
+
         self.spectrum(dt, bass, mid, treble, &mut out.spectrum);
         waveform(beats, bass, mid, treble, &mut out.waveform);
+    }
+
+    /// Each level over its average of the last few seconds.
+    fn relative(&mut self, dt: f32, levels: [f32; 6]) -> Relative {
+        self.averaged = (self.averaged + dt).min(RELATIVE_SECONDS);
+        let follow = 1.0 - (-dt / self.averaged).exp();
+        let [bass, mid, treble, energy, percussive, harmonic] = std::array::from_fn(|i| {
+            self.averages[i] += (levels[i] - self.averages[i]) * follow;
+            if self.averages[i] > 1e-3 { (levels[i] / self.averages[i]).min(4.0) } else { 0.0 }
+        });
+        Relative { bass, mid, treble, energy, percussive, harmonic }
     }
 
     /// A plausible spectrum: one hump per band region, scaled by its level,
@@ -193,6 +225,13 @@ mod tests {
             for v in [out.bass, out.mid, out.treble, out.energy, out.beat, out.novelty] {
                 assert!((0.0..=1.0).contains(&v), "{v}");
             }
+            for v in [out.kick, out.snare, out.cymbals, out.percussive, out.harmonic] {
+                assert!((0.0..=1.0).contains(&v), "{v}");
+            }
+            let r = out.relative;
+            for v in [r.bass, r.mid, r.treble, r.energy, r.percussive, r.harmonic] {
+                assert!((0.0..=4.0).contains(&v), "{v}");
+            }
             assert!(out.spectrum.iter().all(|v| (0.0..=1.0).contains(v)));
             assert!(out.waveform.iter().all(|v| (-1.0..=1.0).contains(v)));
         }
@@ -214,6 +253,17 @@ mod tests {
         assert!(on.beat > 0.8, "{}", on.beat);
         assert!(between.beat < 0.3, "{}", between.beat);
         assert!(on.bass > between.bass);
+    }
+
+    #[test]
+    fn the_drums_play_apart_in_the_drop() {
+        // At 40 s a kick (beat 80); at 40.5 s the snare (beat 81).
+        let kick = at(40.02);
+        let snare = at(40.52);
+        assert!(kick.kick > 0.6 && kick.snare == 0.0, "{} {}", kick.kick, kick.snare);
+        assert!(snare.snare > 0.6 && snare.kick > 0.0, "{} {}", snare.snare, snare.kick);
+        // The drop stands out from the build before it.
+        assert!(at(32.3).relative.bass > 1.3, "{}", at(32.3).relative.bass);
     }
 
     #[test]

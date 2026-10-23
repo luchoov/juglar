@@ -12,7 +12,7 @@ pub mod smoothing;
 pub mod tempo;
 pub mod window;
 
-pub use analyzer::{Analysis, Analyzer, FFT_SIZE, SPECTRUM_BANDS};
+pub use analyzer::{Analysis, Analyzer, FFT_SIZE, RelativeLevels, SPECTRUM_BANDS};
 pub use level::{Level, to_dbfs};
 pub use onset::Onsets;
 pub use percussion::{DRUMS, Percussion};

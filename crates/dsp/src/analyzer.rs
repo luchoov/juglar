@@ -8,7 +8,7 @@
 use crate::fft::{Complex, Fft};
 use crate::level::to_dbfs;
 use crate::onset::Onsets;
-use crate::smoothing::{AutoGain, Envelope};
+use crate::smoothing::{AutoGain, Envelope, Relative};
 use crate::window::hann;
 
 /// Samples per analysis window. At 48 kHz this is 43 ms of audio and bins
@@ -36,8 +36,11 @@ const GAIN_FALL_DB_PER_S: f32 = 3.0;
 /// band further below than this (one that is nearly empty) stays low instead
 /// of being amplified into noise.
 const BAND_SPREAD_DB: f32 = 18.0;
+/// Seconds each relative level is measured against.
+const RELATIVE_SECONDS: f32 = 4.0;
 
-/// What the analysis produces each frame. Every value is in `0..=1`.
+/// What the analysis produces each frame. Every value is in `0..=1`, except
+/// the relative levels.
 #[derive(Clone, Debug, Default)]
 pub struct Analysis {
     pub bass: f32,
@@ -56,6 +59,32 @@ pub struct Analysis {
     /// the beat (see `tempo`).
     pub tempo: f32,
     pub beat_phase: f32,
+    /// Each drum's event: 1 at its hit, falling back to 0 within a few
+    /// hundredths of a second (see `percussion`).
+    pub kick: f32,
+    pub snare: f32,
+    pub cymbals: f32,
+    /// How loud the percussive part of the sound is (hits and attacks) and
+    /// the harmonic part (held notes and chords). They share one auto-gain,
+    /// so the louder of the two can reach 1 and the other keeps its
+    /// distance below it.
+    pub percussive: f32,
+    pub harmonic: f32,
+    /// The levels against their own last four seconds.
+    pub relative: RelativeLevels,
+}
+
+/// Levels against their own recent past (see `Relative`): 1 is usual for
+/// this moment of this song, 1.3 stands out, 0.5 has dropped to half. 0 in
+/// silence, and never above 4.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RelativeLevels {
+    pub bass: f32,
+    pub mid: f32,
+    pub treble: f32,
+    pub energy: f32,
+    pub percussive: f32,
+    pub harmonic: f32,
 }
 
 /// A half-open range of FFT bins.
@@ -101,6 +130,12 @@ pub struct Analyzer {
     energy: Band,
     spectrum: Vec<Band>,
     spectrum_gain: AutoGain,
+    /// The percussive and harmonic levels: one gain, an envelope each.
+    layers_gain: AutoGain,
+    percussive: Envelope,
+    harmonic: Envelope,
+    /// Bass, mid, treble, energy, percussive, harmonic.
+    relative: [Relative; 6],
     onsets: Onsets,
     output: Analysis,
 }
@@ -137,6 +172,11 @@ impl Analyzer {
             energy: Band::new(bins((BASS_HZ.0, TREBLE_HZ.1)), 0.030, 0.400),
             spectrum,
             spectrum_gain: AutoGain::new(GAIN_RANGE_DB, SILENCE_DB, GAIN_FALL_DB_PER_S),
+            layers_gain: AutoGain::new(GAIN_RANGE_DB, SILENCE_DB, GAIN_FALL_DB_PER_S),
+            percussive: Envelope::new(0.005, 0.120),
+            harmonic: Envelope::new(0.050, 0.300),
+            relative: [(0.015, 0.250), (0.015, 0.250), (0.010, 0.200), (0.030, 0.400), (0.005, 0.120), (0.050, 0.300)]
+                .map(|(attack, release)| Relative::new(attack, release, RELATIVE_SECONDS, from_db(SILENCE_DB))),
             onsets: Onsets::new(sample_rate as u32),
             output: Analysis::default(),
         }
@@ -189,16 +229,33 @@ impl Analyzer {
             let power: f32 = scratch[bins.start..bins.end].iter().map(|x| x.norm_sqr()).sum();
             to_dbfs((power * power_scale).sqrt(), -120.0)
         };
-        let drive = |band: &mut Band, floor_db: f32| {
-            let gained = band.gain.update_with_floor(level_db(band.bins), dt, floor_db);
+        let drive = |band: &mut Band, level_db: f32, floor_db: f32| {
+            let gained = band.gain.update_with_floor(level_db, dt, floor_db);
             band.envelope.update(gained, dt)
         };
 
-        self.output.energy = drive(&mut self.energy, SILENCE_DB);
+        let [bass_db, mid_db, treble_db, energy_db] =
+            [&self.bass, &self.mid, &self.treble, &self.energy].map(|band| level_db(band.bins));
+        self.output.energy = drive(&mut self.energy, energy_db, SILENCE_DB);
         let band_floor = self.energy.gain.peak_db() - BAND_SPREAD_DB;
-        self.output.bass = drive(&mut self.bass, band_floor);
-        self.output.mid = drive(&mut self.mid, band_floor);
-        self.output.treble = drive(&mut self.treble, band_floor);
+        self.output.bass = drive(&mut self.bass, bass_db, band_floor);
+        self.output.mid = drive(&mut self.mid, mid_db, band_floor);
+        self.output.treble = drive(&mut self.treble, treble_db, band_floor);
+
+        // The percussive and harmonic parts, from the onset detector's
+        // split (see `percussion`), with one gain for both.
+        let (percussive, harmonic) = self.onsets.percussion().powers();
+        let [percussive_db, harmonic_db] = [percussive, harmonic].map(|power| to_dbfs(power.sqrt(), -120.0));
+        self.layers_gain.update_with_floor(percussive_db.max(harmonic_db), dt, band_floor);
+        self.output.percussive = self.percussive.update(self.layers_gain.relative(percussive_db), dt);
+        self.output.harmonic = self.harmonic.update(self.layers_gain.relative(harmonic_db), dt);
+        let [kick, snare, cymbals] = self.onsets.percussion().events();
+        (self.output.kick, self.output.snare, self.output.cymbals) = (kick, snare, cymbals);
+
+        let levels = [bass_db, mid_db, treble_db, energy_db, percussive_db, harmonic_db];
+        let [bass, mid, treble, energy, percussive, harmonic] =
+            std::array::from_fn(|i| self.relative[i].update(from_db(levels[i]), dt));
+        self.output.relative = RelativeLevels { bass, mid, treble, energy, percussive, harmonic };
 
         // The spectrum shares one gain, driven by its loudest band, so a bass
         // heavy mix still looks bass heavy.
@@ -222,6 +279,11 @@ impl Analyzer {
         self.onsets.beats()
     }
 
+    /// Hits of each drum found since the start: kick, snare, cymbals.
+    pub fn drum_hits(&self) -> [u64; crate::percussion::DRUMS] {
+        self.onsets.percussion().counts()
+    }
+
     /// Copies the newest `out.len()` samples (at most `FFT_SIZE`) into `out`,
     /// oldest first.
     pub fn recent(&self, out: &mut [f32]) {
@@ -232,6 +294,11 @@ impl Analyzer {
             *slot = sample;
         }
     }
+}
+
+/// A level in decibels as a linear amplitude.
+fn from_db(db: f32) -> f32 {
+    10f32.powf(db / 20.0)
 }
 
 /// Bins of an `fft_size` transform covering `low..high` Hz, at least one,
@@ -335,6 +402,41 @@ mod tests {
         }
         assert!(analyzer.output.bass < 0.01, "bass {}", analyzer.output.bass);
         assert!(analyzer.output.energy < 0.01, "energy {}", analyzer.output.energy);
+    }
+
+    #[test]
+    fn a_held_tone_is_harmonic_and_hits_are_percussive() {
+        let mut held = Analyzer::new(RATE);
+        let out = run(&mut held, &sine(220.0, 0.5, 2 * RATE as usize));
+        assert!(out.harmonic > 0.9 && out.percussive < 0.2, "harmonic {} percussive {}", out.harmonic, out.percussive);
+
+        // Short bursts of noise, four a second, peak right after each burst.
+        let mut hits = Analyzer::new(RATE);
+        let mut signal = vec![0.0; 2 * RATE as usize];
+        let mut seed = 1u32;
+        for (i, s) in signal.iter_mut().enumerate() {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let noise = (seed >> 8) as f32 / (1 << 23) as f32 - 1.0;
+            *s = 0.5 * noise * (-((i % 12_000) as f32) / 240.0).exp();
+        }
+        let mut most = (0.0f32, 0.0f32);
+        for packet in signal.chunks(RATE as usize / 100) {
+            hits.push(packet);
+            let out = hits.analyze(0.01);
+            most = (most.0.max(out.percussive), most.1.max(out.harmonic));
+        }
+        assert!(most.0 > 0.9 && most.0 > most.1 + 0.3, "percussive {} harmonic {}", most.0, most.1);
+    }
+
+    #[test]
+    fn relative_levels_are_one_when_steady() {
+        let mut analyzer = Analyzer::new(RATE);
+        let quiet = run(&mut analyzer, &sine(80.0, 0.05, 6 * RATE as usize));
+        assert!((quiet.relative.bass - 1.0).abs() < 0.05, "bass {}", quiet.relative.bass);
+        assert!((quiet.relative.energy - 1.0).abs() < 0.05, "energy {}", quiet.relative.energy);
+        // Twice as loud: twice the usual at first.
+        let louder = run(&mut analyzer, &sine(80.0, 0.1, RATE as usize / 2));
+        assert!(louder.relative.bass > 1.6, "bass {}", louder.relative.bass);
     }
 
     #[test]

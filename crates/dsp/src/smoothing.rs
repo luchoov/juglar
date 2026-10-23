@@ -86,6 +86,44 @@ impl AutoGain {
     }
 }
 
+/// A level against its own recent past: 1 while it holds its usual level,
+/// 1.3 when it is 30% above it, 0.5 at half.
+///
+/// The level (linear, not in decibels) is first smoothed with an
+/// attack/release envelope, then divided by its own average over the last
+/// `average` seconds (until that much has been heard, over all of it).
+/// Silence (anything at or below `floor`) leaves the average where it was,
+/// so the music coming back after a pause is compared with how it was
+/// before.
+#[derive(Clone, Copy, Debug)]
+pub struct Relative {
+    now: Envelope,
+    average: f32,
+    average_seconds: f32,
+    /// Seconds of sound heard so far, up to `average_seconds`.
+    heard: f32,
+    floor: f32,
+}
+
+/// The most a relative level reports: a sound out of nothing would
+/// otherwise be infinitely above its past.
+const RELATIVE_MAX: f32 = 4.0;
+
+impl Relative {
+    pub fn new(attack: f32, release: f32, average: f32, floor: f32) -> Self {
+        Self { now: Envelope::new(attack, release), average: 0.0, average_seconds: average, heard: 0.0, floor }
+    }
+
+    pub fn update(&mut self, level: f32, dt: f32) -> f32 {
+        let now = self.now.update(level, dt);
+        if level > self.floor {
+            self.heard = (self.heard + dt).min(self.average_seconds);
+            self.average += (now - self.average) * (1.0 - (-dt / self.heard).exp());
+        }
+        if self.average <= self.floor { 0.0 } else { (now / self.average).min(RELATIVE_MAX) }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,6 +162,42 @@ mod tests {
         assert_eq!(loud.update(-6.0, 0.01), 1.0);
         assert_eq!(quiet.update(-26.0, 0.01), 1.0);
         assert!((loud.update(-21.0, 0.01) - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn relative_level_is_one_when_steady_and_shows_a_rise() {
+        let mut relative = Relative::new(0.01, 0.2, 4.0, 0.001);
+        // A quiet song stays at 1, as a loud one would.
+        for _ in 0..1000 {
+            relative.update(0.02, 0.01);
+        }
+        assert!((relative.update(0.02, 0.01) - 1.0).abs() < 0.01);
+        // 30% louder for a second: about 1.3 at first, sinking as the
+        // average catches up.
+        let mut values = Vec::new();
+        for _ in 0..100 {
+            values.push(relative.update(0.026, 0.01));
+        }
+        assert!((values[10] - 1.3).abs() < 0.03, "{}", values[10]);
+        assert!(values[99] < values[10] && values[99] > 1.2, "{}", values[99]);
+    }
+
+    #[test]
+    fn relative_level_keeps_its_past_through_silence() {
+        let mut relative = Relative::new(0.01, 0.2, 4.0, 0.001);
+        assert_eq!(relative.update(0.0, 0.01), 0.0);
+        for _ in 0..1000 {
+            relative.update(0.1, 0.01);
+        }
+        for _ in 0..500 {
+            relative.update(0.0, 0.01);
+        }
+        assert!(relative.update(0.0, 0.01) < 0.01);
+        // Back at the same level after five seconds of silence: normal.
+        for _ in 0..20 {
+            relative.update(0.1, 0.01);
+        }
+        assert!((relative.update(0.1, 0.01) - 1.0).abs() < 0.02);
     }
 
     #[test]

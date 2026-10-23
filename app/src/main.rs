@@ -11,7 +11,7 @@ use juglar_platform::{
     AudioCapture, PlatformError, ScreenRect, SystemAudio, Tray, TrayChoice, TrayState, Wallpaper, desktop_covered,
 };
 use juglar_render::{Renderer, View};
-use juglar_signals::{Signals, Synthetic};
+use juglar_signals::{Relative, Signals, Synthetic};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
@@ -101,10 +101,14 @@ impl Source {
         }
     }
 
-    /// Beats heard since the start; the synthetic song's are known, not heard.
-    fn beats(&self) -> Option<u64> {
+    /// Beats, kicks, snares and cymbals heard since the start; the
+    /// synthetic song's are known, not heard.
+    fn hits(&self) -> Option<[u64; 4]> {
         match self {
-            Source::Audio(listening) => Some(listening.analyzer.beats()),
+            Source::Audio(listening) => {
+                let [kick, snare, cymbals] = listening.analyzer.drum_hits();
+                Some([listening.analyzer.beats(), kick, snare, cymbals])
+            }
             Source::Demo(_) => None,
         }
     }
@@ -159,6 +163,20 @@ impl Listening {
         out.tempo = analysis.tempo;
         out.beat_phase = analysis.beat_phase;
         out.spectrum = analysis.spectrum;
+        out.kick = analysis.kick;
+        out.snare = analysis.snare;
+        out.cymbals = analysis.cymbals;
+        out.percussive = analysis.percussive;
+        out.harmonic = analysis.harmonic;
+        let r = analysis.relative;
+        out.relative = Relative {
+            bass: r.bass,
+            mid: r.mid,
+            treble: r.treble,
+            energy: r.energy,
+            percussive: r.percussive,
+            harmonic: r.harmonic,
+        };
         self.analyzer.recent(&mut self.recent);
         out.waveform = *self.scope.update(&self.recent, dt);
     }
@@ -549,7 +567,7 @@ impl App {
         if drawn {
             self.stats.frame(dt, analysis_time, draw_time);
         }
-        if let Some(stats) = self.stats.report(now, self.source.beats()) {
+        if let Some(stats) = self.stats.report(now, self.source.hits()) {
             let intensity = match self.director.intensity() {
                 Intensity::Natural => "natural",
                 Intensity::Fixed(_) => "intensity",
@@ -694,13 +712,13 @@ struct Stats {
     gpu_ms: Vec<f32>,
     /// The largest share of the screen the flash limiter held back.
     held: Option<f32>,
-    /// The beat count when this second started.
-    beats: Option<u64>,
+    /// The beat, kick, snare and cymbal counts when this second started.
+    hits: Option<[u64; 4]>,
 }
 
 impl Stats {
     fn new() -> Self {
-        Self { since: Instant::now(), frames: 0, shortest: f32::MAX, longest: 0.0, analysis: Duration::ZERO, draw: Duration::ZERO, gpu_ms: Vec::new(), held: None, beats: None }
+        Self { since: Instant::now(), frames: 0, shortest: f32::MAX, longest: 0.0, analysis: Duration::ZERO, draw: Duration::ZERO, gpu_ms: Vec::new(), held: None, hits: None }
     }
 
     fn frame(&mut self, dt: f32, analysis: Duration, draw: Duration) {
@@ -712,7 +730,7 @@ impl Stats {
     }
 
     /// Once a second, the title summarizing it.
-    fn report(&mut self, now: Instant, beats: Option<u64>) -> Option<String> {
+    fn report(&mut self, now: Instant, hits: Option<[u64; 4]>) -> Option<String> {
         let elapsed = (now - self.since).as_secs_f32();
         if elapsed < 1.0 {
             return None;
@@ -734,12 +752,13 @@ impl Stats {
         if let Some(held) = self.held {
             title += &format!(" · held {:.1}%", held * 100.0);
         }
-        if let (Some(start), Some(end)) = (self.beats, beats) {
-            title += &format!(" · beats {:.1}/s", (end - start) as f32 / elapsed);
+        if let (Some(start), Some(end)) = (self.hits, hits) {
+            let [beats, kick, snare, cymbals] = std::array::from_fn(|i| (end[i] - start[i]) as f32 / elapsed);
+            title += &format!(" · beats {beats:.1}/s · kick {kick:.1} snare {snare:.1} cymbals {cymbals:.1}/s");
         }
         *self = Self::new();
         self.since = now;
-        self.beats = beats;
+        self.hits = hits;
         Some(title)
     }
 }

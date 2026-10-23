@@ -98,11 +98,13 @@ impl Mode {
 
 /// Makes the signals the scenes see as faint as a calm mode asks: levels
 /// follow the music only slowly (seconds, not tenths) and swing only a
-/// fraction of their range around a middle value; beats and novelty are
-/// gone. The director's own listening is unaffected.
+/// fraction of their range around a middle value (relative levels around
+/// 1); beats, drum hits and novelty are gone. The director's own listening
+/// is unaffected.
 #[derive(Clone, Debug)]
 pub struct Quieter {
-    levels: [f32; 4],
+    levels: [f32; 6],
+    relative: [f32; 6],
     spectrum: [f32; SPECTRUM_BANDS],
 }
 
@@ -111,28 +113,39 @@ const MIDDLE: f32 = 0.4;
 
 impl Quieter {
     pub fn new() -> Self {
-        Self { levels: [MIDDLE; 4], spectrum: [MIDDLE; SPECTRUM_BANDS] }
+        Self { levels: [MIDDLE; 6], relative: [1.0; 6], spectrum: [MIDDLE; SPECTRUM_BANDS] }
     }
 
     pub fn apply(&mut self, mode: Mode, s: &mut Signals) {
         let Some((rise, fall, depth)) = mode.response() else { return };
         let dt = s.dt.clamp(0.0, 0.25);
-        let follow = |value: &mut f32, target: f32| {
+        let follow_around = |middle: f32, value: &mut f32, target: f32| {
             let seconds = if target > *value { rise } else { fall };
             *value += (target - *value) * (1.0 - (-dt / seconds).exp());
-            MIDDLE + depth * (*value - MIDDLE)
+            middle + depth * (*value - middle)
         };
-        let [bass, mid, treble, energy] = &mut self.levels;
+        let follow = |value: &mut f32, target: f32| follow_around(MIDDLE, value, target);
+        let [bass, mid, treble, energy, percussive, harmonic] = &mut self.levels;
         s.bass = follow(bass, s.bass);
         s.mid = follow(mid, s.mid);
         s.treble = follow(treble, s.treble);
         s.energy = follow(energy, s.energy);
+        s.percussive = follow(percussive, s.percussive);
+        s.harmonic = follow(harmonic, s.harmonic);
+        let r = &mut s.relative;
+        for (out, level) in [&mut r.bass, &mut r.mid, &mut r.treble, &mut r.energy, &mut r.percussive, &mut r.harmonic]
+            .into_iter()
+            .zip(&mut self.relative)
+        {
+            *out = follow_around(1.0, level, *out);
+        }
         for (out, level) in s.spectrum.iter_mut().zip(&mut self.spectrum) {
             *out = follow(level, *out);
         }
         s.waveform.iter_mut().for_each(|v| *v *= depth);
         s.beat = 0.0;
         s.novelty = 0.0;
+        (s.kick, s.snare, s.cymbals) = (0.0, 0.0, 0.0);
     }
 }
 
@@ -159,6 +172,7 @@ mod tests {
             song.next(1.0 / 60.0, &mut s);
             quieter.apply(Mode::Focus, &mut s);
             assert_eq!(s.beat, 0.0);
+            assert_eq!([s.kick, s.snare, s.cymbals], [0.0; 3]);
             // After the first seconds of settling.
             if frame > 10 * 60 {
                 low = low.min(s.bass);
