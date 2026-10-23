@@ -47,6 +47,25 @@ const INTENSITY_PRESETS: [f32; 3] = [0.2, 0.5, 0.9];
 const DOUBLE_CLICK: Duration = Duration::from_millis(400);
 /// In fullscreen, the mouse pointer hides after this long without moving.
 const POINTER_HIDES: Duration = Duration::from_secs(2);
+/// From a window, a second `Esc` within this long closes Juglar.
+const ESCAPE_AGAIN: Duration = Duration::from_secs(2);
+/// The modes in the order `M` goes through them, and the intensities'
+/// names: the music's first, then the presets'.
+const MODES: [Mode; 3] = [Mode::Lively, Mode::Focus, Mode::Relax];
+const INTENSITIES: [&str; 4] = ["from the music", "gentle", "medium", "strong"];
+/// The keys, as the help (`H`) shows them.
+const HELP: &[(&str, &str)] = &[
+    ("\u{2190} \u{2192}", "previous / next scene"),
+    ("Space", "keep this scene / let the music change it"),
+    ("M", "mode: lively, focus, relax"),
+    ("A", "intensity from the music"),
+    ("1 2 3", "intensity: gentle, medium, strong"),
+    ("Tab", "what Juglar hears"),
+    ("F11", "fullscreen (or Alt+Enter, or double click)"),
+    ("W", "wallpaper: behind the desktop icons"),
+    ("H", "this help"),
+    ("Esc", "leave fullscreen; twice to close"),
+];
 
 fn main() {
     route_output();
@@ -99,6 +118,7 @@ fn main() {
         modifiers: ModifiersState::empty(),
         last_click: None,
         pointer_moved: Instant::now(),
+        escaped: None,
         alignment: Alignment::default(),
         still: false,
         recorder: Recorder::from_env(),
@@ -365,6 +385,8 @@ struct App {
     last_click: Option<Instant>,
     /// When the mouse pointer last moved.
     pointer_moved: Instant,
+    /// When `Esc` last asked whether to close.
+    escaped: Option<Instant>,
     /// Whether reduced motion is on, as last read (once a second).
     still: bool,
     /// Saving frames (`JUGLAR_RECORD`), and whether it has saved them all.
@@ -404,6 +426,7 @@ impl ApplicationHandler for App {
         self.follow_display();
 
         let mut renderer = renderer;
+        renderer.set_fonts(&ui_fonts());
         // `JUGLAR_SCENE=oil` (or any scene's name) picks the first scene.
         if let Ok(name) = std::env::var("JUGLAR_SCENE") {
             match renderer.scene_names().iter().position(|&scene| scene == name) {
@@ -450,17 +473,10 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
-            // Escape leaves fullscreen first, and closes from a window.
             WindowEvent::KeyboardInput {
-                event: KeyEvent { logical_key: Key::Named(NamedKey::Escape), state: ElementState::Pressed, .. },
+                event: KeyEvent { logical_key: Key::Named(NamedKey::Escape), state: ElementState::Pressed, repeat: false, .. },
                 ..
-            } => {
-                if self.is_fullscreen() {
-                    self.toggle_fullscreen();
-                } else {
-                    event_loop.exit();
-                }
-            }
+            } => self.escape(event_loop),
             WindowEvent::KeyboardInput { event: KeyEvent { logical_key, state: ElementState::Pressed, repeat: false, .. }, .. } => {
                 self.key(&logical_key)
             }
@@ -495,9 +511,13 @@ impl ApplicationHandler for App {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         while let Some(choice) = self.tray.as_ref().and_then(Tray::take) {
             match choice {
-                TrayChoice::NextScene => self.key(&Key::Named(NamedKey::ArrowRight)),
-                TrayChoice::KeepScene => self.key(&Key::Named(NamedKey::Space)),
-                TrayChoice::NextMode => self.key(&Key::Character("m".into())),
+                TrayChoice::NextScene => self.step_scene(false),
+                TrayChoice::KeepScene => self.toggle_keep(),
+                TrayChoice::Mode(n) => self.choose_mode(MODES[n.min(MODES.len() - 1)]),
+                TrayChoice::Intensity(0) => self.choose_intensity(Intensity::Natural),
+                TrayChoice::Intensity(n) => {
+                    self.choose_intensity(Intensity::Fixed(INTENSITY_PRESETS[(n - 1).min(INTENSITY_PRESETS.len() - 1)]))
+                }
                 TrayChoice::Window => self.leave_wallpaper(),
                 TrayChoice::Quit => event_loop.exit(),
             }
@@ -564,6 +584,7 @@ impl App {
                     }
                 }
                 println!("Wallpaper mode: drawing behind the desktop icons. The tray icon has the controls.");
+                self.sync_tray();
             }
             Err(e) => eprintln!("juglar: could not become the wallpaper: {e}"),
         }
@@ -609,53 +630,117 @@ impl App {
     /// right arrows go through the scenes, and space keeps the one showing;
     /// 1, 2 and 3 fix the intensity at gentle, medium or strong, and A lets
     /// the music set it; M goes through the modes (lively, focus, relax);
-    /// F11 and Alt+Enter switch fullscreen, W makes Juglar the wallpaper.
+    /// F11 and Alt+Enter switch fullscreen, W makes Juglar the wallpaper;
+    /// H, ? or F1 show the keys. Each change is noted on screen.
     fn key(&mut self, key: &Key) {
         match key {
             Key::Named(NamedKey::F11) => self.toggle_fullscreen(),
             Key::Named(NamedKey::Enter) if self.modifiers.alt_key() => self.toggle_fullscreen(),
-            Key::Named(step @ (NamedKey::ArrowLeft | NamedKey::ArrowRight)) => {
-                if let Some(renderer) = &mut self.renderer {
-                    let count = renderer.scene_names().len();
-                    let back = *step == NamedKey::ArrowLeft;
-                    let next = if back { renderer.scene() + count - 1 } else { renderer.scene() + 1 };
-                    // With reduced motion, a slow fade through patches
-                    // instead of an edge sweeping across.
-                    let transition = if self.still {
-                        Transition { style: Style::Seep, seconds: 3.0, per_beat: 0.0 }
-                    } else {
-                        Transition::asked()
-                    };
-                    renderer.begin_transition(next, transition);
-                    self.director.chosen(renderer.scene());
-                }
-            }
-            Key::Named(NamedKey::Space) => {
-                let holding = !self.director.holding();
-                self.director.hold(holding);
-            }
+            Key::Named(step @ (NamedKey::ArrowLeft | NamedKey::ArrowRight)) => self.step_scene(*step == NamedKey::ArrowLeft),
+            Key::Named(NamedKey::Space) => self.toggle_keep(),
             Key::Named(NamedKey::Tab) => {
                 if let Some(renderer) = &mut self.renderer {
-                    let next = if renderer.view() == View::Scene { View::Analysis } else { View::Scene };
+                    let (next, name) = match renderer.view() {
+                        View::Scene => (View::Analysis, "what Juglar hears"),
+                        View::Analysis => (View::Scene, "the scene"),
+                    };
                     renderer.set_view(next);
+                    renderer.note("View", name);
                 }
             }
+            Key::Named(NamedKey::F1) => self.toggle_help(),
+            Key::Character(c) if c.eq_ignore_ascii_case("h") || c == "?" => self.toggle_help(),
             Key::Character(c) if c.eq_ignore_ascii_case("w") => self.enter_wallpaper(),
-            Key::Character(c) if c.eq_ignore_ascii_case("m") => {
-                if let Some(mut renderer) = self.renderer.take() {
-                    self.set_mode(self.director.mode().next(), &mut renderer);
-                    self.renderer = Some(renderer);
-                }
-            }
-            Key::Character(c) if c.eq_ignore_ascii_case("a") => {
-                self.director.set_intensity(Intensity::Natural, self.signals.intensity);
-            }
+            Key::Character(c) if c.eq_ignore_ascii_case("m") => self.choose_mode(self.director.mode().next()),
+            Key::Character(c) if c.eq_ignore_ascii_case("a") => self.choose_intensity(Intensity::Natural),
             Key::Character(c) => {
                 if let Some(&preset) = c.parse::<usize>().ok().and_then(|n| INTENSITY_PRESETS.get(n.wrapping_sub(1))) {
-                    self.director.set_intensity(Intensity::Fixed(preset), self.signals.intensity);
+                    self.choose_intensity(Intensity::Fixed(preset));
                 }
             }
             _ => {}
+        }
+    }
+
+    /// `Esc` hides the help, then leaves fullscreen; from a window it asks
+    /// first, and a second press closes Juglar, so a stray touch doesn't.
+    fn escape(&mut self, event_loop: &ActiveEventLoop) {
+        let now = Instant::now();
+        if self.renderer.as_ref().is_some_and(Renderer::helping) {
+            self.toggle_help();
+        } else if self.is_fullscreen() {
+            self.toggle_fullscreen();
+        } else if self.escaped.is_some_and(|then| now - then < ESCAPE_AGAIN) {
+            event_loop.exit();
+        } else {
+            self.escaped = Some(now);
+            if let Some(renderer) = &mut self.renderer {
+                renderer.note("Esc again", "to close Juglar");
+            }
+        }
+    }
+
+    fn toggle_help(&mut self) {
+        if let Some(renderer) = &mut self.renderer {
+            renderer.help(if renderer.helping() { &[] } else { HELP });
+        }
+    }
+
+    /// To the previous or next scene, through a transition.
+    fn step_scene(&mut self, back: bool) {
+        let Some(renderer) = &mut self.renderer else { return };
+        let count = renderer.scene_names().len();
+        let next = if back { renderer.scene() + count - 1 } else { renderer.scene() + 1 } % count;
+        // With reduced motion, a slow fade through patches instead of an
+        // edge sweeping across.
+        let transition = if self.still {
+            Transition { style: Style::Seep, seconds: 3.0, per_beat: 0.0 }
+        } else {
+            Transition::asked()
+        };
+        renderer.begin_transition(next, transition);
+        self.director.chosen(next);
+        let kept = if self.director.holding() { ", kept" } else { "" };
+        renderer.note("Scene", &format!("{}{kept}", title(renderer.scene_names()[next])));
+        self.sync_tray();
+    }
+
+    /// Keeps the scene showing (no automatic changes), or lets go.
+    fn toggle_keep(&mut self) {
+        let holding = !self.director.holding();
+        self.director.hold(holding);
+        if let Some(renderer) = &mut self.renderer {
+            let value = if holding {
+                format!("{}, kept", title(renderer.scene_names()[renderer.scene()]))
+            } else {
+                "changes with the music".to_owned()
+            };
+            renderer.note("Scene", &value);
+        }
+        self.sync_tray();
+    }
+
+    fn choose_mode(&mut self, mode: Mode) {
+        if let Some(mut renderer) = self.renderer.take() {
+            self.set_mode(mode, &mut renderer);
+            renderer.note("Mode", mode.name());
+            self.renderer = Some(renderer);
+        }
+        self.sync_tray();
+    }
+
+    fn choose_intensity(&mut self, intensity: Intensity) {
+        self.director.set_intensity(intensity, self.signals.intensity);
+        if let Some(renderer) = &mut self.renderer {
+            renderer.note("Intensity", INTENSITIES[intensity_index(intensity)]);
+        }
+        self.sync_tray();
+    }
+
+    /// Shows the current scene, mode and intensity in the tray's menu.
+    fn sync_tray(&self) {
+        if let (Some(tray), Some(renderer)) = (&self.tray, &self.renderer) {
+            tray.set_state(tray_state(&self.director, renderer));
         }
     }
 
@@ -720,7 +805,13 @@ impl App {
         if drawn {
             self.stats.frame(dt, analysis_time, draw_time);
         }
-        if let Some(stats) = self.stats.report(now, self.source.hits()) {
+        let report = self.stats.report(now, self.source.hits());
+        if report.is_some()
+            && let Some(tray) = &self.tray
+        {
+            tray.set_state(tray_state(&self.director, renderer));
+        }
+        if let Some(stats) = report {
             let intensity = match self.director.intensity() {
                 Intensity::Natural => "natural",
                 Intensity::Fixed(_) => "intensity",
@@ -745,9 +836,6 @@ impl App {
             if let Some((_, display, _)) = &self.wallpaper {
                 self.covered = desktop_covered(*display);
             }
-            if let Some(tray) = &self.tray {
-                tray.set_state(TrayState { keeping: self.director.holding(), mode: self.director.mode().name().into() });
-            }
             if let Some(window) = &self.window
                 && window.fullscreen().is_some()
                 && now - self.pointer_moved > POINTER_HIDES
@@ -768,8 +856,10 @@ impl App {
                     self.alignment.report()
                 );
             }
+            // The numbers are for tuning; otherwise the title names the scene.
             if let Some(window) = &self.window {
-                window.set_title(&title);
+                let scene = self::title(renderer.scene_names()[renderer.scene()]);
+                window.set_title(&if self.print_stats { title } else { format!("Juglar \u{b7} {scene}") });
             }
         }
     }
@@ -815,6 +905,43 @@ impl Recorder {
         }
         self.saved >= self.frames
     }
+}
+
+/// What the tray's menu shows: the scene, the mode and the intensity.
+fn tray_state(director: &Director, renderer: &Renderer) -> TrayState {
+    let mode = director.mode();
+    TrayState {
+        scene: title(renderer.scene_names()[renderer.scene()]),
+        keeping: director.holding(),
+        modes: MODES.iter().map(|m| title(m.name())).collect(),
+        mode: MODES.iter().position(|&m| m == mode).unwrap_or(0),
+        intensities: INTENSITIES.iter().map(|i| title(i)).collect(),
+        intensity: intensity_index(director.intensity()),
+    }
+}
+
+/// A name as a title: its first letter capitalized.
+fn title(name: &str) -> String {
+    let mut chars = name.chars();
+    chars.next().map(|first| first.to_uppercase().chain(chars).collect()).unwrap_or_default()
+}
+
+/// Where an intensity is in `INTENSITIES`: the music's, or a preset's.
+fn intensity_index(intensity: Intensity) -> usize {
+    match intensity {
+        Intensity::Natural => 0,
+        Intensity::Fixed(value) => {
+            INTENSITY_PRESETS.iter().position(|&preset| (preset - value).abs() < 1e-3).map_or(0, |n| n + 1)
+        }
+    }
+}
+
+/// The fonts for text on screen: Windows' own Segoe UI, regular and
+/// semibold (bold where there is no semibold).
+fn ui_fonts() -> Vec<Vec<u8>> {
+    let folder = std::env::var_os("WINDIR").map(|dir| std::path::Path::new(&dir).join("Fonts")).unwrap_or_default();
+    let read = |names: &[&str]| names.iter().find_map(|name| std::fs::read(folder.join(name)).ok());
+    [read(&["segoeui.ttf", "arial.ttf"]), read(&["seguisb.ttf", "segoeuib.ttf", "arialbd.ttf"])].into_iter().flatten().collect()
 }
 
 fn rect(position: PhysicalPosition<i32>, size: PhysicalSize<u32>) -> ScreenRect {

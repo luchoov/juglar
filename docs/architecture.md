@@ -48,7 +48,7 @@ juglar/
    ├─ dsp/              SPSC ring buffer, levels, FFT (own radix-2), windowing, bands, envelopes, beat/onset detection, auto-gain
    ├─ director/         what to show and when: natural intensity, scene choice, transitions, from slow summaries of the signals
    ├─ generator/        building blocks, composition rules, mutation, WGSL emission
-   ├─ render/           wgpu setup, render graph, ping-pong targets, bloom, composite, HUD glyphs
+   ├─ render/           wgpu setup, render graph, ping-pong targets, bloom, composite, text on screen (ink, hud)
    └─ platform/         traits + per-OS modules
       ├─ src/lib.rs     AudioCapture, NowPlaying, DesktopMode, Tray, ForegroundWatch traits
       └─ src/win32/     WASAPI loopback, GSMTC, WorkerW wallpaper, tray, fullscreen-game detection

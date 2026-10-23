@@ -12,6 +12,7 @@ juglar-director = { path = "../director" }
 juglar-signals = { path = "../signals" }
 bytemuck = { version = "1.25", features = ["derive"] }
 wgpu = { version = "30.0", default-features = false, features = ["std", "parking_lot", "wgsl"] }
+fontdue = "0.9.5"
 
 # Only the graphics APIs each platform needs. Windows gets DirectX 12, which
 # cost the least CPU and memory on the GPUs measured so far, plus Vulkan as a

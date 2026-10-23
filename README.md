@@ -89,7 +89,10 @@ Play anything. Juglar changes scene by itself when the music turns a corner (an 
 | `A` | intensity read from the music (the default); `1` `2` `3` fix it: gentle, medium, strong |
 | `F11`, `Alt`+`Enter` or double click | fullscreen on / off |
 | `W` | wallpaper mode: Juglar draws behind the desktop icons; the tray icon has the controls |
-| `Esc` | leave fullscreen; from a window, close |
+| `H`, `?` or `F1` | the keys, on screen |
+| `Esc` | leave fullscreen; from a window, press it twice to close |
+
+Every change a key makes is noted on screen for a moment ("Mode: focus", "Scene: Liquid, kept").
 
 `juglar --fullscreen` starts in fullscreen; `juglar --wallpaper`, as the wallpaper. Juglar opens no console: its messages go to `%LOCALAPPDATA%\Juglar\juglar.log`, and `juglar --console` shows them in a console instead.
 

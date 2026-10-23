@@ -12,7 +12,8 @@
 //! 2. **Bloom** (`bloom.rs`): the bright parts, blurred ever wider.
 //! 3. **Composite** (`composite.wgsl`), at full size: turn that picture's
 //!    ink into colors, tone-map them and add the glow.
-//! 4. **Present** (`present.rs`): dither the frame onto the screen.
+//! 4. **Present** (`present.rs`): dither the frame onto the screen. Just
+//!    before, any text (`hud.rs`, drawn by `ink.rs`) goes over the frame.
 //!    Nothing is held back: flashes and hard cuts are the scenes' to make
 //!    (D48 in `docs/decisions.md`).
 //!
@@ -26,6 +27,8 @@
 
 mod bloom;
 mod feedback;
+mod hud;
+mod ink;
 mod present;
 mod scene;
 mod timer;
@@ -37,6 +40,8 @@ use std::sync::mpsc;
 use bytemuck::{Pod, Zeroable};
 use bloom::{Bloom, Glow};
 use feedback::Feedback;
+use hud::Hud;
+use ink::Ink;
 use present::Present;
 use scene::{Look, Scene};
 use timer::GpuTimer;
@@ -220,6 +225,8 @@ pub struct Renderer {
     crossings: u32,
     bloom: Bloom,
     present: Present,
+    ink: Ink,
+    hud: Hud,
     view: View,
     reduced_motion: bool,
     /// The calm mode asked for, or the last one while it fades out.
@@ -390,6 +397,7 @@ impl Renderer {
             }
         });
         let present = Present::new(&device, config.width, config.height, format);
+        let ink = Ink::new(&device);
         let timer = timestamps.then(|| GpuTimer::new(&device, queue.get_timestamp_period()));
 
         Ok(Self {
@@ -411,6 +419,8 @@ impl Renderer {
             crossings: 0,
             bloom,
             present,
+            ink,
+            hud: Hud::default(),
             view: View::Scene,
             reduced_motion: false,
             calm: Calm { motion: 1.0, saturation: 1.0, floor: 0.0, ceiling: 1.0 },
@@ -691,6 +701,9 @@ impl Renderer {
                 analysis.draw(0..3, 0..1);
             }
         }
+        let size = [self.config.width as f32, self.config.height as f32];
+        self.hud.draw(&mut self.ink, &self.queue, size, signals.dt);
+        self.ink.encode(&self.device, &self.queue, &mut encoder, self.present.candidate(), size);
         let seed = (self.frames % (1 << 24)) as f32;
         self.present.encode(&self.queue, &mut encoder, &screen, seed, self.encode_srgb, timestamps(false, true));
         if timed && let Some(timer) = &self.timer {
@@ -809,6 +822,27 @@ impl Renderer {
     fn history_of(&self, which: usize) -> [f32; HISTORY] {
         let newest = self.frames as usize % HISTORY;
         std::array::from_fn(|i| self.history[(newest + 1 + i) % HISTORY][which])
+    }
+
+    /// The fonts for text on screen, as font files: a regular weight, then
+    /// a stronger one. Without them no text is drawn.
+    pub fn set_fonts(&mut self, fonts: &[Vec<u8>]) {
+        self.ink.set_fonts(fonts);
+    }
+
+    /// Says on screen, for a moment, that something changed: `label: value`.
+    pub fn note(&mut self, label: &str, value: &str) {
+        self.hud.note(label, value);
+    }
+
+    /// Shows the keys and what each does, or hides them (an empty list).
+    pub fn help(&mut self, lines: &[(&str, &str)]) {
+        self.hud.help(lines);
+    }
+
+    /// Whether the help is showing.
+    pub fn helping(&self) -> bool {
+        self.hud.helping()
     }
 
     /// The newest GPU time measurement of a frame, in milliseconds, if one

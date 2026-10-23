@@ -133,7 +133,8 @@ Open: give the rest of the wild scenes layers each owned by its own signal (D54;
 - **Done:** borderless fullscreen (D36: `F11`, `Alt`+`Enter`, double click, `--fullscreen`).
 - **Done:** wallpaper mode on Windows (D42: `W`, `--wallpaper`), behind the desktop icons on both the 24H2 desktop and the earlier one. A tray icon has the controls, and nothing is drawn while a fullscreen program or a maximized window covers the desktop. Measured: 0 fps and 0.42% of a core while covered; 72 fps and 1.66% with the desktop shown (synthetic song).
 - **Not tested:** several displays, and Windows before 24H2.
-- **Not started:** the HUD, the now-playing overlay, mini mode, pausing on silence, the screensaver build.
+- **Done:** text on screen (D57): a note for each change a key makes, the help on `H`, `Esc` asking before it closes; the tray's menu shows the scene, mode and intensity, and sets them.
+- **Not started:** the now-playing overlay, mini mode, pausing on silence, the screensaver build.
 
 ## M8 — Evolution and the web
 

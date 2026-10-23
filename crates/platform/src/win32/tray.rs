@@ -16,7 +16,7 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CW_USEDEFAULT, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-    GetCursorPos, GetSystemMetrics, HICON, IDI_APPLICATION, IMAGE_ICON, LR_SHARED, LoadIconW, LoadImageW, MF_CHECKED, MF_SEPARATOR, MF_STRING, MF_UNCHECKED, PostMessageW,
+    GetCursorPos, GetSystemMetrics, HICON, IDI_APPLICATION, IMAGE_ICON, LR_SHARED, LoadIconW, LoadImageW, MF_CHECKED, MF_DISABLED, MF_POPUP, MF_SEPARATOR, MF_STRING, MF_UNCHECKED, PostMessageW,
     RegisterClassW, SM_CXSMICON, SM_CYSMICON, SetForegroundWindow, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, WM_APP, WM_LBUTTONUP, WM_NULL, WM_RBUTTONUP, WNDCLASSW, WS_EX_TOOLWINDOW, WS_OVERLAPPED,
 };
 use windows::core::{PCWSTR, w};
@@ -29,19 +29,26 @@ pub enum TrayChoice {
     NextScene,
     /// Keep the scene showing, or let go.
     KeepScene,
-    /// The next mode (lively, focus, relax).
-    NextMode,
+    /// One of `TrayState::modes`, by its place in the list.
+    Mode(usize),
+    /// One of `TrayState::intensities`, likewise.
+    Intensity(usize),
     /// Leave wallpaper mode for a window.
     Window,
     Quit,
 }
 
-/// What the menu shows besides its fixed items.
+/// What the menu shows: the scene, and the choices with the current one
+/// checked.
 #[derive(Clone, Debug, Default)]
 pub struct TrayState {
+    /// The scene showing, as a title at the top of the menu.
+    pub scene: String,
     pub keeping: bool,
-    /// The current mode's name, shown in the mode item.
-    pub mode: String,
+    pub modes: Vec<String>,
+    pub mode: usize,
+    pub intensities: Vec<String>,
+    pub intensity: usize,
 }
 
 /// The icon's messages to its window.
@@ -150,14 +157,19 @@ fn failed(what: &str, e: windows::core::Error) -> PlatformError {
     PlatformError::new(format!("{what}: {e}"))
 }
 
-/// Menu item numbers; 0 means nothing was chosen.
-const ITEMS: [(usize, TrayChoice); 5] = [
-    (1, TrayChoice::NextScene),
-    (2, TrayChoice::KeepScene),
-    (3, TrayChoice::NextMode),
-    (4, TrayChoice::Window),
-    (5, TrayChoice::Quit),
-];
+/// Menu item numbers; 0 means nothing was chosen. Modes and intensities
+/// count up from their own hundreds.
+fn choice(item: usize) -> Option<TrayChoice> {
+    match item {
+        1 => Some(TrayChoice::NextScene),
+        2 => Some(TrayChoice::KeepScene),
+        4 => Some(TrayChoice::Window),
+        5 => Some(TrayChoice::Quit),
+        100..200 => Some(TrayChoice::Mode(item - 100)),
+        200..300 => Some(TrayChoice::Intensity(item - 200)),
+        _ => None,
+    }
+}
 
 unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if message == ICON_MESSAGE {
@@ -174,16 +186,31 @@ unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM
 
 unsafe fn show_menu(window: HWND) {
     let state = STATE.with(|s| s.borrow().clone());
-    let mode = format!("Mode: {} (next)", if state.mode.is_empty() { "lively" } else { &state.mode });
-    let mode: Vec<u16> = mode.encode_utf16().chain([0]).collect();
-    // SAFETY: the menu is created, shown and destroyed here; strings are
-    // live, nul-terminated locals.
+    let wide = |text: &str| -> Vec<u16> { text.encode_utf16().chain([0]).collect() };
+    let scene = wide(&state.scene);
+    let modes: Vec<Vec<u16>> = state.modes.iter().map(|m| wide(m)).collect();
+    let intensities: Vec<Vec<u16>> = state.intensities.iter().map(|i| wide(i)).collect();
+    let check = |on: bool| if on { MF_CHECKED } else { MF_UNCHECKED };
+    // SAFETY: the menus are created, shown and destroyed here (a submenu
+    // goes with its menu); strings are live, nul-terminated locals.
     unsafe {
         let Ok(menu) = CreatePopupMenu() else { return };
+        if !state.scene.is_empty() {
+            let _ = AppendMenuW(menu, MF_STRING | MF_DISABLED, 0, PCWSTR(scene.as_ptr()));
+        }
         let _ = AppendMenuW(menu, MF_STRING, 1, w!("Next scene"));
-        let keep = if state.keeping { MF_CHECKED } else { MF_UNCHECKED };
-        let _ = AppendMenuW(menu, MF_STRING | keep, 2, w!("Keep this scene"));
-        let _ = AppendMenuW(menu, MF_STRING, 3, PCWSTR(mode.as_ptr()));
+        let _ = AppendMenuW(menu, MF_STRING | check(state.keeping), 2, w!("Keep this scene"));
+        let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+        for (n, mode) in modes.iter().enumerate() {
+            let _ = AppendMenuW(menu, MF_STRING | check(n == state.mode), 100 + n, PCWSTR(mode.as_ptr()));
+        }
+        if let Ok(submenu) = CreatePopupMenu() {
+            for (n, intensity) in intensities.iter().enumerate() {
+                let _ = AppendMenuW(submenu, MF_STRING | check(n == state.intensity), 200 + n, PCWSTR(intensity.as_ptr()));
+            }
+            let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+            let _ = AppendMenuW(menu, MF_STRING | MF_POPUP, submenu.0 as usize, w!("Intensity"));
+        }
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         let _ = AppendMenuW(menu, MF_STRING, 4, w!("Show in a window"));
         let _ = AppendMenuW(menu, MF_STRING, 5, w!("Quit Juglar"));
@@ -194,7 +221,7 @@ unsafe fn show_menu(window: HWND) {
         let chosen = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, at.x, at.y, Some(0), window, None).0 as usize;
         let _ = PostMessageW(Some(window), WM_NULL, WPARAM(0), LPARAM(0));
         let _ = DestroyMenu(menu);
-        if let Some(&(_, choice)) = ITEMS.iter().find(|(item, _)| *item == chosen) {
+        if let Some(choice) = choice(chosen) {
             CHOICES.with(|c| c.borrow_mut().push_back(choice));
         }
     }
