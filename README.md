@@ -4,16 +4,31 @@
 
 <h1 align="center">Juglar</h1>
 
-**Juglar** /xuˈɣlaɾ/: Spanish for *minstrel*, the medieval performer who brought music and spectacle together.
+<p align="center">A music visualizer for Windows that hears the music, not only how loud it is.</p>
 
-A music visualizer for Windows that **hears metal**: it tells a wall of distorted guitars from a clean chord, hears the kick, the snare and the cymbals apart, and knows when the band slams back in after a break. Written from scratch in Rust, drawn on the GPU.
-
-**Docs:** [juglar-docs.vercel.app](https://juglar-docs.vercel.app/): the theory notes, decisions and interactive explorables, readable anywhere.
+<h3 align="center">
+  <a href="https://github.com/luchoov/juglar/releases/download/v1.2.0/juglar-1.2.0-setup.exe">Download the installer</a>
+  ·
+  <a href="https://github.com/luchoov/juglar/releases/download/v1.2.0/juglar-1.2.0-windows-x64.zip">Portable zip</a>
+  ·
+  <a href="https://github.com/luchoov/juglar/releases">All releases</a>
+  ·
+  <a href="https://juglar-docs.vercel.app/">Docs</a>
+</h3>
 
 <p align="center">
-  <img src="docs/media/explosion.webp" width="640" alt="A metal song's break drawn as a slowly etched texture; at the explosion the picture cuts to a burst of shrapnel">
+  <a href="https://github.com/luchoov/juglar/releases/latest"><img src="https://img.shields.io/github/v/release/luchoov/juglar?color=e8641b" alt="release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/luchoov/juglar?color=97ca00" alt="license"></a>
+</p>
+
+**Juglar** /xuˈɣlaɾ/: Spanish for *minstrel*, the medieval performer who brought music and spectacle together.
+
+Juglar tells a wall of distorted sound from a clean chord, hears the kick, the snare and the cymbals apart, and knows when the music turns a corner: a band slamming back in after a break, a drop, a breakdown. Written from scratch in Rust, drawn on the GPU; the docs, with the theory notes, decisions and interactive explorables, are at [juglar-docs.vercel.app](https://juglar-docs.vercel.app/).
+
+<p align="center">
+  <img src="docs/media/explosion.webp" width="640" alt="A song's break drawn as a slowly etched texture; at the explosion the picture cuts to a burst of shrapnel">
   <br>
-  <sub>The break before the explosion in a death metal song, then the explosion: Juglar changes scene on the slam itself, not on a timer.</sub>
+  <sub>The break before the explosion in a heavy song, then the explosion: Juglar changes scene on the slam itself, not on a timer.</sub>
 </p>
 
 > [!WARNING]
@@ -21,25 +36,25 @@ A music visualizer for Windows that **hears metal**: it tells a wall of distorte
 
 ## What makes it different
 
-Audio-reactive visuals are old, and almost all of them listen like a level meter: how loud each band is, right now. On a loud master of a metal song that number sits near the top from the first riff to the last, and the picture just shakes.
+Audio-reactive visuals are old, and almost all of them listen like a level meter: how loud each band is, right now. On a loud master that number sits near the top from the first second to the last, and the picture just shakes.
 
 Juglar listens for other things:
 
-- **Grit and chaos.** How noise-like the middle of the sound is (distortion reads 0.6–0.8, a clean rock guitar about 0.2 or less), how many attacks a second, and how loud against the song's own peaks. Heavy music gets the wildest scenes and shorter ones.
+- **Grit and chaos.** How noise-like the middle of the sound is (distortion reads 0.6–0.8, a clean rock guitar about 0.2 or less), how many attacks a second, and how loud against the song's own peaks. Dense, distorted music gets the wildest scenes and shorter ones; quiet, clean music the calmer ones.
 - **Impacts.** The band slamming back in after a break, or a part far louder than the one before: the scene changes on that frame, with a near cut. A stop-start riff that slams every second counts once.
-- **The drums apart.** Kick, snare and cymbals from a causal percussive/harmonic split, tuned against the drummers' own isolated tracks on three metal songs. Held chords are heard apart from hits.
+- **The drums apart.** Kick, snare and cymbals from a causal percussive/harmonic split, tuned against the drummers' own isolated tracks on three songs where a loud mix buries them. Held chords are heard apart from hits.
 - **Hits as springs, not swells.** A hit kicks a stiff spring that jumps, overshoots and recoils like a drum skin, instead of fading in through layers of smoothing. Hard cuts, flashes, negatives, torn colors and sliced glitches come on the hits that earn them.
 - **Pictures that grow.** Every frame is a warped copy of the last, and the scenes can make that copy sharpen itself against its own surroundings, so grain grows into living texture: spots, veins and contours, like reaction and diffusion in a dish.
 
 <p align="center">
-  <img src="docs/media/hearing.webp" width="720" alt="Juglar's analysis view during a metal song: eight seconds of loudness, grit, density and chaos as lines, the kick, snare and cymbals as marks, the spectrum, and the director's scene changes">
+  <img src="docs/media/hearing.webp" width="720" alt="Juglar's analysis view during a song: eight seconds of loudness, grit, density and chaos as lines, the kick, snare and cymbals as marks, the spectrum, and the director's scene changes">
   <br>
   <sub>What Juglar hears (<code>Tab</code>), live: loudness, grit, density and chaos over the last eight seconds, the drums apart, and why the scene last changed.</sub>
 </p>
 
 ## The scenes
 
-Thirteen made for loud music, and twelve older, calmer ones for everything else; the focus and relax modes use the stillest of them.
+Thirteen wild ones for loud, dense music, and twelve calmer ones for everything else; the focus and relax modes use the stillest of them.
 
 <table>
   <tr>
@@ -84,7 +99,7 @@ Thirteen made for loud music, and twelve older, calmer ones for everything else;
   </tr>
 </table>
 
-<sub>Recorded by Juglar itself (<code>JUGLAR_RECORD</code>) from death, thrash, groove and doom metal. Also: <i>Maelstrom</i>, and the older <i>Tide, Orbits, Kaleido, Oil, Plasma, Harmonograph, Julia, Crystal, Vortex, Corona, Melt, Lenses</i>.</sub>
+<sub>Recorded by Juglar itself (<code>JUGLAR_RECORD</code>) from real songs. Also: <i>Maelstrom</i>, and the older <i>Tide, Orbits, Kaleido, Oil, Plasma, Harmonograph, Julia, Crystal, Vortex, Corona, Melt, Lenses</i>.</sub>
 
 ## Running it
 
@@ -151,7 +166,7 @@ Every important choice is written down in plain language, with what was measured
 ## Limits
 
 - Windows only for now (the core builds for the web; nothing runs there yet).
-- Tuned on one playlist: metal, sludge, doom, grunge and classic rock. Electronic music and hip-hop work but nothing was tuned for them.
+- Tuned on one playlist, mostly guitar music (heavy and classic rock, grunge, doom). Other music works, but electronic music and hip-hop were not tuned for.
 - Doom's fuzz is heard since 1.1 (D62), but that was tuned on two doom songs by one band.
 - Measured on one GPU (a GTX 1060).
 
