@@ -37,7 +37,7 @@ Juglar listens for other things:
 
 ## The scenes
 
-Twelve made for loud music, and twelve older, calmer ones for everything else; the focus and relax modes use the stillest of them.
+Thirteen made for loud music, and twelve older, calmer ones for everything else; the focus and relax modes use the stillest of them.
 
 <table>
   <tr>
@@ -73,10 +73,12 @@ Twelve made for loud music, and twelve older, calmer ones for everything else; t
   <tr>
     <td><img src="docs/media/citadel.webp" alt="Citadel"></td>
     <td><img src="docs/media/bore.webp" alt="Bore"></td>
+    <td><img src="docs/media/barrens.webp" alt="Barrens"></td>
   </tr>
   <tr>
     <td><b>Citadel</b>: a flight through a city carved out of a fractal; the kick shoves the camera, the snare lights the cracks.</td>
     <td><b>Bore</b>: a tunnel drilled through fractal rock toward a white-hot core; snares reshape the rock, impacts blast it open.</td>
+    <td><b>Barrens</b>: a low flight down a valley of jagged ridges under a storm; an impact is lightning that lights the land.</td>
   </tr>
 </table>
 
@@ -136,7 +138,7 @@ Every important choice is written down in plain language, with what was measured
 
 - **New here?** Open [`explorables/00-start-here.html`](explorables/00-start-here.html) in a browser: sound, samples and what Juglar does, from zero, with interactive pages.
 - [Vision](docs/vision.md): where it is going (song structure, a look per song, harmony as color).
-- [Decisions](docs/decisions.md): sixty-three of them, D48–D55 for v1 and D56–D63 for 1.1.
+- [Decisions](docs/decisions.md): sixty-four of them, D48–D55 for v1 and D56–D64 for 1.1.
 - [Architecture](docs/architecture.md), [roadmap](docs/roadmap.md) and [theory notes](docs/theory/).
 
 ## Limits

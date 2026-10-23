@@ -9,6 +9,7 @@
 //! the scenes are hand-made, each trying a different idea, and the arrow
 //! keys switch between them.
 
+mod barrens;
 mod bore;
 mod citadel;
 mod corona;
@@ -69,6 +70,7 @@ pub(crate) fn all() -> Vec<Box<dyn Scene>> {
         Box::new(fracture::Fracture::new()),
         Box::new(citadel::Citadel::new()),
         Box::new(bore::Bore::new()),
+        Box::new(barrens::Barrens::new()),
         Box::new(Tide::new()),
         Box::new(orbits::Orbits::new()),
         Box::new(kaleido::Kaleido::new()),
