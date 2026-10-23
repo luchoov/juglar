@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.0 — 2026-10-23
+
+Juglar knows the song: a menu to set it up, one program heard alone, each song's title in the middle of the screen, and a tray icon with everything.
+
+### Added
+
+- What is playing, from the players themselves (Spotify, Spotifast, YouTube in a browser, most players): title, artist, album and cover, with no account or web service (D65).
+- Listen to one program alone (process loopback), so a game, a call or notifications stay out of the analysis; back to everything while it isn't playing (D66).
+- A menu when Juglar opens, over the scene playing behind it: what to listen to, window, fullscreen or wallpaper, displays, mode, intensity, song titles, and whether to open it next time. `S` opens it again; `--start` skips it (D67).
+- Settings kept in `%LOCALAPPDATA%\Juglar\settings.ini`.
+- Each new song's title large in the middle of the screen, with its cover, written out letter by letter, and a new scene with it; `T` shows it again (D68).
+- The tray icon is always there, dark with Windows: the song, the scenes, Listen to, Show as, Displays, Mode, Intensity, Song titles, Start with Windows, Settings (D69).
+- One Juglar at a time: starting it again shows the one running. A dark title bar.
+
+### Changed
+
+- The `Ctrl`+`Alt` keys are only taken while Juglar is the wallpaper.
+- Mode and intensity are remembered between runs.
+
 ## 1.1.0 — 2026-10-23
 
 Three scenes that are places, an ear for doom's fuzz, an installer, and a quieter program: no console, notes on screen, the wallpaper on every display.

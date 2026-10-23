@@ -662,7 +662,7 @@ dependencies = [
 
 [[package]]
 name = "juglar"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "juglar-director",
  "juglar-dsp",
@@ -675,25 +675,26 @@ dependencies = [
 
 [[package]]
 name = "juglar-director"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "juglar-signals",
 ]
 
 [[package]]
 name = "juglar-dsp"
-version = "1.1.0"
+version = "1.2.0"
 
 [[package]]
 name = "juglar-platform"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "windows",
+ "windows-core",
 ]
 
 [[package]]
 name = "juglar-render"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "bytemuck",
  "fontdue",
@@ -704,7 +705,7 @@ dependencies = [
 
 [[package]]
 name = "juglar-signals"
-version = "1.1.0"
+version = "1.2.0"
 
 [[package]]
 name = "libc"
