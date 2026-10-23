@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased (1.1)
+## 1.1.0 — 2026-10-23
+
+Three scenes that are places, an ear for doom's fuzz, an installer, and a quieter program: no console, notes on screen, the wallpaper on every display.
 
 ### Added
 

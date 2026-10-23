@@ -12,7 +12,7 @@ codegen-units = 1
 strip = true
 
 [workspace.package]
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/luchoov/juglar"
