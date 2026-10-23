@@ -13,7 +13,7 @@ use std::collections::VecDeque;
 
 use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
 
-use crate::hud::{GRAY, INK};
+use crate::hud::{ACCENT, DIM, GRAY, INK, RULE, rgb};
 use crate::ink::{Ink, Weight};
 
 /// Seconds of history on the timeline.
@@ -21,17 +21,7 @@ const WINDOW: f32 = 8.0;
 /// Director changes listed on the right.
 const CHANGES: usize = 4;
 
-const fn rgb(hex: u32) -> [f32; 3] {
-    [((hex >> 16) & 255) as f32 / 255.0, ((hex >> 8) & 255) as f32 / 255.0, (hex & 255) as f32 / 255.0]
-}
-
 const BACKGROUND: [f32; 3] = rgb(0x0b0b0d);
-/// Hairlines: baselines, the seconds, the empty part of a bar.
-const RULE: [f32; 3] = rgb(0x222227);
-/// Labels that matter less than the gray ones.
-const DIM: [f32; 3] = rgb(0x5c5c63);
-/// The one color: chaos and impacts.
-const ACCENT: [f32; 3] = rgb(0xff5b3a);
 /// The spectrum's range (`SPECTRUM_HZ` in the analyzer), for its scale.
 const SPECTRUM_HZ: (f32, f32) = (30.0, 16_000.0);
 

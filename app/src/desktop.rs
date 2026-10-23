@@ -115,7 +115,8 @@ fn contains(r: &ScreenRect, (x, y): (i32, i32)) -> bool {
     x >= r.left && y >= r.top && x < r.left + r.width as i32 && y < r.top + r.height as i32
 }
 
-fn hwnd(window: &Window) -> Option<isize> {
+/// The window's Windows handle.
+pub(crate) fn hwnd(window: &Window) -> Option<isize> {
     match window.window_handle().ok()?.as_raw() {
         RawWindowHandle::Win32(handle) => Some(handle.hwnd.get()),
         _ => None,
@@ -169,11 +170,15 @@ impl App {
                 }
             }
         }
-        if self.tray.is_none() {
-            match Tray::new("Juglar") {
-                Ok(tray) => self.tray = Some(tray),
+        match &mut self.tray {
+            Some(tray) => tray.set_hotkeys(true),
+            None => match Tray::new("Juglar") {
+                Ok(mut tray) => {
+                    tray.set_hotkeys(true);
+                    self.tray = Some(tray);
+                }
                 Err(e) => eprintln!("juglar: no tray icon ({e}); quit from the Task Manager"),
-            }
+            },
         }
         println!(
             "Wallpaper mode on {} of {} displays: drawing behind the desktop icons. The tray icon and Ctrl+Alt keys have the controls.",
@@ -219,11 +224,14 @@ impl App {
         if let Some((wallpaper, _, windowed)) = self.wallpaper.take() {
             wallpaper.restore(windowed);
         }
-        self.tray = None;
+        if let Some(tray) = &mut self.tray {
+            tray.set_hotkeys(false);
+        }
         self.covered = false;
         if let Some(window) = &self.window {
             window.focus_window();
         }
+        self.sync_tray();
     }
 
     /// The scene each display shows, the main window's first.

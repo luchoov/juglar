@@ -31,6 +31,8 @@ mod ear;
 mod feedback;
 mod hud;
 mod ink;
+mod intro;
+mod menu;
 mod present;
 mod scene;
 mod timer;
@@ -45,12 +47,19 @@ use ear::Ear;
 use feedback::Feedback;
 use hud::Hud;
 use ink::Ink;
+use intro::Intro;
+use menu::MenuView;
 use present::Present;
 use scene::{Look, Scene};
 use timer::GpuTimer;
 
 pub use juglar_director::{Calm, Character, Style, Transition};
 pub use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
+pub use intro::Song;
+pub use menu::{Hit, Menu, Row};
+
+/// The largest cover `set_cover` takes, in pixels a side.
+pub const COVER_SIDE: u32 = ink::PICTURE;
 
 const COMMON: &str = include_str!("common.wgsl");
 
@@ -216,6 +225,8 @@ pub struct Renderer {
     ink: Ink,
     hud: Hud,
     ear: Ear,
+    intro: Intro,
+    menu: MenuView,
     view: View,
     reduced_motion: bool,
     /// The calm mode asked for, or the last one while it fades out.
@@ -389,6 +400,8 @@ impl Renderer {
             ink,
             hud: Hud::default(),
             ear: Ear::default(),
+            intro: Intro::default(),
+            menu: MenuView::default(),
             view: View::Scene,
             reduced_motion: false,
             calm: Calm { motion: 1.0, saturation: 1.0, floor: 0.0, ceiling: 1.0 },
@@ -668,6 +681,10 @@ impl Renderer {
             }
         }
         let size = [self.config.width as f32, self.config.height as f32];
+        if self.view == View::Scene && !self.menu.showing() {
+            self.intro.draw(&mut self.ink, &self.queue, size, signals.dt, signals.beat, self.reduced_motion);
+        }
+        self.menu.draw(&mut self.ink, &self.queue, size, signals.dt);
         self.hud.draw(&mut self.ink, &self.queue, size, signals.dt);
         self.ink.encode(&self.device, &self.queue, &mut encoder, self.present.candidate(), size);
         let seed = (self.frames % (1 << 24)) as f32;
@@ -801,6 +818,47 @@ impl Renderer {
     /// Whether the help is showing.
     pub fn helping(&self) -> bool {
         self.hud.helping()
+    }
+
+    /// Shows a song's title in the middle of the screen for a few seconds,
+    /// with the cover if one is set (`set_cover`).
+    pub fn intro(&mut self, song: Song) {
+        self.intro.start(song, self.ink.picture_aspect().is_some());
+    }
+
+    /// Takes the song's title off the screen at once.
+    pub fn end_intro(&mut self) {
+        self.intro.stop();
+    }
+
+    /// Whether a song's title is showing.
+    pub fn in_intro(&self) -> bool {
+        self.intro.showing()
+    }
+
+    /// The song's cover, straight 8-bit RGBA (`width` × `height`, at most
+    /// `COVER_SIDE` a side), for the intro and the menu; `None` for none.
+    pub fn set_cover(&mut self, cover: Option<(u32, u32, &[u8])>) {
+        self.ink.set_picture(&self.queue, cover);
+        if cover.is_some() {
+            self.intro.cover_arrived();
+        }
+    }
+
+    /// Shows the menu over the scene, or (with `None`) hides it.
+    pub fn set_menu(&mut self, menu: Option<Menu>) {
+        self.menu.set(menu);
+    }
+
+    /// Whether the menu is showing.
+    pub fn in_menu(&self) -> bool {
+        self.menu.showing()
+    }
+
+    /// What of the menu lies at `point`, in pixels from the window's top
+    /// left, as last drawn.
+    pub fn menu_hit(&self, point: [f32; 2]) -> Option<Hit> {
+        self.menu.hit(point)
     }
 
     /// The newest GPU time measurement of a frame, in milliseconds, if one

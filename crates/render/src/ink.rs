@@ -1,10 +1,12 @@
-//! Text and panels drawn over the finished frame: the overlay that says what
-//! a key changed, the help, and the analysis view's labels.
+//! Text, panels and one picture drawn over the finished frame: the overlay
+//! that says what a key changed, the help, the analysis view's labels, the
+//! settings, and a song's title with its cover.
 //!
 //! Glyphs are rasterized on the CPU (`fontdue`) the first time each one is
 //! needed at a size, into one atlas image; every frame, each glyph and each
 //! panel is one instance of a quad, all drawn in a single pass. The fonts come
 //! from the app (Windows has Segoe UI), so without them nothing is drawn.
+//! The picture (a song's cover) lives in an image of its own.
 
 use std::collections::HashMap;
 use std::num::NonZeroU64;
@@ -15,6 +17,9 @@ use crate::present::CANDIDATE_FORMAT;
 
 /// The atlas is one square image, this many pixels a side.
 const ATLAS: u32 = 1024;
+/// The picture's image, this many pixels a side; a smaller picture uses
+/// its top left corner.
+pub(crate) const PICTURE: u32 = 320;
 
 /// A weight of the font.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -34,9 +39,28 @@ struct Quad {
     uv: [f32; 4],
     /// sRGB color, and opacity.
     color: [f32; 4],
-    /// Corner radius (or a line's half width) in pixels, and 0 for a panel,
-    /// 1 for a glyph, 2 for a line from `rect`'s first point to its second.
+    /// Corner radius (or a line's half width) in pixels; 0 for a panel,
+    /// 1 for a glyph, 2 for a line from `rect`'s first point to its second,
+    /// 3 for the picture; and how far a panel's edge fades, in pixels.
     shape: [f32; 4],
+}
+
+/// How to set a line of text, beyond its font and color.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Set {
+    /// Extra space after each letter, in pixels.
+    pub(crate) tracking: f32,
+    /// How many letters show, counted from the first, fractions fading in:
+    /// a line written out letter by letter. Infinite for all.
+    pub(crate) shown: f32,
+    /// How far below its place a letter starts as it fades in, in pixels.
+    pub(crate) rise: f32,
+}
+
+impl Default for Set {
+    fn default() -> Self {
+        Self { tracking: 0.0, shown: f32::INFINITY, rise: 0.0 }
+    }
 }
 
 #[repr(C)]
@@ -63,6 +87,9 @@ pub(crate) struct Ink {
     /// The next free spot in the atlas: shelves filled left to right.
     shelf: [u32; 3],
     atlas: wgpu::Texture,
+    picture: wgpu::Texture,
+    /// The picture's size, in pixels; none yet.
+    picture_size: Option<[u32; 2]>,
     uniforms: wgpu::Buffer,
     instances: wgpu::Buffer,
     capacity: usize,
@@ -80,6 +107,16 @@ impl Ink {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::R8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let picture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("ink picture"),
+            size: wgpu::Extent3d { width: PICTURE, height: PICTURE, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
@@ -126,6 +163,16 @@ impl Ink {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
         let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -138,6 +185,10 @@ impl Ink {
                     resource: wgpu::BindingResource::TextureView(&atlas.create_view(&Default::default())),
                 },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&sampler) },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&picture.create_view(&Default::default())),
+                },
             ],
         });
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -183,6 +234,8 @@ impl Ink {
             glyphs: HashMap::new(),
             shelf: [0, 0, 0],
             atlas,
+            picture,
+            picture_size: None,
             uniforms,
             instances,
             capacity,
@@ -209,8 +262,53 @@ impl Ink {
 
     /// A panel: a rectangle with rounded corners, in pixels.
     pub(crate) fn panel(&mut self, rect: [f32; 4], radius: f32, color: [f32; 3], alpha: f32) {
+        self.soft_panel(rect, radius, 0.0, color, alpha);
+    }
+
+    /// A panel whose edge fades over `soft` pixels, inside `rect`: a
+    /// shadow, or a pool of dark for text to stand on.
+    pub(crate) fn soft_panel(&mut self, rect: [f32; 4], radius: f32, soft: f32, color: [f32; 3], alpha: f32) {
         if alpha > 0.0 {
-            self.quads.push(Quad { rect, uv: [0.0; 4], color: [color[0], color[1], color[2], alpha], shape: [radius, 0.0, 0.0, 0.0] });
+            let shape = [radius, 0.0, soft, 0.0];
+            self.quads.push(Quad { rect, uv: [0.0; 4], color: [color[0], color[1], color[2], alpha], shape });
+        }
+    }
+
+    /// Replaces the picture with `rgba` (straight 8-bit, `width` × `height`,
+    /// at most `PICTURE` a side), or removes it.
+    pub(crate) fn set_picture(&mut self, queue: &wgpu::Queue, picture: Option<(u32, u32, &[u8])>) {
+        self.picture_size = None;
+        let Some((width, height, rgba)) = picture else { return };
+        if width == 0 || height == 0 || width > PICTURE || height > PICTURE || rgba.len() != (width * height * 4) as usize {
+            return;
+        }
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.picture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            rgba,
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(width * 4), rows_per_image: Some(height) },
+            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        );
+        self.picture_size = Some([width, height]);
+    }
+
+    /// The picture's width over its height, if there is one.
+    pub(crate) fn picture_aspect(&self) -> Option<f32> {
+        self.picture_size.map(|[w, h]| w as f32 / h as f32)
+    }
+
+    /// Draws the picture filling `rect`, its corners rounded; nothing
+    /// without one.
+    pub(crate) fn picture(&mut self, rect: [f32; 4], radius: f32, alpha: f32) {
+        if let Some([w, h]) = self.picture_size
+            && alpha > 0.0
+        {
+            let uv = [0.0, 0.0, w as f32 / PICTURE as f32, h as f32 / PICTURE as f32];
+            self.quads.push(Quad { rect, uv, color: [1.0, 1.0, 1.0, alpha], shape: [radius, 3.0, 0.0, 0.0] });
         }
     }
 
@@ -224,7 +322,29 @@ impl Ink {
 
     /// How wide `text` is at `size` pixels.
     pub(crate) fn width(&mut self, queue: &wgpu::Queue, text: &str, size: f32, weight: Weight) -> f32 {
-        text.chars().filter_map(|c| self.glyph(queue, weight, c, size)).map(|g| g.advance).sum()
+        text.chars().filter_map(|c| self.glyph(queue, weight, c, size)).map(|g| g.advance.round()).sum()
+    }
+
+    /// How wide `text` is at `size` pixels, set with `tracking` after each
+    /// letter but the last.
+    pub(crate) fn tracked_width(&mut self, queue: &wgpu::Queue, text: &str, size: f32, weight: Weight, tracking: f32) -> f32 {
+        let letters = text.chars().count();
+        self.width(queue, text, size, weight) + tracking * letters.saturating_sub(1) as f32
+    }
+
+    /// `text`, cut short with an ellipsis to fit `room` pixels.
+    pub(crate) fn clip(&mut self, queue: &wgpu::Queue, text: &str, size: f32, weight: Weight, room: f32) -> String {
+        if self.width(queue, text, size, weight) <= room {
+            return text.to_owned();
+        }
+        let mut chars: Vec<char> = text.chars().collect();
+        while chars.pop().is_some() {
+            let cut = format!("{}\u{2026}", chars.iter().collect::<String>().trim_end());
+            if self.width(queue, &cut, size, weight) <= room {
+                return cut;
+            }
+        }
+        String::new()
     }
 
     /// Writes `text` with its baseline's left end at `pen`; returns where
@@ -239,23 +359,42 @@ impl Ink {
         color: [f32; 3],
         alpha: f32,
     ) -> f32 {
+        self.set_text(queue, text, pen, size, weight, color, alpha, Set::default())
+    }
+
+    /// Writes `text` like `text`, set as `set` says.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn set_text(
+        &mut self,
+        queue: &wgpu::Queue,
+        text: &str,
+        pen: [f32; 2],
+        size: f32,
+        weight: Weight,
+        color: [f32; 3],
+        alpha: f32,
+        set: Set,
+    ) -> f32 {
         // Whole pixels, so every glyph lands on the grid it was drawn for.
         let (mut x, y) = (pen[0].round(), pen[1].round());
-        for c in text.chars() {
+        for (n, c) in text.chars().enumerate() {
             let Some(glyph) = self.glyph(queue, weight, c, size) else { continue };
             let [u, v, w, h] = glyph.place;
-            if w > 0 && h > 0 && alpha > 0.0 {
+            let shown = (set.shown - n as f32).clamp(0.0, 1.0);
+            let shown = shown * shown * (3.0 - 2.0 * shown);
+            if w > 0 && h > 0 && alpha * shown > 0.0 {
                 let at = ATLAS as f32;
+                let rise = (set.rise * (1.0 - shown)).round();
                 self.quads.push(Quad {
-                    rect: [x + glyph.offset[0], y - glyph.offset[1] - h as f32, w as f32, h as f32],
+                    rect: [x + glyph.offset[0], y - glyph.offset[1] - h as f32 + rise, w as f32, h as f32],
                     uv: [u as f32 / at, v as f32 / at, (u + w) as f32 / at, (v + h) as f32 / at],
-                    color: [color[0], color[1], color[2], alpha],
+                    color: [color[0], color[1], color[2], alpha * shown],
                     shape: [0.0, 1.0, 0.0, 0.0],
                 });
             }
-            x += glyph.advance.round();
+            x += glyph.advance.round() + set.tracking.round();
         }
-        x
+        x - set.tracking.round()
     }
 
     /// The font's ascent and descent at `size`, for centering lines.

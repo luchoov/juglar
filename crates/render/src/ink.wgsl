@@ -1,7 +1,8 @@
-// Text, panels and lines over the finished frame (see `ink.rs`). Each
-// instance is one quad: a glyph sampled from the atlas, a panel with rounded
-// corners, or a line with round ends, both cut by their distance to the
-// edge. The frame underneath is linear light.
+// Text, panels, lines and a picture over the finished frame (see `ink.rs`).
+// Each instance is one quad: a glyph sampled from the atlas, a panel with
+// rounded corners, a line with round ends, or the picture with rounded
+// corners, all but glyphs cut by their distance to the edge. The frame
+// underneath is linear light.
 
 struct Ink {
     resolution: vec2<f32>,
@@ -10,6 +11,7 @@ struct Ink {
 @group(0) @binding(0) var<uniform> ink: Ink;
 @group(0) @binding(1) var atlas: texture_2d<f32>;
 @group(0) @binding(2) var atlas_sampler: sampler;
+@group(0) @binding(3) var picture: texture_2d<f32>;
 
 struct Quad {
     @location(0) rect: vec4<f32>,
@@ -37,7 +39,7 @@ fn vs_quad(@builtin(vertex_index) index: u32, quad: Quad) -> Corner {
     var out: Corner;
     out.half_size = quad.rect.zw * 0.5;
     out.local = (corner - 0.5) * quad.rect.zw;
-    if quad.shape.y > 1.5 {
+    if quad.shape.y > 1.5 && quad.shape.y < 2.5 {
         // A line from `rect.xy` to `rect.zw`: the quad turned along it, a
         // pixel wider all round for the antialiased edge.
         let d = quad.rect.zw - quad.rect.xy;
@@ -63,7 +65,16 @@ fn to_linear(c: vec3<f32>) -> vec3<f32> {
 @fragment
 fn fs_quad(in: Corner) -> @location(0) vec4<f32> {
     var coverage: f32;
-    if in.shape.y > 1.5 {
+    if in.shape.y > 2.5 {
+        // The picture, its corners rounded; sRGB, read as linear light.
+        let radius = min(in.shape.x, min(in.half_size.x, in.half_size.y));
+        let q = abs(in.local) - in.half_size + radius;
+        let distance = length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - radius;
+        let edge = clamp(0.5 - distance, 0.0, 1.0);
+        let texel = textureSampleLevel(picture, atlas_sampler, in.uv, 0.0);
+        let alpha = in.color.a * edge * texel.a;
+        return vec4<f32>(texel.rgb * alpha, alpha);
+    } else if in.shape.y > 1.5 {
         let outside = max(max(-in.local.x, in.local.x - in.half_size.x), 0.0);
         coverage = clamp(0.5 - (length(vec2<f32>(outside, in.local.y)) - in.half_size.y), 0.0, 1.0);
     } else if in.shape.y > 0.5 {
@@ -71,10 +82,18 @@ fn fs_quad(in: Corner) -> @location(0) vec4<f32> {
         // little gamma on the coverage gives them back their weight.
         coverage = pow(textureSampleLevel(atlas, atlas_sampler, in.uv, 0.0).r, 1.0 / 1.45);
     } else {
-        let radius = min(in.shape.x, min(in.half_size.x, in.half_size.y));
-        let q = abs(in.local) - in.half_size + radius;
+        // A soft panel fades from its rectangle shrunk by the softness out
+        // to its edge.
+        let soft = max(in.shape.z, 0.0);
+        let half_size = max(in.half_size - soft, vec2<f32>(0.0));
+        let radius = min(in.shape.x, min(half_size.x, half_size.y));
+        let q = abs(in.local) - half_size + radius;
         let distance = length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - radius;
-        coverage = clamp(0.5 - distance, 0.0, 1.0);
+        if soft > 0.0 {
+            coverage = 1.0 - smoothstep(0.0, soft, distance);
+        } else {
+            coverage = clamp(0.5 - distance, 0.0, 1.0);
+        }
     }
     let alpha = in.color.a * coverage;
     return vec4<f32>(to_linear(in.color.rgb) * alpha, alpha);

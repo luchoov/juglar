@@ -88,7 +88,7 @@ Thirteen made for loud music, and twelve older, calmer ones for everything else;
 
 ## Running it
 
-**Download:** from the [latest release](https://github.com/luchoov/juglar/releases/latest), the installer (`juglar-…-setup.exe`: Start menu shortcuts, an uninstaller, and a box to start Juglar with Windows as the wallpaper; no administrator rights) or the zip (unzip it and run `juglar.exe`, nothing installed). Windows 10 or 11, a GPU with DirectX 12 or Vulkan. Juglar listens to whatever the speakers play. Windows may warn that the program is unrecognized, since it is not signed ([why](docs/decisions.md#d60--an-installer-beside-the-zip-for-the-current-user-unsigned)): *More info*, then *Run anyway*.
+**Download:** from the [latest release](https://github.com/luchoov/juglar/releases/latest), the installer (`juglar-…-setup.exe`: Start menu shortcuts, an uninstaller, and a box to start Juglar with Windows as the wallpaper; no administrator rights) or the zip (unzip it and run `juglar.exe`, nothing installed). Windows 10 or 11, a GPU with DirectX 12 or Vulkan. Juglar listens to whatever the speakers play, or to one program alone. Windows may warn that the program is unrecognized, since it is not signed ([why](docs/decisions.md#d60--an-installer-beside-the-zip-for-the-current-user-unsigned)): *More info*, then *Run anyway*.
 
 **From source:** with [Rust](https://rustup.rs) installed,
 
@@ -96,13 +96,17 @@ Thirteen made for loud music, and twelve older, calmer ones for everything else;
 cargo run --release
 ```
 
-Play anything. Juglar changes scene by itself when the music turns a corner (an explosion, a drop, a breakdown, a new song), choosing one that suits what is playing.
+Juglar opens on a menu over the scene, which already plays behind it: what to listen to (everything, or one program such as Spotify, Spotifast or a browser, so a game's sounds stay out), a window, fullscreen or the wallpaper, the mode, the intensity, and song titles. *Start*, and Juglar remembers the choices for next time; `S` opens the menu again, and it can be told to start right away.
+
+Play anything. Juglar changes scene by itself when the music turns a corner (an explosion, a drop, a breakdown), choosing one that suits what is playing. When a player says a new song started, its title, artist, album and cover show large in the middle of the screen for a few seconds, and the scene changes with it. Spotify, Spotifast, YouTube in a browser and most players say what they play; nothing is sent anywhere.
 
 | Key | Does |
 |---|---|
 | `←` `→` | previous / next scene |
 | `Space` | keep the scene showing (no automatic changes) / let go |
 | `Tab` | the analysis view: what Juglar hears, labeled, and why the scene last changed |
+| `S` | the menu: what to listen to, how to show Juglar, and the rest |
+| `T` | the song's title again |
 | `M` | mode: lively (the default), focus, relax |
 | `A` | intensity read from the music (the default); `1` `2` `3` fix it: gentle, medium, strong |
 | `F11`, `Alt`+`Enter` or double click | fullscreen on / off |
@@ -112,14 +116,14 @@ Play anything. Juglar changes scene by itself when the music turns a corner (an 
 
 Every change a key makes is noted on screen for a moment ("Mode: focus", "Scene: Liquid, kept").
 
-As the wallpaper, Juglar never has the keyboard, so these work from anywhere instead: `Ctrl`+`Alt`+`←` `→` change the scene on the display under the pointer, `K` keeps it, `M` changes the mode, `I` the intensity, `H` shows the keys, `W` goes back to a window. The tray icon has the same and more: with several displays, a scene on each (the default), one scene across all of them, or only one display. Juglar stops drawing on a display while a fullscreen program or a maximized window covers it.
+As the wallpaper, Juglar never has the keyboard, so these work from anywhere instead: `Ctrl`+`Alt`+`←` `→` change the scene on the display under the pointer, `K` keeps it, `M` changes the mode, `I` the intensity, `H` shows the keys, `W` goes back to a window. The tray icon is always there, with the song playing and every choice: the scenes, what to listen to, a window, fullscreen or the wallpaper, the mode and intensity, song titles, starting with Windows; with several displays, a scene on each (the default), one scene across all of them, or only one display. Juglar stops drawing on a display while a fullscreen program or a maximized window covers it. Starting Juglar again shows the one running.
 
-`juglar --fullscreen` starts in fullscreen; `juglar --wallpaper`, as the wallpaper. Juglar opens no console: its messages go to `%LOCALAPPDATA%\Juglar\juglar.log`, and `juglar --console` shows them in a console instead.
+`juglar --start` skips the menu and starts as last chosen; `juglar --fullscreen` starts in fullscreen; `juglar --wallpaper`, as the wallpaper. The choices are kept in `%LOCALAPPDATA%\Juglar\settings.ini`. Juglar opens no console: its messages go to `%LOCALAPPDATA%\Juglar\juglar.log`, and `juglar --console` shows them in a console instead.
 
 **Focus** and **relax** are for when the music matters more than the picture: slow, muted, dim, scenes held for minutes and changed by a slow seep. They are style options and claim nothing about attention or stress ([why](docs/research/focus-and-relaxation.md)).
 
 <details>
-<summary>Environment variables (until there is a settings file)</summary>
+<summary>Environment variables, mostly for working on Juglar (they win over the settings)</summary>
 
 - `JUGLAR_SCENE=etch` starts on that scene; `JUGLAR_MODE=focus` (or `relax`) in that mode.
 - `JUGLAR_DISPLAYS=across` (or `one`) for how the wallpaper uses several displays; `each` by default.
@@ -134,14 +138,14 @@ As the wallpaper, Juglar never has the keyboard, so these work from anywhere ins
 
 ## How it works
 
-The sound the speakers play is captured (WASAPI loopback), analyzed into a few dozen *signals* (levels, spectrum, beats and tempo, the drums apart, grit, chaos, impacts), and a *director* decides when to change scene and to which. Each scene turns the signals into one frame: the last picture warped, faded and worked on, new paint on top, a palette, glow and screen effects.
+The sound the speakers play (or one program's) is captured (WASAPI loopback), analyzed into a few dozen *signals* (levels, spectrum, beats and tempo, the drums apart, grit, chaos, impacts), and a *director* decides when to change scene and to which. Each scene turns the signals into one frame: the last picture warped, faded and worked on, new paint on top, a palette, glow and screen effects.
 
 Every important choice is written down in plain language, with what was measured and what was given up:
 
 - **Read it all online** at [juglar-docs.vercel.app](https://juglar-docs.vercel.app/): these docs and the explorables, rendered.
 - **New here?** Open [`explorables/00-start-here.html`](explorables/00-start-here.html) in a browser: sound, samples and what Juglar does, from zero, with interactive pages.
 - [Vision](docs/vision.md): where it is going (song structure, a look per song, harmony as color).
-- [Decisions](docs/decisions.md): sixty-four of them, D48–D55 for v1 and D56–D64 for 1.1.
+- [Decisions](docs/decisions.md): sixty-nine of them, D48–D55 for v1, D56–D64 for 1.1 and D65–D69 for 1.2.
 - [Architecture](docs/architecture.md), [roadmap](docs/roadmap.md) and [theory notes](docs/theory/).
 
 ## Limits

@@ -136,7 +136,9 @@ Open: give the rest of the wild scenes layers each owned by its own signal (D54;
 - **Not tested:** Windows before 24H2; displays of different sizes or refresh rates; plugging a display in or out while running.
 - **Done:** text on screen (D57): a note for each change a key makes, the help on `H`, `Esc` asking before it closes; the tray's menu shows the scene, mode and intensity, and sets them.
 - **Done:** the analysis view redone (D59): what Juglar hears, labeled, eight seconds of the heavy ear and the drums, and the director's last changes with their reasons; drawn with the text renderer.
-- **Not started:** the now-playing overlay, mini mode, pausing on silence, the screensaver build.
+- **Done:** what is playing (D65), from the players' own media sessions: each new song's title, artist, album and cover in the middle of the screen, and a new scene with it (D68).
+- **Done:** one program heard alone through process loopback (D66); a menu first, over the scene, and a settings file (D67); the tray icon always there, dark, with every choice (D69).
+- **Not started:** mini mode, pausing on silence, the screensaver build.
 
 ## M8 — Evolution and the web
 

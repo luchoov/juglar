@@ -8,11 +8,21 @@
 //! The release build is a Windows program, not a console one: starting it
 //! opens no console. Its messages go to a log file (see `route_output`),
 //! or to a console with `--console`.
+//!
+//! Juglar opens on a menu over the scene (`launcher.rs`), unless the
+//! settings (`settings.rs`) say to start right away, or `--start`,
+//! `--fullscreen` or `--wallpaper` do. What players say is playing comes
+//! from `MediaWatch`; each new song gets its title on screen (`song.rs`)
+//! and a new scene. Only one Juglar runs at a time: starting it again
+//! shows the one running.
 
 // The debug build keeps its console, for `cargo run`.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod desktop;
+mod launcher;
+mod settings;
+mod song;
 mod wav;
 
 use std::sync::Arc;
@@ -21,8 +31,13 @@ use std::time::{Duration, Instant};
 use juglar_director::{Director, Intensity, Mode, Moment, Style, Transition};
 use juglar_dsp::{Analyzer, Consumer, FFT_SIZE, SCOPE_POINTS, Scope, ring};
 use desktop::{Other, SPREADS, Spread, hotkey_help, spread_names};
-use juglar_platform::{AudioCapture, PlatformError, ScreenRect, SystemAudio, Tray, TrayChoice, TrayState, Wallpaper};
-use juglar_render::{Renderer, View};
+use juglar_platform::{
+    AudioApp, AudioCapture, Listen, Media, MediaWatch, PlatformError, ScreenRect, SystemAudio, Track, Tray, TrayChoice,
+    TrayState, Wallpaper,
+};
+use juglar_render::{Renderer, Song, View};
+use launcher::{Launcher, intensity_at};
+use settings::{SHOWS, Settings};
 use juglar_signals::{Relative, Signals, Synthetic};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -48,6 +63,9 @@ const DOUBLE_CLICK: Duration = Duration::from_millis(400);
 const POINTER_HIDES: Duration = Duration::from_secs(2);
 /// From a window, a second `Esc` within this long closes Juglar.
 const ESCAPE_AGAIN: Duration = Duration::from_secs(2);
+/// A new song's title waits this long for its cover, so the cover doesn't
+/// push the words aside once they are showing.
+const COVER_WAIT: Duration = Duration::from_millis(900);
 /// The modes in the order `M` goes through them, and the intensities'
 /// names: the music's first, then the presets'.
 const MODES: [Mode; 3] = [Mode::Lively, Mode::Focus, Mode::Relax];
@@ -60,6 +78,8 @@ const HELP: &[(&str, &str)] = &[
     ("A", "intensity from the music"),
     ("1 2 3", "intensity: gentle, medium, strong"),
     ("Tab", "what Juglar hears"),
+    ("S", "settings: what to hear, how to show Juglar"),
+    ("T", "the song's title again"),
     ("F11", "fullscreen (or Alt+Enter, or double click)"),
     ("W", "wallpaper: behind the desktop icons"),
     ("H", "this help"),
@@ -67,8 +87,20 @@ const HELP: &[(&str, &str)] = &[
 ];
 
 fn main() {
-    route_output();
     let file = std::env::var("JUGLAR_FILE").ok();
+    // The ways of working on Juglar itself: a file, the synthetic song,
+    // recording frames. They run beside a Juglar that is listening.
+    let tools = file.is_some()
+        || std::env::var("JUGLAR_DEMO").is_ok_and(|v| v != "0")
+        || std::env::var("JUGLAR_RECORD").is_ok();
+    // One Juglar at a time: starting it again shows the one running.
+    #[cfg(windows)]
+    if !tools && juglar_platform::already_running() {
+        return;
+    }
+    route_output();
+    let mut settings = Settings::load();
+    let mut listen_note = String::new();
     let source = match std::env::var("JUGLAR_DEMO") {
         _ if file.is_some() => {
             let path = file.unwrap_or_default();
@@ -86,18 +118,23 @@ fn main() {
             println!("Demo mode: a synthetic song, nothing is captured.");
             Source::Demo(Synthetic::starting_at(1, start))
         }
-        _ => match Listening::start() {
+        _ => match Listening::hearing(&settings.listen, &mut listen_note) {
             Ok(listening) => Source::Audio(Box::new(listening)),
             Err(e) => fatal(&format!("Could not capture system audio: {e}")),
         },
     };
 
     let event_loop = EventLoop::new().expect("event loop");
-    // Natural intensity unless `JUGLAR_INTENSITY` fixes one.
+    // The saved intensity unless `JUGLAR_INTENSITY` fixes one.
     let intensity = match std::env::var("JUGLAR_INTENSITY").ok().and_then(|v| v.parse::<f32>().ok()) {
         Some(value) => Intensity::Fixed(value.clamp(0.0, 1.0)),
-        None => Intensity::Natural,
+        None => intensity_at(settings.intensity),
     };
+    if std::env::var("JUGLAR_DISPLAYS").is_ok() {
+        settings.spread = Spread::from_env();
+    }
+    let arguments: Vec<String> = std::env::args().collect();
+    let argument = |name: &str| arguments.iter().any(|a| a == name);
     let mut app = App {
         source,
         director: Director::new(intensity, juglar_render::scene_characters()),
@@ -109,11 +146,12 @@ fn main() {
         print_stats: std::env::var("JUGLAR_STATS").is_ok_and(|v| v != "0"),
         last_frame: Instant::now(),
         stats: Stats::new(),
-        start_fullscreen: std::env::args().any(|arg| arg == "--fullscreen"),
-        start_wallpaper: std::env::args().any(|arg| arg == "--wallpaper"),
+        start_fullscreen: argument("--fullscreen"),
+        start_wallpaper: argument("--wallpaper"),
+        start_now: argument("--start") || tools,
         wallpaper: None,
         others: Vec::new(),
-        spread: Spread::from_env(),
+        spread: settings.spread,
         displays: Vec::new(),
         arrange: false,
         watch: false,
@@ -127,6 +165,17 @@ fn main() {
         still: false,
         recorder: Recorder::from_env(),
         done: false,
+        settings,
+        launcher: Launcher::default(),
+        media: None,
+        apps: Vec::new(),
+        track: None,
+        song: None,
+        introduced: None,
+        pending_intro: None,
+        songs: 0,
+        listen_note,
+        startup: false,
     };
     if let Err(e) = event_loop.run_app(&mut app) {
         eprintln!("juglar: {e}");
@@ -165,8 +214,11 @@ impl Source {
 
 /// System audio capture and its analysis.
 struct Listening {
-    /// Kept alive for as long as the app runs; capture stops when dropped.
-    _capture: SystemAudio,
+    /// Capture stops when dropped.
+    capture: SystemAudio,
+    /// What it hears: what was asked for, or everything when that program
+    /// wasn't running.
+    hearing: Listen,
     consumer: Consumer,
     block: Vec<f32>,
     ear: Ear,
@@ -220,23 +272,47 @@ impl Ear {
 }
 
 impl Listening {
-    fn start() -> Result<Self, PlatformError> {
+    fn start(from: &Listen) -> Result<Self, PlatformError> {
         // One second of mono audio at up to 192 kHz. Every frame drains it,
         // so it never comes close to filling.
         let (mut producer, consumer) = ring(192_000);
         let mut mono = Vec::new();
-        let capture = SystemAudio::start(Box::new(move |interleaved, channels| {
-            downmix(interleaved, usize::from(channels), &mut mono);
-            producer.push(&mono);
-        }))?;
+        let capture = SystemAudio::start(
+            from,
+            Box::new(move |interleaved, channels| {
+                downmix(interleaved, usize::from(channels), &mut mono);
+                producer.push(&mono);
+            }),
+        )?;
         let info = capture.info();
-        println!("Capturing {} Hz, {} channels.", info.sample_rate, info.channels);
+        let what = match from {
+            Listen::Everything => "everything".to_owned(),
+            Listen::App(exe) => exe.clone(),
+        };
+        println!("Capturing {what}: {} Hz, {} channels.", info.sample_rate, info.channels);
         Ok(Self {
-            _capture: capture,
+            capture,
+            hearing: from.clone(),
             consumer,
             block: vec![0.0; info.sample_rate as usize],
             ear: Ear::new(info.sample_rate),
         })
+    }
+
+    /// Hears `wanted`, or everything when that program can't be heard
+    /// (it isn't running), saying so in `note`.
+    fn hearing(wanted: &Listen, note: &mut String) -> Result<Self, PlatformError> {
+        note.clear();
+        if *wanted != Listen::Everything {
+            match Self::start(wanted) {
+                Ok(listening) => return Ok(listening),
+                Err(e) => {
+                    eprintln!("juglar: {e}; hearing everything until it plays");
+                    *note = "not playing: hearing everything for now".to_owned();
+                }
+            }
+        }
+        Self::start(&Listen::Everything)
     }
 
     /// Drains the new audio and analyzes it.
@@ -375,6 +451,9 @@ struct App {
     start_fullscreen: bool,
     /// `--wallpaper` on the command line.
     start_wallpaper: bool,
+    /// `--start` on the command line (or a tool's variable): no menu,
+    /// shown as the settings say.
+    start_now: bool,
     /// While Juglar is the wallpaper: the window's place in the desktop,
     /// the area it covers, and where it was as a window.
     wallpaper: Option<(Wallpaper, ScreenRect, ScreenRect)>,
@@ -406,6 +485,24 @@ struct App {
     /// Saving frames (`JUGLAR_RECORD`), and whether it has saved them all.
     recorder: Option<Recorder>,
     done: bool,
+    settings: Settings,
+    launcher: Launcher,
+    /// What the players say, and the programs making sound.
+    media: Option<MediaWatch>,
+    apps: Vec<AudioApp>,
+    /// The song as the player says it, and as Juglar shows it.
+    track: Option<Track>,
+    song: Option<Song>,
+    /// The song whose title was shown last, and a title waiting for its
+    /// cover since then.
+    introduced: Option<u64>,
+    pending_intro: Option<Instant>,
+    /// Songs seen start since Juglar started.
+    songs: u32,
+    /// Why Juglar hears something else than was chosen, if it does.
+    listen_note: String,
+    /// Whether Juglar starts with Windows, as last read.
+    startup: bool,
 }
 
 impl ApplicationHandler for App {
@@ -423,6 +520,10 @@ impl ApplicationHandler for App {
             Err(e) => fatal(&format!("Could not start the GPU: {e}")),
         };
         println!("GPU: {}", renderer.adapter_name());
+        #[cfg(windows)]
+        if let Some(handle) = desktop::hwnd(&window) {
+            juglar_platform::dark_title_bar(handle);
+        }
         self.window = Some(window);
         if self.start_fullscreen {
             self.toggle_fullscreen();
@@ -454,11 +555,13 @@ impl ApplicationHandler for App {
         if self.still {
             println!("Reduced motion is on: the picture stays still.");
         }
-        // `JUGLAR_MODE=focus` (or `relax`) starts in a calm mode.
+        // `JUGLAR_MODE=focus` (or `relax`) starts in a calm mode; else the
+        // saved one.
         match std::env::var("JUGLAR_MODE").as_deref() {
             Ok("focus") => self.set_mode(Mode::Focus, &mut renderer),
             Ok("relax") => self.set_mode(Mode::Relax, &mut renderer),
-            Ok("lively") | Err(_) => {}
+            Ok("lively") => {}
+            Err(_) => self.set_mode(self.settings.mode, &mut renderer),
             Ok(other) => eprintln!("juglar: no mode called {other:?}; there are lively, focus and relax"),
         }
         if self.recorder.is_some() {
@@ -466,7 +569,30 @@ impl ApplicationHandler for App {
         }
         self.renderer = Some(renderer);
         self.last_frame = Instant::now();
-        self.arrange = self.start_wallpaper;
+        // The tray icon is always there; its keys only as the wallpaper.
+        #[cfg(windows)]
+        {
+            match Tray::new("Juglar") {
+                Ok(tray) => self.tray = Some(tray),
+                Err(e) => eprintln!("juglar: no tray icon ({e})"),
+            }
+            self.startup = juglar_platform::starts_with_windows();
+        }
+        if matches!(self.source, Source::Audio(_)) {
+            let media = MediaWatch::start();
+            media.prefer(self.listened_app());
+            self.media = Some(media);
+        }
+        if self.start_wallpaper {
+            self.arrange = true;
+        } else if self.start_fullscreen {
+            // Done above.
+        } else if self.start_now || !self.settings.menu {
+            self.apply_show();
+        } else {
+            self.open_menu(true);
+        }
+        self.sync_tray();
     }
 
     /// Leaves the desktop as it was: the window comes out of it before it
@@ -482,6 +608,26 @@ impl ApplicationHandler for App {
         if self.window.as_ref().is_some_and(|w| w.id() != id) {
             if let WindowEvent::Resized(size) = event {
                 self.resize_other(id, size);
+            }
+            return;
+        }
+        // The menu takes the keys and the mouse while it is open.
+        if self.launcher.open {
+            match event {
+                WindowEvent::CloseRequested => event_loop.exit(),
+                WindowEvent::KeyboardInput { event: KeyEvent { logical_key, state: ElementState::Pressed, .. }, .. } => {
+                    self.menu_key(&logical_key)
+                }
+                WindowEvent::CursorMoved { position, .. } => self.menu_pointer([position.x as f32, position.y as f32]),
+                WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => self.menu_click(),
+                WindowEvent::Resized(size) => {
+                    if let Some(renderer) = &mut self.renderer {
+                        renderer.resize(size.width, size.height);
+                    }
+                }
+                WindowEvent::Moved(_) | WindowEvent::ScaleFactorChanged { .. } => self.follow_display(),
+                WindowEvent::RedrawRequested => self.frame(),
+                _ => {}
             }
             return;
         }
@@ -537,12 +683,44 @@ impl ApplicationHandler for App {
                 TrayChoice::NextIntensity => self.choose_intensity(self.next_intensity()),
                 TrayChoice::Displays(n) => {
                     self.spread = SPREADS[n.min(SPREADS.len() - 1)].0;
-                    self.arrange = true;
+                    self.settings.spread = self.spread;
+                    self.settings.save();
+                    self.arrange = self.wallpaper.is_some();
+                }
+                TrayChoice::Listen(n) => {
+                    if let Some((listen, _)) = self.sources().get(n) {
+                        self.listen_to(listen.clone());
+                        self.settings.save();
+                    }
+                }
+                TrayChoice::Show(n) => {
+                    self.settings.show = SHOWS[n.min(SHOWS.len() - 1)].0;
+                    self.settings.save();
+                    if self.launcher.open {
+                        self.close_menu();
+                    } else {
+                        self.apply_show();
+                    }
+                }
+                TrayChoice::Intros => {
+                    self.set_intros(!self.settings.intros);
+                    self.settings.save();
+                }
+                TrayChoice::Startup => self.toggle_startup(),
+                TrayChoice::Settings => self.open_menu(false),
+                TrayChoice::Open => {
+                    if self.wallpaper.is_some() {
+                        self.open_menu(false);
+                    } else if let Some(window) = &self.window {
+                        window.set_minimized(false);
+                        window.focus_window();
+                    }
                 }
                 TrayChoice::Help => self.toggle_help(),
                 TrayChoice::Window => self.leave_wallpaper(),
                 TrayChoice::Quit => event_loop.exit(),
             }
+            self.refresh_menu();
         }
         if self.arrange {
             self.arrange = false;
@@ -638,6 +816,8 @@ impl App {
             Key::Named(NamedKey::F1) => self.toggle_help(),
             Key::Character(c) if c.eq_ignore_ascii_case("h") || c == "?" => self.toggle_help(),
             Key::Character(c) if c.eq_ignore_ascii_case("w") => self.arrange = self.wallpaper.is_none(),
+            Key::Character(c) if c.eq_ignore_ascii_case("s") => self.open_menu(false),
+            Key::Character(c) if c.eq_ignore_ascii_case("t") => self.title_again(),
             Key::Character(c) if c.eq_ignore_ascii_case("m") => self.choose_mode(self.director.mode().next()),
             Key::Character(c) if c.eq_ignore_ascii_case("a") => self.choose_intensity(Intensity::Natural),
             Key::Character(c) => {
@@ -713,30 +893,244 @@ impl App {
     }
 
     fn choose_mode(&mut self, mode: Mode) {
+        let menu = self.launcher.open;
         if let Some(mut renderer) = self.renderer.take() {
             self.set_mode(mode, &mut renderer);
-            renderer.note("Mode", mode.name());
+            if !menu {
+                renderer.note("Mode", mode.name());
+            }
             self.renderer = Some(renderer);
         }
         self.mode_everywhere(mode);
+        self.settings.mode = mode;
+        self.settings.save();
         self.sync_tray();
     }
 
     fn choose_intensity(&mut self, intensity: Intensity) {
         self.director.set_intensity(intensity, self.signals.intensity);
-        let name = INTENSITIES[intensity_index(intensity)];
-        if let Some(renderer) = &mut self.renderer {
+        let index = intensity_index(intensity);
+        let name = INTENSITIES[index];
+        if let Some(renderer) = &mut self.renderer
+            && !self.launcher.open
+        {
             renderer.note("Intensity", name);
         }
         self.intensity_everywhere(intensity, name);
+        self.settings.intensity = index;
+        self.settings.save();
         self.sync_tray();
     }
 
-    /// Shows the current scene, mode and intensity in the tray's menu.
-    fn sync_tray(&self) {
-        if let (Some(tray), Some(renderer)) = (&self.tray, &self.renderer) {
-            tray.set_state(tray_state(&self.director, renderer, spread_names(&self.displays, self.spread)));
+    /// Listens to `listen` from now on (everything, or one program), and
+    /// remembers it.
+    fn listen_to(&mut self, listen: Listen) {
+        self.settings.listen = listen;
+        self.relisten();
+        if let Some(media) = &self.media {
+            media.prefer(self.listened_app());
         }
+        self.sync_tray();
+    }
+
+    /// The program chosen to listen to, if one is.
+    fn listened_app(&self) -> Option<&str> {
+        match &self.settings.listen {
+            Listen::Everything => None,
+            Listen::App(exe) => Some(exe),
+        }
+    }
+
+    /// Starts capture again for what the settings ask.
+    fn relisten(&mut self) {
+        let Source::Audio(listening) = &mut self.source else { return };
+        match Listening::hearing(&self.settings.listen, &mut self.listen_note) {
+            Ok(new) => **listening = new,
+            Err(e) => eprintln!("juglar: could not capture audio: {e}"),
+        }
+    }
+
+    /// Every two seconds: capture goes on when the program heard closes,
+    /// and goes back to it when it opens again.
+    fn check_listening(&mut self) {
+        let Source::Audio(listening) = &self.source else { return };
+        let wanted = &self.settings.listen;
+        let waiting = listening.hearing != *wanted
+            && matches!(wanted, Listen::App(exe) if self.apps.iter().any(|a| a.exe.eq_ignore_ascii_case(exe)));
+        if !listening.capture.alive() || waiting {
+            self.relisten();
+            self.refresh_menu();
+        }
+    }
+
+    /// Shows each new song's title, or stops.
+    fn set_intros(&mut self, on: bool) {
+        self.settings.intros = on;
+        if !on {
+            for renderer in self.renderers() {
+                renderer.end_intro();
+            }
+        }
+        self.sync_tray();
+    }
+
+    /// Starts with Windows (as the menu's settings say), or stops.
+    fn toggle_startup(&mut self) {
+        #[cfg(windows)]
+        {
+            let on = !juglar_platform::starts_with_windows();
+            if let Err(e) = juglar_platform::set_starts_with_windows(on, "--start") {
+                eprintln!("juglar: could not change starting with Windows: {e}");
+            }
+            self.startup = juglar_platform::starts_with_windows();
+        }
+        self.sync_tray();
+    }
+
+    /// Every display's renderer, the main window's first.
+    fn renderers(&mut self) -> impl Iterator<Item = &mut Renderer> {
+        self.renderer.iter_mut().chain(self.others.iter_mut().map(|o| &mut o.renderer))
+    }
+
+    /// Follows what the players say: a new song gets its title and a new
+    /// scene; its cover goes to every display.
+    fn follow_media(&mut self) {
+        let Some(media) = &self.media else { return };
+        let mut changed = false;
+        for news in media.news() {
+            changed = true;
+            match news {
+                Media::Apps(apps) => self.apps = apps,
+                Media::Track(track) => {
+                    let new = track.as_ref().map(|t| t.id) != self.track.as_ref().map(|t| t.id);
+                    if new {
+                        for renderer in self.renderers() {
+                            renderer.set_cover(None);
+                        }
+                    }
+                    self.song = track.as_ref().map(|t| song::song(t, &self.apps));
+                    self.track = track;
+                    let tip = self.song.as_ref().map_or("Juglar".to_owned(), |s| format!("Juglar \u{b7} {}", song::line(s)));
+                    if let Some(tray) = &self.tray {
+                        tray.set_tip(&tip);
+                    }
+                    // A song not yet introduced, once it plays.
+                    if let Some(track) = &self.track
+                        && track.playing
+                        && self.introduced != Some(track.id)
+                        && self.pending_intro.is_none()
+                    {
+                        self.pending_intro = Some(Instant::now());
+                    }
+                }
+                Media::Cover(cover) => {
+                    if self.track.as_ref().is_some_and(|t| t.id == cover.id) {
+                        for renderer in self.renderers() {
+                            renderer.set_cover(Some((cover.width, cover.height, &cover.rgba)));
+                        }
+                        // The title waited for this.
+                        if let Some(since) = &mut self.pending_intro {
+                            *since -= COVER_WAIT;
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(since) = self.pending_intro
+            && since.elapsed() >= COVER_WAIT
+            && !self.launcher.open
+        {
+            self.pending_intro = None;
+            self.introduce();
+        }
+        if changed {
+            self.sync_tray();
+            self.refresh_menu();
+        }
+    }
+
+    /// A new song: its title on every display, and a new scene, but for
+    /// the song playing when Juglar started.
+    fn introduce(&mut self) {
+        let Some(track) = &self.track else { return };
+        self.introduced = Some(track.id);
+        self.songs += 1;
+        let fresh = self.songs > 1;
+        let intros = self.settings.intros;
+        let Some(song) = self.song.clone() else { return };
+        if intros {
+            for renderer in self.renderers() {
+                renderer.intro(song.clone());
+            }
+        }
+        let still = self.still;
+        if fresh
+            && !still
+            && let Some(renderer) = &mut self.renderer
+            && let Some(change) = self.director.new_song(renderer.scene())
+        {
+            renderer.begin_transition(change.scene, change.transition);
+            renderer.director_changed(moment_name(change.moment), change.scene);
+        }
+        if fresh && !still {
+            for other in &mut self.others {
+                if let Some(change) = other.director.new_song(other.renderer.scene()) {
+                    other.renderer.begin_transition(change.scene, change.transition);
+                    other.renderer.director_changed(moment_name(change.moment), change.scene);
+                }
+            }
+        }
+        self.sync_tray();
+    }
+
+    /// `T`: the song's title again.
+    fn title_again(&mut self) {
+        match self.song.clone() {
+            Some(song) => {
+                for renderer in self.renderers() {
+                    renderer.intro(song.clone());
+                }
+            }
+            None => {
+                if let Some(renderer) = &mut self.renderer {
+                    renderer.note("Song", "no player says what is playing");
+                }
+            }
+        }
+    }
+
+    /// Shows the song, the scene, and every choice in the tray's menu.
+    fn sync_tray(&self) {
+        if let Some(tray) = &self.tray
+            && let Some(state) = self.tray_state()
+        {
+            tray.set_state(state);
+        }
+    }
+
+    /// What the tray's menu shows.
+    fn tray_state(&self) -> Option<TrayState> {
+        let renderer = self.renderer.as_ref()?;
+        let mode = self.director.mode();
+        let (displays, display) = spread_names(&self.displays, self.spread);
+        let sources = self.sources();
+        Some(TrayState {
+            song: self.song.as_ref().map(|s| format!("\u{266a}  {}", song::line(s))).unwrap_or_default(),
+            scene: title(renderer.scene_names()[renderer.scene()]),
+            keeping: self.director.holding(),
+            modes: MODES.iter().map(|m| title(m.name())).collect(),
+            mode: MODES.iter().position(|&m| m == mode).unwrap_or(0),
+            intensities: INTENSITIES.iter().map(|i| title(i)).collect(),
+            intensity: intensity_index(self.director.intensity()),
+            displays: if self.wallpaper.is_some() { displays } else { Vec::new() },
+            display,
+            source: self.source_index(&sources),
+            sources: sources.into_iter().map(|(_, name)| name).collect(),
+            shows: SHOWS.iter().map(|&(_, name)| name.to_owned()).collect(),
+            show: SHOWS.iter().position(|&(s, _)| s == self.showing()).unwrap_or(0),
+            intros: self.settings.intros,
+            startup: self.startup,
+        })
     }
 
     fn frame(&mut self) {
@@ -747,6 +1141,7 @@ impl App {
             dt = recorder.dt();
         }
 
+        self.follow_media();
         // Signals keep updating even when nothing can be drawn, so the ring
         // buffer keeps draining and the envelopes stay current.
         let work = Instant::now();
@@ -811,11 +1206,13 @@ impl App {
             self.stats.frame(dt, analysis_time, draw_time);
         }
         let report = self.stats.report(now, self.source.hits());
-        if report.is_some()
-            && let Some(tray) = &self.tray
-        {
-            tray.set_state(tray_state(&self.director, renderer, spread_names(&self.displays, self.spread)));
+        if report.is_some() {
+            self.sync_tray();
+            if self.stats.seconds % 2 == 0 {
+                self.check_listening();
+            }
         }
+        let Some(renderer) = &mut self.renderer else { return };
         if let Some(stats) = report {
             let intensity = match self.director.intensity() {
                 Intensity::Natural => "natural",
@@ -922,21 +1319,7 @@ fn moment_name(moment: Moment) -> &'static str {
         Moment::Turn => "turn",
         Moment::Impact => "impact",
         Moment::Long => "time",
-    }
-}
-
-/// What the tray's menu shows: the scene, the mode and the intensity.
-fn tray_state(director: &Director, renderer: &Renderer, (displays, display): (Vec<String>, usize)) -> TrayState {
-    let mode = director.mode();
-    TrayState {
-        scene: title(renderer.scene_names()[renderer.scene()]),
-        keeping: director.holding(),
-        modes: MODES.iter().map(|m| title(m.name())).collect(),
-        mode: MODES.iter().position(|&m| m == mode).unwrap_or(0),
-        intensities: INTENSITIES.iter().map(|i| title(i)).collect(),
-        intensity: intensity_index(director.intensity()),
-        displays,
-        display,
+        Moment::Song => "new song",
     }
 }
 
@@ -1057,6 +1440,8 @@ impl Alignment {
 }
 
 struct Stats {
+    /// Seconds reported since the start.
+    seconds: u64,
     since: Instant,
     frames: u32,
     shortest: f32,
@@ -1071,7 +1456,7 @@ struct Stats {
 
 impl Stats {
     fn new() -> Self {
-        Self { since: Instant::now(), frames: 0, shortest: f32::MAX, longest: 0.0, analysis: Duration::ZERO, draw: Duration::ZERO, gpu_ms: Vec::new(), hits: None }
+        Self { seconds: 0, since: Instant::now(), frames: 0, shortest: f32::MAX, longest: 0.0, analysis: Duration::ZERO, draw: Duration::ZERO, gpu_ms: Vec::new(), hits: None }
     }
 
     fn frame(&mut self, dt: f32, analysis: Duration, draw: Duration) {
@@ -1103,10 +1488,12 @@ impl Stats {
             title += &format!(" · gpu {gpu:.3} ms");
         }
         if let (Some(start), Some(end)) = (self.hits, hits) {
-            let [beats, kick, snare, cymbals] = std::array::from_fn(|i| (end[i] - start[i]) as f32 / elapsed);
+            let [beats, kick, snare, cymbals] = std::array::from_fn(|i| end[i].saturating_sub(start[i]) as f32 / elapsed);
             title += &format!(" · beats {beats:.1}/s · kick {kick:.1} snare {snare:.1} cymbals {cymbals:.1}/s");
         }
+        let seconds = self.seconds + 1;
         *self = Self::new();
+        self.seconds = seconds;
         self.since = now;
         self.hits = hits;
         Some(title)

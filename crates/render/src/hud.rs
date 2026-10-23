@@ -8,6 +8,17 @@ use crate::ink::{Ink, Weight};
 pub(crate) const INK: [f32; 3] = [0.93, 0.93, 0.91];
 pub(crate) const GRAY: [f32; 3] = [0.6, 0.6, 0.6];
 pub(crate) const PANEL: [f32; 3] = [0.05, 0.05, 0.06];
+/// Hairlines: baselines, rules, the empty part of a bar.
+pub(crate) const RULE: [f32; 3] = rgb(0x222227);
+/// Words that matter less than the gray ones.
+pub(crate) const DIM: [f32; 3] = rgb(0x5c5c63);
+/// The one color, for what matters most: impacts and chaos in the
+/// analysis view, the chosen setting, a song's line.
+pub(crate) const ACCENT: [f32; 3] = rgb(0xff5b3a);
+
+pub(crate) const fn rgb(hex: u32) -> [f32; 3] {
+    [((hex >> 16) & 255) as f32 / 255.0, ((hex >> 8) & 255) as f32 / 255.0, (hex & 255) as f32 / 255.0]
+}
 
 /// Seconds a note takes to appear, stays, and takes to fade.
 const NOTE_IN: f32 = 0.12;

@@ -106,6 +106,13 @@ impl Director {
         self.schedule.changed_to(scene);
     }
 
+    /// A player said a new song started: a scene change to go with its
+    /// title, unless the scene is held.
+    pub fn new_song(&mut self, scene: usize) -> Option<Change> {
+        let feel = self.listener.feel();
+        self.schedule.new_song(&feel, scene)
+    }
+
     /// Listens to this frame's signals and writes the intensity into them.
     /// Returns a scene change when one is due. `scene` is the scene
     /// showing; `busy` says a transition is under way.

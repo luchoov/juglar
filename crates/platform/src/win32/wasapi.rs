@@ -5,6 +5,12 @@
 //! thread sleeps on an event that the audio engine signals once per period
 //! (about 10 ms), so it costs nothing between packets.
 //!
+//! One program can be heard alone (`Listen::App`) through process loopback
+//! (Windows 10 build 20348 and later): the audio engine mixes only that
+//! process and the ones it started, whatever their volume in the mixer and
+//! wherever they play. That client is opened asynchronously and has no mix
+//! format of its own, so Juglar names one and the engine converts to it.
+//!
 //! COM objects are not `Send`: everything WASAPI is created, used and released
 //! on the capture thread. The handle on the calling side only holds the stop
 //! flag and the join handle.
@@ -14,23 +20,30 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
 use windows::Win32::Media::Audio::{
-    AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-    AUDCLNT_STREAMFLAGS_LOOPBACK, IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator,
-    MMDeviceEnumerator, WAVEFORMATEX, WAVEFORMATEXTENSIBLE, eConsole, eRender,
+    AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM,
+    AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK, AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+    AUDIOCLIENT_ACTIVATION_PARAMS, AUDIOCLIENT_ACTIVATION_PARAMS_0, AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK,
+    AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS, ActivateAudioInterfaceAsync, IActivateAudioInterfaceAsyncOperation,
+    IActivateAudioInterfaceCompletionHandler, IActivateAudioInterfaceCompletionHandler_Impl, IAudioCaptureClient,
+    IAudioClient, IMMDeviceEnumerator, MMDeviceEnumerator, PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE,
+    VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, WAVEFORMATEX, WAVEFORMATEXTENSIBLE, eConsole, eRender,
 };
 use windows::Win32::Media::KernelStreaming::WAVE_FORMAT_EXTENSIBLE;
 use windows::Win32::Media::Multimedia::{KSDATAFORMAT_SUBTYPE_IEEE_FLOAT, WAVE_FORMAT_IEEE_FLOAT};
+use windows::Win32::System::Com::StructuredStorage::{PROPVARIANT, PROPVARIANT_0, PROPVARIANT_0_0, PROPVARIANT_0_0_0};
 use windows::Win32::System::Com::{
-    CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree,
-    CoUninitialize,
+    BLOB, CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize,
 };
 use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
-use windows::core::PCWSTR;
+use windows::Win32::System::Variant::VT_BLOB;
+use windows::core::{Interface, PCWSTR, Ref, implement};
 
-use crate::{AudioCapture, PlatformError, SampleCallback, StreamInfo};
+use super::apps::{app_root, running};
+use crate::{AudioCapture, Listen, PlatformError, SampleCallback, StreamInfo};
 
 /// Engine buffer size in 100 ns units. Generous on purpose: the engine keeps
 /// up to 100 ms for us if the capture thread is ever descheduled.
@@ -41,24 +54,33 @@ const BUFFER_DURATION_HNS: i64 = 1_000_000;
 /// long stopping can take.
 const WAIT_TIMEOUT_MS: u32 = 100;
 
+/// How long Windows gets to open a program's capture.
+const ACTIVATE_TIMEOUT: Duration = Duration::from_secs(5);
+
 pub struct WasapiLoopback {
     info: StreamInfo,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
+    /// The process heard alone, if any.
+    process: Option<u32>,
 }
 
 impl AudioCapture for WasapiLoopback {
-    fn start(on_samples: SampleCallback) -> Result<Self, PlatformError> {
+    fn start(from: &Listen, on_samples: SampleCallback) -> Result<Self, PlatformError> {
+        let process = match from {
+            Listen::Everything => None,
+            Listen::App(exe) => Some(app_root(exe).ok_or_else(|| PlatformError::new(format!("{exe} is not running")))?),
+        };
         let stop = Arc::new(AtomicBool::new(false));
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let thread_stop = stop.clone();
         let thread = thread::Builder::new()
             .name("juglar-capture".into())
-            .spawn(move || capture_thread(on_samples, thread_stop, ready_tx))
+            .spawn(move || capture_thread(process, on_samples, thread_stop, ready_tx))
             .map_err(|e| PlatformError::new(format!("spawning the capture thread: {e}")))?;
 
         match ready_rx.recv() {
-            Ok(Ok(info)) => Ok(Self { info, stop, thread: Some(thread) }),
+            Ok(Ok(info)) => Ok(Self { info, stop, thread: Some(thread), process }),
             Ok(Err(e)) => {
                 let _ = thread.join();
                 Err(e)
@@ -73,6 +95,10 @@ impl AudioCapture for WasapiLoopback {
     fn info(&self) -> StreamInfo {
         self.info
     }
+
+    fn alive(&self) -> bool {
+        self.process.is_none_or(running) && self.thread.as_ref().is_some_and(|t| !t.is_finished())
+    }
 }
 
 impl Drop for WasapiLoopback {
@@ -86,13 +112,13 @@ impl Drop for WasapiLoopback {
 
 type Ready = mpsc::SyncSender<Result<StreamInfo, PlatformError>>;
 
-fn capture_thread(on_samples: SampleCallback, stop: Arc<AtomicBool>, ready: Ready) {
+fn capture_thread(process: Option<u32>, on_samples: SampleCallback, stop: Arc<AtomicBool>, ready: Ready) {
     // SAFETY: paired with CoUninitialize below; this thread owns its COM apartment.
     if let Err(e) = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }.ok() {
         let _ = ready.send(Err(win_err("initializing COM", e)));
         return;
     }
-    if let Err(e) = run(on_samples, &stop, &ready) {
+    if let Err(e) = run(process, on_samples, &stop, &ready) {
         // Before `ready` was answered this reaches `start`; afterwards the
         // receiver is gone, so the error can only be reported here.
         if let Err(mpsc::SendError(Err(e))) = ready.send(Err(e)) {
@@ -103,7 +129,7 @@ fn capture_thread(on_samples: SampleCallback, stop: Arc<AtomicBool>, ready: Read
     unsafe { CoUninitialize() };
 }
 
-fn run(mut on_samples: SampleCallback, stop: &AtomicBool, ready: &Ready) -> Result<(), PlatformError> {
+fn run(process: Option<u32>, mut on_samples: SampleCallback, stop: &AtomicBool, ready: &Ready) -> Result<(), PlatformError> {
     // SAFETY: plain WASAPI calls on this thread's COM apartment; every pointer
     // passed is valid for the duration of the call.
     unsafe {
@@ -112,22 +138,48 @@ fn run(mut on_samples: SampleCallback, stop: &AtomicBool, ready: &Ready) -> Resu
         let device = enumerator
             .GetDefaultAudioEndpoint(eRender, eConsole)
             .map_err(|e| win_err("finding the default output device", e))?;
-        let client: IAudioClient =
+        let device_client: IAudioClient =
             device.Activate(CLSCTX_ALL, None).map_err(|e| win_err("opening the audio client", e))?;
+        let format = MixFormat(device_client.GetMixFormat().map_err(|e| win_err("reading the mix format", e))?);
 
-        let format = MixFormat(client.GetMixFormat().map_err(|e| win_err("reading the mix format", e))?);
-        let info = format.float_stream_info()?;
-
-        client
-            .Initialize(
-                AUDCLNT_SHAREMODE_SHARED,
-                AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
-                BUFFER_DURATION_HNS,
-                0,
-                format.0,
-                None,
-            )
-            .map_err(|e| win_err("initializing loopback capture", e))?;
+        let (client, info) = match process {
+            None => {
+                let info = format.float_stream_info()?;
+                device_client
+                    .Initialize(
+                        AUDCLNT_SHAREMODE_SHARED,
+                        AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+                        BUFFER_DURATION_HNS,
+                        0,
+                        format.0,
+                        None,
+                    )
+                    .map_err(|e| win_err("initializing loopback capture", e))?;
+                (device_client, info)
+            }
+            Some(pid) => {
+                // The speakers' rate, so the engine needn't resample what
+                // it mixes anyway; stereo float, converted by the engine
+                // from whatever the program plays.
+                let info = StreamInfo { sample_rate: ptr::read_unaligned(format.0).nSamplesPerSec, channels: 2 };
+                let client = process_client(pid)?;
+                let wanted = float_format(info);
+                client
+                    .Initialize(
+                        AUDCLNT_SHAREMODE_SHARED,
+                        AUDCLNT_STREAMFLAGS_LOOPBACK
+                            | AUDCLNT_STREAMFLAGS_EVENTCALLBACK
+                            | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
+                            | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+                        BUFFER_DURATION_HNS,
+                        0,
+                        &wanted,
+                        None,
+                    )
+                    .map_err(|e| win_err("initializing the program's capture", e))?;
+                (client, info)
+            }
+        };
 
         let event = Event(
             CreateEventW(None, false, false, PCWSTR::null()).map_err(|e| win_err("creating the capture event", e))?,
@@ -165,7 +217,8 @@ fn run(mut on_samples: SampleCallback, stop: &AtomicBool, ready: &Ready) -> Resu
                     silence.resize(len, 0.0);
                     on_samples(&silence, info.channels);
                 } else {
-                    // The mix format is 32-bit float, checked above.
+                    // 32-bit float: the mix format, checked above, or the
+                    // one asked of a program's capture.
                     on_samples(std::slice::from_raw_parts(data.cast::<f32>(), len), info.channels);
                 }
                 capture.ReleaseBuffer(frames).map_err(|e| win_err("releasing a packet", e))?;
@@ -174,6 +227,88 @@ fn run(mut on_samples: SampleCallback, stop: &AtomicBool, ready: &Ready) -> Resu
 
         let _ = client.Stop();
         Ok(())
+    }
+}
+
+/// Opens a capture client for process `pid` and the processes it started.
+///
+/// # Safety
+/// COM must be initialized on this thread.
+unsafe fn process_client(pid: u32) -> Result<IAudioClient, PlatformError> {
+    let params = AUDIOCLIENT_ACTIVATION_PARAMS {
+        ActivationType: AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK,
+        Anonymous: AUDIOCLIENT_ACTIVATION_PARAMS_0 {
+            ProcessLoopbackParams: AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS {
+                TargetProcessId: pid,
+                ProcessLoopbackMode: PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE,
+            },
+        },
+    };
+    // The parameters travel as a blob that the PROPVARIANT only points at,
+    // so it must never be dropped: its drop frees the blob as if Windows
+    // had allocated it.
+    let variant = std::mem::ManuallyDrop::new(PROPVARIANT {
+        Anonymous: PROPVARIANT_0 {
+            Anonymous: std::mem::ManuallyDrop::new(PROPVARIANT_0_0 {
+                vt: VT_BLOB,
+                wReserved1: 0,
+                wReserved2: 0,
+                wReserved3: 0,
+                Anonymous: PROPVARIANT_0_0_0 {
+                    blob: BLOB {
+                        cbSize: size_of::<AUDIOCLIENT_ACTIVATION_PARAMS>() as u32,
+                        pBlobData: (&raw const params).cast_mut().cast(),
+                    },
+                },
+            }),
+        },
+    });
+    let (done_tx, done_rx) = mpsc::sync_channel(1);
+    let handler: IActivateAudioInterfaceCompletionHandler = Activated(done_tx).into();
+    // SAFETY: `params` and `variant` outlive the call; the handler is
+    // reference counted.
+    let operation = unsafe {
+        ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, &IAudioClient::IID, Some(&*variant), &handler)
+    }
+    .map_err(|e| win_err("asking for the program's capture", e))?;
+    done_rx
+        .recv_timeout(ACTIVATE_TIMEOUT)
+        .map_err(|_| PlatformError::new("Windows took too long to open the program's capture"))?;
+    let mut result = windows::core::HRESULT(0);
+    let mut unknown = None;
+    // SAFETY: the operation has completed, as the handler said.
+    unsafe { operation.GetActivateResult(&mut result, &mut unknown) }
+        .map_err(|e| win_err("reading the program's capture", e))?;
+    result.ok().map_err(|e| win_err("opening the program's capture", e))?;
+    unknown
+        .ok_or_else(|| PlatformError::new("Windows opened no capture for the program"))?
+        .cast()
+        .map_err(|e| win_err("opening the program's capture", e))
+}
+
+/// Says when Windows has opened a program's capture. Agile, as Windows
+/// asks of it: `implement` makes it so.
+#[implement(IActivateAudioInterfaceCompletionHandler)]
+struct Activated(mpsc::SyncSender<()>);
+
+impl IActivateAudioInterfaceCompletionHandler_Impl for Activated_Impl {
+    fn ActivateCompleted(&self, _operation: Ref<IActivateAudioInterfaceAsyncOperation>) -> windows::core::Result<()> {
+        let _ = self.0.try_send(());
+        Ok(())
+    }
+}
+
+/// 32-bit float samples in `info`'s layout.
+fn float_format(info: StreamInfo) -> WAVEFORMATEX {
+    let block = info.channels * 4;
+    WAVEFORMATEX {
+        wFormatTag: WAVE_FORMAT_IEEE_FLOAT as u16,
+        nChannels: info.channels,
+        nSamplesPerSec: info.sample_rate,
+        nAvgBytesPerSec: info.sample_rate * u32::from(block),
+        nBlockAlign: block,
+        wBitsPerSample: 32,
+        cbSize: 0,
     }
 }
 

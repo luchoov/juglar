@@ -72,6 +72,8 @@ pub enum Moment {
     Impact,
     /// Nothing happened for a long time.
     Long,
+    /// A player said a new song started.
+    Song,
 }
 
 /// A scene change the director decided on.
@@ -388,6 +390,18 @@ impl Schedule {
         Some(Change { scene: next, transition: self.transition(moment, feel), moment })
     }
 
+    /// A new song started (a player said so): a new scene at once, chosen
+    /// as for any moment from how the music felt lately, unless the scene
+    /// is held.
+    pub fn new_song(&mut self, feel: &Feel, scene: usize) -> Option<Change> {
+        if self.holding || self.characters.len() < 2 {
+            return None;
+        }
+        let next = self.choose_for(feel, scene, self.heavy);
+        self.changed_to(next);
+        Some(Change { scene: next, transition: self.transition(Moment::Song, feel), moment: Moment::Song })
+    }
+
     /// The scene closest in character to the music, avoiding the one
     /// showing and those shown lately.
     ///
@@ -434,6 +448,8 @@ impl Schedule {
         match moment {
             Moment::Drop => Transition { style: Style::Bloom, seconds: 1.5, per_beat: 0.12 },
             Moment::Impact => Transition { style: Style::Bloom, seconds: IMPACT_SECONDS, per_beat: 0.0 },
+            // Under the song's title, quick, whatever the last song's end.
+            Moment::Song => Transition { style: Style::Bloom, seconds: 1.2, per_beat: 0.0 },
             _ if arousal(feel) < 0.35 => Transition { style: Style::Seep, seconds: 6.0, per_beat: 0.0 },
             Moment::Rise => Transition { style: Style::Bloom, seconds: 2.5, per_beat: 0.12 },
             Moment::Fall => Transition { style: Style::Iris, seconds: 4.0, per_beat: 0.06 },
@@ -447,6 +463,17 @@ mod tests {
     use super::*;
     use crate::feel::Listener;
     use juglar_signals::{SPECTRUM_BANDS, Synthetic};
+
+    #[test]
+    fn a_new_song_changes_scene_unless_held() {
+        let mut schedule = Schedule::new(characters(), Pacing::LIVELY);
+        let feel = Listener::new().feel();
+        let change = schedule.new_song(&feel, 0).expect("a change");
+        assert_ne!(change.scene, 0);
+        assert_eq!(change.moment, Moment::Song);
+        schedule.hold(true);
+        assert!(schedule.new_song(&feel, change.scene).is_none());
+    }
 
     fn characters() -> Vec<Character> {
         [(0.5, 0.6, true), (0.2, 0.2, false), (0.85, 0.7, true), (0.3, 0.3, false), (0.6, 0.5, false), (0.9, 0.8, true)]
