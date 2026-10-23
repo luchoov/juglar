@@ -111,6 +111,15 @@ pub(crate) struct Pulse {
     pub impacted: bool,
 }
 
+/// A tiny random generator (xorshift32) for the scenes' own choices:
+/// the next number from `seed`, in `-1..1`. `seed` must not be 0.
+pub(crate) fn random(seed: &mut u32) -> f32 {
+    *seed ^= *seed << 13;
+    *seed ^= *seed >> 17;
+    *seed ^= *seed << 5;
+    *seed as f32 / u32::MAX as f32 * 2.0 - 1.0
+}
+
 /// Turns each frame's signals into springs, jolts and cuts.
 pub(crate) struct Reactor {
     punch: Spring,
@@ -158,11 +167,7 @@ impl Reactor {
     }
 
     fn random(&mut self) -> f32 {
-        // xorshift32, to `-1..1`.
-        self.seed ^= self.seed << 13;
-        self.seed ^= self.seed >> 17;
-        self.seed ^= self.seed << 5;
-        self.seed as f32 / u32::MAX as f32 * 2.0 - 1.0
+        random(&mut self.seed)
     }
 
     /// This frame's pulse. `motion` is 1 normally and 0 with reduced
