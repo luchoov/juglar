@@ -26,7 +26,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
-use super::{Fx, Character, Look, Palette, Scene, smooth3};
+use super::{Fx, Character, Look, Material, Palette, Scene, smooth3};
 
 /// Violet, blue, azure, aqua, green, olive and rose, all the way around,
 /// chosen like Julia's for a narrow range of brightness (linear luminance
@@ -111,6 +111,7 @@ impl Scene for Crystal {
             waveform,
             spectrum: s.spectrum,
             // A dim field of the palette's far side, not black.
+            material: Material::NONE,
             fx: Fx { ground: 0.12, ground_hue: 0.5, ..Fx::NONE },
         }
     }

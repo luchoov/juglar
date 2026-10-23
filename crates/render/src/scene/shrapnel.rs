@@ -20,7 +20,7 @@
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
 use super::react::{Pulse, Reactor};
-use super::{Character, Fx, Look, Palette, Scene};
+use super::{Character, Fx, Look, Material, Palette, Scene};
 
 /// Fire and electric blue: orange, blood red, crimson, deep blue, gold.
 const PALETTE: Palette = Palette {
@@ -110,6 +110,7 @@ impl Scene for Shrapnel {
             bloom: 0.55 + 0.3 * punch.min(1.0),
             waveform: self.waveform,
             spectrum: s.spectrum,
+            material: Material::NONE,
             fx: Fx {
                 shake: [0.025 * shake[0], 0.025 * shake[1]],
                 chroma: 0.002 + 0.012 * punch.min(1.5) + 0.01 * chaos,

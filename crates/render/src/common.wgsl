@@ -75,6 +75,10 @@ struct Frame {
     // The heavy side of the music: x = chaos, y = impact, z = hit,
     // w = loudness.
     heavy: vec4f,
+    // How the old picture works on itself (`Material` in `scene/mod.rs`,
+    // applied in `feedback.wgsl`): x = sharpen, y = cap, z = erode,
+    // w = reach.
+    material: vec4f,
 }
 
 @group(0) @binding(0) var<uniform> frame: Frame;
@@ -182,4 +186,22 @@ fn noise(p: vec2f) -> f32 {
     let bottom = mix(grid_random(i), grid_random(i + vec2i(1, 0)), u.x);
     let top = mix(grid_random(i + vec2i(0, 1)), grid_random(i + vec2i(1, 1)), u.x);
     return mix(bottom, top, u.y);
+}
+
+// A flow with no sources or sinks, for stirring paint like a liquid: the
+// curl of the noise above (its slope turned a quarter), so moving along it
+// never piles paint up or tears it open. `p` in units of the short side;
+// speeds of about 1 at `scale` 1. Two layers, the finer one half as strong
+// and drifting the other way, so the eddies don't look like a grid.
+fn curl_noise(p: vec2f) -> vec2f {
+    let e = 0.01;
+    let dx = noise(p + vec2f(e, 0.0)) - noise(p - vec2f(e, 0.0));
+    let dy = noise(p + vec2f(0.0, e)) - noise(p - vec2f(0.0, e));
+    return vec2f(dy, -dx) / (2.0 * e);
+}
+
+fn flow(p: vec2f, scale: f32, time: f32) -> vec2f {
+    let coarse = curl_noise(p * scale + vec2f(time, 0.3 * time));
+    let fine = curl_noise(p * scale * 2.3 + vec2f(5.2 - 0.7 * time, 1.3 + time));
+    return coarse + 0.5 * fine;
 }

@@ -107,6 +107,8 @@ struct Uniforms {
     /// The scene's screen effects, and chaos, impact, hit and loudness.
     fx: [[f32; 4]; 3],
     heavy: [f32; 4],
+    /// How the old picture works on itself: sharpen, cap, erode, reach.
+    material: [f32; 4],
 }
 
 /// Frames of history the analysis view shows: about two seconds.
@@ -799,6 +801,7 @@ impl Renderer {
             harmonic_history: bytemuck::cast(self.history_of(6)),
             fx: look.fx.packed(),
             heavy: [s.chaos, s.impact, s.hit, s.loudness],
+            material: look.material.packed(),
         }
     }
 
@@ -1005,6 +1008,7 @@ mod tests {
         assert_eq!(std::mem::offset_of!(Uniforms, harmonic_history), 2432 + 4 * 32 * 16);
         assert_eq!(std::mem::offset_of!(Uniforms, fx), 2432 + 5 * 32 * 16);
         assert_eq!(std::mem::offset_of!(Uniforms, heavy), 2432 + 5 * 32 * 16 + 48);
-        assert_eq!(size_of::<Uniforms>(), 2432 + 5 * 32 * 16 + 64);
+        assert_eq!(std::mem::offset_of!(Uniforms, material), 2432 + 5 * 32 * 16 + 64);
+        assert_eq!(size_of::<Uniforms>(), 2432 + 5 * 32 * 16 + 80);
     }
 }

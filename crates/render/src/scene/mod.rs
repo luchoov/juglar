@@ -12,6 +12,7 @@
 mod corona;
 mod crystal;
 mod datamosh;
+mod etch;
 mod fracture;
 mod furnace;
 mod hammer;
@@ -54,6 +55,7 @@ pub(crate) trait Scene {
 /// Every scene, in the order the arrow keys go through them.
 pub(crate) fn all() -> Vec<Box<dyn Scene>> {
     vec![
+        Box::new(etch::Etch::new()),
         Box::new(shrapnel::Shrapnel::new()),
         Box::new(furnace::Furnace::new()),
         Box::new(static_::Static::new()),
@@ -140,8 +142,44 @@ pub(crate) struct Look {
     /// slots with numbers of its own (Harmonograph: its figure).
     pub waveform: [f32; WAVEFORM_POINTS],
     pub spectrum: [f32; SPECTRUM_BANDS],
+    /// How the old picture works on itself each frame.
+    pub material: Material,
     /// Effects on the finished picture.
     pub fx: Fx,
+}
+
+/// How the old picture works on itself each frame, in the feedback step,
+/// before the new paint: what MilkDrop's warp shaders do to grow texture
+/// out of nothing. Each pixel's ink is pushed away from (or toward) the
+/// average of its neighborhood, squeezed under a ceiling, and worn down a
+/// little. Pushed away hard enough, small differences grow on their own
+/// into spots, stripes and contour lines, and the ceiling flattens them
+/// into plateaus: the patterns of reaction and diffusion (Geiss' "Reaction
+/// Diffusion", flexi's "acid etching"), here from the scene's own paint.
+/// All zero leaves the picture as it is.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Material {
+    /// How far the ink is pushed from its neighborhood's average each
+    /// frame (at 60 fps): above about 0.3 patterns grow; below 0 it blurs.
+    pub sharpen: f32,
+    /// The ceiling ink is squeezed under, softly (0 = none).
+    pub cap: f32,
+    /// Ink worn away each frame (at 60 fps), so faint ink dies and
+    /// patterns keep their edges.
+    pub erode: f32,
+    /// How far the neighborhood reaches, in feedback pixels: wider grows
+    /// bigger spots.
+    pub reach: f32,
+}
+
+impl Material {
+    /// The picture as it is.
+    pub const NONE: Material = Material { sharpen: 0.0, cap: 0.0, erode: 0.0, reach: 0.0 };
+
+    /// As `Frame::material` in `common.wgsl` reads it.
+    pub fn packed(&self) -> [f32; 4] {
+        [self.sharpen, self.cap, self.erode, self.reach]
+    }
 }
 
 /// Effects on the finished picture, applied in `composite.wgsl` after the

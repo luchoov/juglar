@@ -19,7 +19,7 @@
 use juglar_signals::{SPECTRUM_BANDS, Signals};
 
 use super::react::{Pulse, Reactor};
-use super::{Character, Fx, Look, Palette, Scene};
+use super::{Character, Fx, Look, Material, Palette, Scene};
 
 /// From white-hot (0) through yellow and orange to dark red (1), never
 /// looping: paint starts hot and cools as it ages.
@@ -102,6 +102,7 @@ impl Scene for Furnace {
             bloom: 0.45 + 0.4 * self.crack,
             waveform: s.waveform,
             spectrum: self.spectrum,
+            material: Material::NONE,
             fx: Fx {
                 shake: [0.04 * shake[0], 0.04 * shake[1]],
                 chroma: 0.002 + 0.006 * punch.min(1.5) + 0.006 * chaos,

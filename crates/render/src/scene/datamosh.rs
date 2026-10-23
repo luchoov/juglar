@@ -18,7 +18,7 @@
 use juglar_signals::{SPECTRUM_BANDS, Signals};
 
 use super::react::{Pulse, Reactor};
-use super::{Character, Fx, Look, Palette, Scene};
+use super::{Character, Fx, Look, Material, Palette, Scene};
 
 /// Acid: magenta, violet, blue, cyan, green, yellow, around.
 const PALETTE: Palette = Palette {
@@ -101,6 +101,7 @@ impl Scene for Datamosh {
             bloom: 0.3,
             waveform: s.waveform,
             spectrum: self.spectrum,
+            material: Material::NONE,
             fx: Fx {
                 shake: [0.015 * shake[0], 0.01 * shake[1]],
                 chroma: 0.003 + 0.015 * chaos,

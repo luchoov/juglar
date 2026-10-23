@@ -25,7 +25,7 @@ use std::f32::consts::FRAC_PI_4;
 use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
 
 use super::react::{Pulse, Reactor};
-use super::{Character, Fx, Look, Palette, Scene};
+use super::{Character, Fx, Look, Material, Palette, Scene};
 
 /// Ice white, cyan, electric blue, violet and hot pink, around.
 const PALETTE: Palette = Palette {
@@ -163,6 +163,7 @@ impl Scene for Hammer {
             bloom: 0.5 + 0.3 * punch.min(1.0),
             waveform: self.waveform,
             spectrum: slots,
+            material: Material::NONE,
             fx: Fx {
                 shake: [0.03 * shake[0], 0.03 * shake[1]],
                 chroma: 0.002 + 0.012 * chaos * punch.min(1.0),

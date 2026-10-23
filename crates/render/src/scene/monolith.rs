@@ -20,7 +20,7 @@
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
 use super::react::{Pulse, Reactor};
-use super::{Character, Fx, Look, Palette, Scene};
+use super::{Character, Fx, Look, Material, Palette, Scene};
 
 /// Earth: bone, ochre, rust, umber.
 const PALETTE: Palette = Palette {
@@ -118,6 +118,7 @@ impl Scene for Monolith {
             bloom: 0.2,
             waveform: slots,
             spectrum: s.spectrum,
+            material: Material::NONE,
             fx: Fx {
                 shake: [0.03 * shake[0], 0.03 * shake[1]],
                 chroma: 0.001 + 0.008 * chaos,

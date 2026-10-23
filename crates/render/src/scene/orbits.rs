@@ -18,7 +18,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::Signals;
 
-use super::{Fx, Character, Look, Palette, Scene, smooth3};
+use super::{Fx, Character, Look, Material, Palette, Scene, smooth3};
 
 /// Amber, violet, sky blue and green, all the way around. Its reddest
 /// color keeps red under 72% of the light.
@@ -106,6 +106,7 @@ impl Scene for Orbits {
             waveform: s.waveform,
             spectrum: s.spectrum,
             // A dim field of the palette's far side, not black.
+            material: Material::NONE,
             fx: Fx { ground: 0.14, ground_hue: 0.5, ..Fx::NONE },
         }
     }

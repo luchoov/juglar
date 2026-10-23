@@ -20,7 +20,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::{SPECTRUM_BANDS, Signals};
 
-use super::{Fx, Character, Look, Palette, Scene, smooth3};
+use super::{Fx, Character, Look, Material, Palette, Scene, smooth3};
 
 /// Magenta, blue, aqua and lime, all the way around. Red stays under 73%.
 const PALETTE: Palette = Palette {
@@ -104,6 +104,7 @@ impl Scene for Kaleido {
             waveform: s.waveform,
             spectrum,
             // A dim field of the palette's far side, not black.
+            material: Material::NONE,
             fx: Fx { ground: 0.12, ground_hue: 0.5, ..Fx::NONE },
         }
     }

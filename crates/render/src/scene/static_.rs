@@ -19,7 +19,7 @@
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
 use super::react::{Pulse, Reactor};
-use super::{Character, Fx, Look, Palette, Scene};
+use super::{Character, Fx, Look, Material, Palette, Scene};
 
 /// Orange, magenta, violet, blue, teal and olive, all the way around.
 const PALETTE: Palette = Palette {
@@ -105,6 +105,7 @@ impl Scene for Static {
             bloom: 0.35,
             waveform: self.waveform,
             spectrum: s.spectrum,
+            material: Material::NONE,
             fx: Fx {
                 shake: [0.02 * shake[0], 0.012 * shake[1]],
                 chroma: 0.003 + 0.02 * chaos + 0.01 * punch.min(1.0),

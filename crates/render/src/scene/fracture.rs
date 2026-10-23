@@ -21,7 +21,7 @@
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
 use super::react::{Pulse, Reactor, random};
-use super::{Character, Fx, Look, Palette, Scene};
+use super::{Character, Fx, Look, Material, Palette, Scene};
 
 /// The whole rainbow: each territory takes one of two opposite colors,
 /// and the pair turns at every cut.
@@ -191,6 +191,7 @@ impl Scene for Fracture {
             bloom: if lit_seams { 0.5 } else { 0.2 },
             waveform: slots,
             spectrum: s.spectrum,
+            material: Material::NONE,
             fx: Fx {
                 shake: [0.02 * shake[0], 0.02 * shake[1]],
                 chroma: 0.002 + 0.012 * chaos + 0.008 * punch.min(1.0),

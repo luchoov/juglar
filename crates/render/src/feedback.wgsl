@@ -42,6 +42,33 @@ fn fs_feedback(@builtin(position) position: vec4f) -> @location(0) vec4f {
     ink = select(vec2f(0.0), ink, inside);
     ink *= frame.decay;
     ink.y += ink.x * frame.palette_drift;
+    // The material (`Material`): the ink pushed from its neighborhood's
+    // average, squeezed under a ceiling, worn down. Colors keep their
+    // place on the palette, half blended with the neighborhood's, so a
+    // growing pattern carries its colors along.
+    let m = frame.material;
+    if inside && (m.x != 0.0 || m.z > 0.0) {
+        let reach = max(m.w, 1.0) / size;
+        let d = 0.7071 * reach;
+        var around = vec2f(0.0);
+        around += textureSampleLevel(previous, smooth_sampler, uv + vec2f(reach.x, 0.0), 0.0).rg;
+        around += textureSampleLevel(previous, smooth_sampler, uv - vec2f(reach.x, 0.0), 0.0).rg;
+        around += textureSampleLevel(previous, smooth_sampler, uv + vec2f(0.0, reach.y), 0.0).rg;
+        around += textureSampleLevel(previous, smooth_sampler, uv - vec2f(0.0, reach.y), 0.0).rg;
+        around += textureSampleLevel(previous, smooth_sampler, uv + d, 0.0).rg;
+        around += textureSampleLevel(previous, smooth_sampler, uv - d, 0.0).rg;
+        around += textureSampleLevel(previous, smooth_sampler, uv + vec2f(d.x, -d.y), 0.0).rg;
+        around += textureSampleLevel(previous, smooth_sampler, uv + vec2f(-d.x, d.y), 0.0).rg;
+        around *= frame.decay / 8.0;
+        let steps = 60.0 * clamp(frame.dt, 0.0, 0.05);
+        let position = mix(ink.y / max(ink.x, 1e-4), around.y / max(around.x, 1e-4), 0.5);
+        var amount = ink.x + m.x * steps * (ink.x - around.x) - m.z * steps;
+        if m.y > 0.0 {
+            amount = m.y * tanh(max(amount, 0.0) / m.y);
+        }
+        amount = max(amount, 0.0);
+        ink = vec2f(amount, amount * position);
+    }
 
     // New paint goes over the old: `paint` is (coverage, ink × coverage,
     // ink × palette position × coverage).

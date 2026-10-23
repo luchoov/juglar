@@ -20,7 +20,7 @@
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
 use super::react::{Pulse, Reactor};
-use super::{Character, Fx, Look, Palette, Scene};
+use super::{Character, Fx, Look, Material, Palette, Scene};
 
 /// The whole rainbow, flat and loud.
 const PALETTE: Palette = Palette {
@@ -195,6 +195,7 @@ impl Scene for Wire {
             bloom: if print { 0.15 } else { 0.5 },
             waveform: slots,
             spectrum: s.spectrum,
+            material: Material::NONE,
             fx: Fx {
                 shake: [0.025 * shake[0], 0.025 * shake[1]],
                 chroma: 0.002 + 0.008 * chaos + 0.006 * punch.max(0.0).min(1.0),

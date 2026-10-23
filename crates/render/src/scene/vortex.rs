@@ -26,7 +26,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
 
-use super::{Fx, Character, Look, Palette, Scene, smooth3};
+use super::{Fx, Character, Look, Material, Palette, Scene, smooth3};
 
 /// Green, teal, violet, orchid, pink, gold and lime, all the way around.
 /// Red stays under 68%.
@@ -126,6 +126,7 @@ impl Scene for Vortex {
             waveform,
             spectrum,
             // A dim field of the palette's far side, not black.
+            material: Material::NONE,
             fx: Fx { ground: 0.16, ground_hue: 0.5, ..Fx::NONE },
         }
     }

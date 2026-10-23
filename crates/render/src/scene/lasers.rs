@@ -20,7 +20,7 @@
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
 use super::react::{Pulse, Reactor};
-use super::{Character, Fx, Look, Palette, Scene};
+use super::{Character, Fx, Look, Material, Palette, Scene};
 
 /// Deep red at 0, steel blue halfway, pale gold and warm white (0.75-0.85)
 /// for the beams.
@@ -128,6 +128,7 @@ impl Scene for Lasers {
             bloom: 0.6,
             waveform: slots,
             spectrum: s.spectrum,
+            material: Material::NONE,
             fx: Fx {
                 shake: [0.012 * shake[0], 0.012 * shake[1]],
                 chroma: 0.002 + 0.01 * chaos,

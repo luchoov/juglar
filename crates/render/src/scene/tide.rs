@@ -32,7 +32,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
-use super::{Fx, Character, Look, Palette, Scene, smooth3};
+use super::{Fx, Character, Look, Material, Palette, Scene, smooth3};
 
 /// Sand to silver to steel blue: one half-turn of a cosine per channel, so
 /// 0 is #dcc69a and 1 is #6f9bd1, with no green on the way (dim yellows
@@ -154,6 +154,7 @@ impl Scene for Tide {
             waveform,
             spectrum: s.spectrum,
             // A dim field of the palette's far side, not black.
+            material: Material::NONE,
             fx: Fx { ground: 0.12, ground_hue: 0.5, ..Fx::NONE },
         }
     }

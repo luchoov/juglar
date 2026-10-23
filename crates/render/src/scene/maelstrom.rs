@@ -19,7 +19,7 @@
 use juglar_signals::{SPECTRUM_BANDS, Signals};
 
 use super::react::{Pulse, Reactor};
-use super::{Character, Fx, Look, Palette, Scene};
+use super::{Character, Fx, Look, Material, Palette, Scene};
 
 /// The whole rainbow, as MilkDrop's classics have it.
 const PALETTE: Palette = Palette {
@@ -95,6 +95,7 @@ impl Scene for Maelstrom {
             bloom: 0.4,
             waveform: s.waveform,
             spectrum: self.spectrum,
+            material: Material::NONE,
             fx: Fx {
                 shake: [0.02 * shake[0], 0.02 * shake[1]],
                 chroma: 0.002 + 0.01 * chaos + 0.008 * punch.max(0.0).min(1.0),
