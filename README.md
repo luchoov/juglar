@@ -8,6 +8,8 @@
 
 A music visualizer for Windows that **hears metal**: it tells a wall of distorted guitars from a clean chord, hears the kick, the snare and the cymbals apart, and knows when the band slams back in after a break. Written from scratch in Rust, drawn on the GPU.
 
+**Docs:** [juglar-docs.vercel.app](https://juglar-docs.vercel.app/): the theory notes, decisions and interactive explorables, readable anywhere.
+
 <p align="center">
   <img src="docs/media/explosion.webp" width="640" alt="A metal song's break drawn as a slowly etched texture; at the explosion the picture cuts to a burst of shrapnel">
   <br>
@@ -136,6 +138,7 @@ The sound the speakers play is captured (WASAPI loopback), analyzed into a few d
 
 Every important choice is written down in plain language, with what was measured and what was given up:
 
+- **Read it all online** at [juglar-docs.vercel.app](https://juglar-docs.vercel.app/): these docs and the explorables, rendered.
 - **New here?** Open [`explorables/00-start-here.html`](explorables/00-start-here.html) in a browser: sound, samples and what Juglar does, from zero, with interactive pages.
 - [Vision](docs/vision.md): where it is going (song structure, a look per song, harmony as color).
 - [Decisions](docs/decisions.md): sixty-four of them, D48–D55 for v1 and D56–D64 for 1.1.
