@@ -29,6 +29,12 @@ Juglar listens for other things:
 - **Hits as springs, not swells.** A hit kicks a stiff spring that jumps, overshoots and recoils like a drum skin, instead of fading in through layers of smoothing. Hard cuts, flashes, negatives, torn colors and sliced glitches come on the hits that earn them.
 - **Pictures that grow.** Every frame is a warped copy of the last, and the scenes can make that copy sharpen itself against its own surroundings, so grain grows into living texture: spots, veins and contours, like reaction and diffusion in a dish.
 
+<p align="center">
+  <img src="docs/media/hearing.webp" width="720" alt="Juglar's analysis view during a metal song: eight seconds of loudness, grit, density and chaos as lines, the kick, snare and cymbals as marks, the spectrum, and the director's scene changes">
+  <br>
+  <sub>What Juglar hears (<code>Tab</code>), live: loudness, grit, density and chaos over the last eight seconds, the drums apart, and why the scene last changed.</sub>
+</p>
+
 ## The scenes
 
 Ten made for loud music, and twelve older, calmer ones for everything else; the focus and relax modes use the stillest of them.
@@ -84,7 +90,7 @@ Play anything. Juglar changes scene by itself when the music turns a corner (an 
 |---|---|
 | `←` `→` | previous / next scene |
 | `Space` | keep the scene showing (no automatic changes) / let go |
-| `Tab` | switch to the analysis view: what Juglar hears, live |
+| `Tab` | the analysis view: what Juglar hears, labeled, and why the scene last changed |
 | `M` | mode: lively (the default), focus, relax |
 | `A` | intensity read from the music (the default); `1` `2` `3` fix it: gentle, medium, strong |
 | `F11`, `Alt`+`Enter` or double click | fullscreen on / off |
@@ -122,7 +128,7 @@ Every important choice is written down in plain language, with what was measured
 
 - **New here?** Open [`explorables/00-start-here.html`](explorables/00-start-here.html) in a browser: sound, samples and what Juglar does, from zero, with interactive pages.
 - [Vision](docs/vision.md): where it is going (song structure, a look per song, harmony as color).
-- [Decisions](docs/decisions.md): fifty-five of them, D48–D55 for this release.
+- [Decisions](docs/decisions.md): fifty-nine of them, D48–D55 for v1 and D56–D59 for 1.1.
 - [Architecture](docs/architecture.md), [roadmap](docs/roadmap.md) and [theory notes](docs/theory/).
 
 ## Limits

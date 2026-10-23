@@ -135,6 +135,7 @@ Open: give the rest of the wild scenes layers each owned by its own signal (D54;
 - **Done:** wallpaper on several displays (D58): a scene on each, one across all, or one display, chosen in the tray and laid out again when a display comes or goes; `Ctrl`+`Alt` keys work from anywhere while Juglar is the wallpaper. Checked on two 1080p displays.
 - **Not tested:** Windows before 24H2; displays of different sizes or refresh rates; plugging a display in or out while running.
 - **Done:** text on screen (D57): a note for each change a key makes, the help on `H`, `Esc` asking before it closes; the tray's menu shows the scene, mode and intensity, and sets them.
+- **Done:** the analysis view redone (D59): what Juglar hears, labeled, eight seconds of the heavy ear and the drums, and the director's last changes with their reasons; drawn with the text renderer.
 - **Not started:** the now-playing overlay, mini mode, pausing on silence, the screensaver build.
 
 ## M8 — Evolution and the web
