@@ -15,7 +15,7 @@ A music visualizer for Windows that **hears metal**: it tells a wall of distorte
 
 ## What makes it different
 
-Audio-reactive visuals are old: MilkDrop has drawn them on the GPU for twenty years. Almost all of them listen like a level meter: how loud each band is, right now. On a loud master of a metal song that number sits near the top from the first riff to the last, and the picture just shakes.
+Audio-reactive visuals are old, and almost all of them listen like a level meter: how loud each band is, right now. On a loud master of a metal song that number sits near the top from the first riff to the last, and the picture just shakes.
 
 Juglar listens for other things:
 
@@ -23,9 +23,7 @@ Juglar listens for other things:
 - **Impacts.** The band slamming back in after a break, or a part far louder than the one before: the scene changes on that frame, with a near cut. A stop-start riff that slams every second counts once.
 - **The drums apart.** Kick, snare and cymbals from a causal percussive/harmonic split, tuned against the drummers' own isolated tracks on three metal songs. Held chords are heard apart from hits.
 - **Hits as springs, not swells.** A hit kicks a stiff spring that jumps, overshoots and recoils like a drum skin, instead of fading in through layers of smoothing. Hard cuts, flashes, negatives, torn colors and sliced glitches come on the hits that earn them.
-- **Pictures that grow.** Every frame is a warped copy of the last, and the scenes can make that copy sharpen itself against its own surroundings, so grain grows into living texture (the reaction-diffusion patterns of MilkDrop's best presets), here written from nothing.
-
-Juglar contains no MilkDrop presets or code: their techniques were studied, and its scenes were judged side by side with classic presets rendered on the same passage of the same song.
+- **Pictures that grow.** Every frame is a warped copy of the last, and the scenes can make that copy sharpen itself against its own surroundings, so grain grows into living texture: spots, veins and contours, like reaction and diffusion in a dish.
 
 ## The scenes
 
