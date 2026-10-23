@@ -149,7 +149,8 @@ impl Scene for Harmonograph {
             bloom: 0.6,
             waveform: curve,
             spectrum: s.spectrum,
-            fx: Fx::NONE,
+            // A dim field of the palette's far side, not black.
+            fx: Fx { ground: 0.1, ground_hue: 0.5, ..Fx::NONE },
         }
     }
 }

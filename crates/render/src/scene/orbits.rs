@@ -105,7 +105,8 @@ impl Scene for Orbits {
             bloom: 0.9,
             waveform: s.waveform,
             spectrum: s.spectrum,
-            fx: Fx::NONE,
+            // A dim field of the palette's far side, not black.
+            fx: Fx { ground: 0.14, ground_hue: 0.5, ..Fx::NONE },
         }
     }
 }

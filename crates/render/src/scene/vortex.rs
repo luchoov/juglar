@@ -79,7 +79,7 @@ impl Scene for Vortex {
 
     /// A tunnel of rings turning against each other, pushed by every beat.
     fn character(&self) -> Character {
-        Character { energy: 0.9, pulse: 0.85, flow: true }
+        Character { energy: 0.7, pulse: 0.85, flow: true }
     }
 
     fn shader(&self) -> &'static str {
@@ -125,7 +125,8 @@ impl Scene for Vortex {
             bloom: 0.5,
             waveform,
             spectrum,
-            fx: Fx::NONE,
+            // A dim field of the palette's far side, not black.
+            fx: Fx { ground: 0.16, ground_hue: 0.5, ..Fx::NONE },
         }
     }
 }

@@ -58,7 +58,7 @@ impl Scene for Kaleido {
 
     /// A mirrored tunnel rushing outward: wild.
     fn character(&self) -> Character {
-        Character { energy: 0.85, pulse: 0.7, flow: true }
+        Character { energy: 0.7, pulse: 0.7, flow: true }
     }
 
     fn shader(&self) -> &'static str {
@@ -103,7 +103,8 @@ impl Scene for Kaleido {
             bloom: 0.6,
             waveform: s.waveform,
             spectrum,
-            fx: Fx::NONE,
+            // A dim field of the palette's far side, not black.
+            fx: Fx { ground: 0.12, ground_hue: 0.5, ..Fx::NONE },
         }
     }
 }

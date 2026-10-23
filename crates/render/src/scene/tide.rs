@@ -153,7 +153,8 @@ impl Scene for Tide {
             bloom: 0.35,
             waveform,
             spectrum: s.spectrum,
-            fx: Fx::NONE,
+            // A dim field of the palette's far side, not black.
+            fx: Fx { ground: 0.12, ground_hue: 0.5, ..Fx::NONE },
         }
     }
 }

@@ -61,7 +61,7 @@ impl Scene for Corona {
 
     /// Flames streaming out of an eclipse.
     fn character(&self) -> Character {
-        Character { energy: 0.75, pulse: 0.7, flow: true }
+        Character { energy: 0.65, pulse: 0.7, flow: true }
     }
 
     fn shader(&self) -> &'static str {
@@ -105,7 +105,8 @@ impl Scene for Corona {
             bloom: 0.7,
             waveform: s.waveform,
             spectrum,
-            fx: Fx::NONE,
+            // A dim field of the palette's far side, not black.
+            fx: Fx { ground: 0.12, ground_hue: 0.5, ..Fx::NONE },
         }
     }
 }

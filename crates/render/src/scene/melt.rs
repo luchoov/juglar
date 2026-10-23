@@ -122,7 +122,8 @@ impl Scene for Melt {
             bloom: 0.45,
             waveform,
             spectrum,
-            fx: Fx::NONE,
+            // A dim field of the palette's far side, not black.
+            fx: Fx { ground: 0.12, ground_hue: 0.5, ..Fx::NONE },
         }
     }
 }
