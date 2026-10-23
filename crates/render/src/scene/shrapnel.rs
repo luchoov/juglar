@@ -1,7 +1,9 @@
 //! Shrapnel: a barbed ring drawn by the waveform, blown apart by the drums.
 //! Every frame the old picture is thrown outward, faster along the barbs
 //! than between them, so the echoes tear into teeth; in a wall of sound it
-//! is folded into mirror wedges, whose number changes at every hard cut.
+//! is folded into mirror wedges, whose number changes at every hard cut,
+//! and every third cut turns it into a print: dark shrapnel on a field of
+//! color.
 //! Made for thrash and death metal: short trails cut by every hit, the
 //! spin reversing at once, the lens tearing into its colors.
 //!
@@ -79,6 +81,8 @@ impl Scene for Shrapnel {
         let cut = cuts as usize;
         let hue_jump = (cut % 7) as f32 * 0.19;
         let wedges = if chaos > 0.45 { FOLDS[cut % FOLDS.len()] } else { 0.0 };
+        // Every third cut, a print: dark shrapnel on a bright field.
+        let print = cut % 3 == 2;
 
         // Trails are short and every hit cuts them shorter.
         let fade = (0.32 - 0.22 * punch.min(1.0) - 0.1 * chaos).max(0.06);
@@ -114,9 +118,9 @@ impl Scene for Shrapnel {
                 glitch: if chaos > 0.6 { 0.35 * snap.min(1.0) } else { 0.0 },
                 glitch_seed: cuts as f32 + (self.clock * 12.0).floor(),
                 relief: 0.0,
-                ground: 0.0,
-                ground_hue: 0.0,
-                stencil: 0.0,
+                ground: if print { 0.9 } else { 0.0 },
+                ground_hue: 0.55,
+                stencil: if print { 1.0 } else { 0.0 },
             },
         }
     }
