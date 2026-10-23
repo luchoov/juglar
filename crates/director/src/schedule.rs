@@ -203,6 +203,8 @@ pub struct Schedule {
     /// How heavy the music is, `0..=1`: chaos, followed over a few seconds.
     heavy: f32,
     holding: bool,
+    /// Scenes showing on other displays, avoided.
+    elsewhere: Vec<usize>,
 }
 
 impl Schedule {
@@ -229,6 +231,7 @@ impl Schedule {
             since_impact: f32::MAX,
             heavy: 0.0,
             holding: false,
+            elsewhere: Vec::new(),
         }
     }
 
@@ -248,6 +251,12 @@ impl Schedule {
 
     /// The listener (or anyone else) changed scene: the new one gets its
     /// full time.
+    /// The scenes other displays show, for `choose` to avoid.
+    pub fn elsewhere(&mut self, scenes: &[usize]) {
+        self.elsewhere.clear();
+        self.elsewhere.extend_from_slice(scenes);
+    }
+
     pub fn changed_to(&mut self, scene: usize) {
         self.shown = 0.0;
         self.due = None;
@@ -407,7 +416,9 @@ impl Schedule {
                 Some(age) => 1.0 - age as f32 / RECENT as f32,
                 None => 0.0,
             };
-            mismatch + staleness
+            // On another display already: only if nothing else fits.
+            let taken = if self.elsewhere.contains(&i) { 2.0 } else { 0.0 };
+            mismatch + staleness + taken
         };
         (0..self.characters.len())
             .filter(|&i| i != scene)

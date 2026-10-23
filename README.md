@@ -88,11 +88,13 @@ Play anything. Juglar changes scene by itself when the music turns a corner (an 
 | `M` | mode: lively (the default), focus, relax |
 | `A` | intensity read from the music (the default); `1` `2` `3` fix it: gentle, medium, strong |
 | `F11`, `Alt`+`Enter` or double click | fullscreen on / off |
-| `W` | wallpaper mode: Juglar draws behind the desktop icons; the tray icon has the controls |
+| `W` | wallpaper mode: Juglar draws behind the desktop icons, on every display |
 | `H`, `?` or `F1` | the keys, on screen |
 | `Esc` | leave fullscreen; from a window, press it twice to close |
 
 Every change a key makes is noted on screen for a moment ("Mode: focus", "Scene: Liquid, kept").
+
+As the wallpaper, Juglar never has the keyboard, so these work from anywhere instead: `Ctrl`+`Alt`+`←` `→` change the scene on the display under the pointer, `K` keeps it, `M` changes the mode, `I` the intensity, `H` shows the keys, `W` goes back to a window. The tray icon has the same and more: with several displays, a scene on each (the default), one scene across all of them, or only one display. Juglar stops drawing on a display while a fullscreen program or a maximized window covers it.
 
 `juglar --fullscreen` starts in fullscreen; `juglar --wallpaper`, as the wallpaper. Juglar opens no console: its messages go to `%LOCALAPPDATA%\Juglar\juglar.log`, and `juglar --console` shows them in a console instead.
 
@@ -102,6 +104,7 @@ Every change a key makes is noted on screen for a moment ("Mode: focus", "Scene:
 <summary>Environment variables (until there is a settings file)</summary>
 
 - `JUGLAR_SCENE=etch` starts on that scene; `JUGLAR_MODE=focus` (or `relax`) in that mode.
+- `JUGLAR_DISPLAYS=across` (or `one`) for how the wallpaper uses several displays; `each` by default.
 - `JUGLAR_FPS=36` lowers the target frame rate; `JUGLAR_INTENSITY=0.3` fixes the intensity (0 to 1).
 - `JUGLAR_REDUCED_MOTION=1` keeps the picture still (`0` ignores Windows' setting).
 - `JUGLAR_STATS=1` prints the title's numbers once a second, with what the director hears and every scene change it makes.

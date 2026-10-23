@@ -94,6 +94,12 @@ impl Director {
         self.schedule.holding()
     }
 
+    /// The scenes other displays show: with one scene on each, the
+    /// director chooses one that isn't showing already.
+    pub fn elsewhere(&mut self, scenes: &[usize]) {
+        self.schedule.elsewhere(scenes);
+    }
+
     /// The listener chose `scene`: it gets its full time before the
     /// director changes it.
     pub fn chosen(&mut self, scene: usize) {

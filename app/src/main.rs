@@ -12,6 +12,7 @@
 // The debug build keeps its console, for `cargo run`.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod desktop;
 mod wav;
 
 use std::sync::Arc;
@@ -19,9 +20,8 @@ use std::time::{Duration, Instant};
 
 use juglar_director::{Director, Intensity, Mode, Style, Transition};
 use juglar_dsp::{Analyzer, Consumer, FFT_SIZE, SCOPE_POINTS, Scope, ring};
-use juglar_platform::{
-    AudioCapture, PlatformError, ScreenRect, SystemAudio, Tray, TrayChoice, TrayState, Wallpaper, desktop_covered,
-};
+use desktop::{Other, SPREADS, Spread, hotkey_help, spread_names};
+use juglar_platform::{AudioCapture, PlatformError, ScreenRect, SystemAudio, Tray, TrayChoice, TrayState, Wallpaper};
 use juglar_render::{Renderer, View};
 use juglar_signals::{Relative, Signals, Synthetic};
 use winit::application::ApplicationHandler;
@@ -30,8 +30,7 @@ use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
-use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use winit::window::{Fullscreen, Window, WindowId};
+use winit::window::{Fullscreen, Window, WindowAttributes, WindowId};
 
 const _: () = assert!(juglar_dsp::SPECTRUM_BANDS == juglar_signals::SPECTRUM_BANDS);
 const _: () = assert!(SCOPE_POINTS == juglar_signals::WAVEFORM_POINTS);
@@ -113,6 +112,11 @@ fn main() {
         start_fullscreen: std::env::args().any(|arg| arg == "--fullscreen"),
         start_wallpaper: std::env::args().any(|arg| arg == "--wallpaper"),
         wallpaper: None,
+        others: Vec::new(),
+        spread: Spread::from_env(),
+        displays: Vec::new(),
+        arrange: false,
+        watch: false,
         tray: None,
         covered: false,
         modifiers: ModifiersState::empty(),
@@ -372,8 +376,18 @@ struct App {
     /// `--wallpaper` on the command line.
     start_wallpaper: bool,
     /// While Juglar is the wallpaper: the window's place in the desktop,
-    /// the display it covers, and where it was as a window.
+    /// the area it covers, and where it was as a window.
     wallpaper: Option<(Wallpaper, ScreenRect, ScreenRect)>,
+    /// The wallpapers on the other displays (`desktop.rs`), how the
+    /// displays are used, and the displays as last seen.
+    others: Vec<Other>,
+    spread: Spread,
+    displays: Vec<ScreenRect>,
+    /// Wallpaper mode was asked for (or must be laid out again); done
+    /// where windows can be made.
+    arrange: bool,
+    /// Time to check the desktop again (once a second).
+    watch: bool,
     /// The notification-area icon, while Juglar is the wallpaper.
     tray: Option<Tray>,
     /// Whether something covers the desktop (wallpaper mode only), as last
@@ -399,19 +413,9 @@ impl ApplicationHandler for App {
         if self.window.is_some() {
             return;
         }
-        let attributes = Window::default_attributes()
-            .with_title("Juglar")
+        let attributes = window_attributes()
             .with_inner_size(LogicalSize::new(960.0, 540.0))
             .with_min_inner_size(LogicalSize::new(320.0, 180.0));
-        // The logo, from the icon build.rs puts in the program (resource 1).
-        #[cfg(windows)]
-        let attributes = {
-            use winit::platform::windows::{IconExtWindows, WindowAttributesExtWindows};
-            use winit::window::Icon;
-            attributes
-                .with_window_icon(Icon::from_resource(1, None).ok())
-                .with_taskbar_icon(Icon::from_resource(1, None).ok())
-        };
         let window = Arc::new(event_loop.create_window(attributes).expect("window"));
         let size = window.inner_size();
         let renderer = match pollster::block_on(Renderer::new(window.clone(), size.width, size.height)) {
@@ -458,19 +462,25 @@ impl ApplicationHandler for App {
         }
         self.renderer = Some(renderer);
         self.last_frame = Instant::now();
-        if self.start_wallpaper {
-            self.enter_wallpaper();
-        }
+        self.arrange = self.start_wallpaper;
     }
 
     /// Leaves the desktop as it was: the window comes out of it before it
     /// is destroyed.
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        self.others.clear();
         self.wallpaper = None;
         self.tray = None;
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        // The other displays' wallpapers only need to follow their size.
+        if self.window.as_ref().is_some_and(|w| w.id() != id) {
+            if let WindowEvent::Resized(size) = event {
+                self.resize_other(id, size);
+            }
+            return;
+        }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::KeyboardInput {
@@ -511,16 +521,32 @@ impl ApplicationHandler for App {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         while let Some(choice) = self.tray.as_ref().and_then(Tray::take) {
             match choice {
+                TrayChoice::PreviousScene => self.step_scene(true),
                 TrayChoice::NextScene => self.step_scene(false),
                 TrayChoice::KeepScene => self.toggle_keep(),
                 TrayChoice::Mode(n) => self.choose_mode(MODES[n.min(MODES.len() - 1)]),
+                TrayChoice::NextMode => self.choose_mode(self.director.mode().next()),
                 TrayChoice::Intensity(0) => self.choose_intensity(Intensity::Natural),
                 TrayChoice::Intensity(n) => {
                     self.choose_intensity(Intensity::Fixed(INTENSITY_PRESETS[(n - 1).min(INTENSITY_PRESETS.len() - 1)]))
                 }
+                TrayChoice::NextIntensity => self.choose_intensity(self.next_intensity()),
+                TrayChoice::Displays(n) => {
+                    self.spread = SPREADS[n.min(SPREADS.len() - 1)].0;
+                    self.arrange = true;
+                }
+                TrayChoice::Help => self.toggle_help(),
                 TrayChoice::Window => self.leave_wallpaper(),
                 TrayChoice::Quit => event_loop.exit(),
             }
+        }
+        if self.arrange {
+            self.arrange = false;
+            self.arrange_wallpaper(event_loop);
+        }
+        if self.watch {
+            self.watch = false;
+            self.watch_desktop(event_loop);
         }
         if self.done {
             event_loop.exit();
@@ -556,49 +582,6 @@ impl App {
         match refresh_hz {
             Some(hz) => println!("Display: {hz:.0} Hz, drawing at {:.1} fps.", self.pacer.fps()),
             None => println!("Display refresh rate unknown, drawing at {:.1} fps.", self.pacer.fps()),
-        }
-    }
-
-    /// Moves the window behind the desktop icons, over the display it is
-    /// on, with an icon in the notification area to control it.
-    fn enter_wallpaper(&mut self) {
-        if self.wallpaper.is_some() {
-            return;
-        }
-        if self.is_fullscreen() {
-            self.toggle_fullscreen();
-        }
-        let Some(window) = &self.window else { return };
-        let Some(monitor) = window.current_monitor() else { return };
-        let display = rect(monitor.position(), monitor.size());
-        let windowed = rect(window.outer_position().unwrap_or_default(), window.outer_size());
-        let Ok(handle) = window.window_handle() else { return };
-        let RawWindowHandle::Win32(handle) = handle.as_raw() else { return };
-        match Wallpaper::attach(handle.hwnd.get(), display) {
-            Ok(wallpaper) => {
-                self.wallpaper = Some((wallpaper, display, windowed));
-                if self.tray.is_none() {
-                    match Tray::new("Juglar") {
-                        Ok(tray) => self.tray = Some(tray),
-                        Err(e) => eprintln!("juglar: no tray icon ({e}); quit from the Task Manager"),
-                    }
-                }
-                println!("Wallpaper mode: drawing behind the desktop icons. The tray icon has the controls.");
-                self.sync_tray();
-            }
-            Err(e) => eprintln!("juglar: could not become the wallpaper: {e}"),
-        }
-    }
-
-    /// Back to an ordinary window, where it was before.
-    fn leave_wallpaper(&mut self) {
-        if let Some((wallpaper, _, windowed)) = self.wallpaper.take() {
-            wallpaper.restore(windowed);
-        }
-        self.tray = None;
-        self.covered = false;
-        if let Some(window) = &self.window {
-            window.focus_window();
         }
     }
 
@@ -650,7 +633,7 @@ impl App {
             }
             Key::Named(NamedKey::F1) => self.toggle_help(),
             Key::Character(c) if c.eq_ignore_ascii_case("h") || c == "?" => self.toggle_help(),
-            Key::Character(c) if c.eq_ignore_ascii_case("w") => self.enter_wallpaper(),
+            Key::Character(c) if c.eq_ignore_ascii_case("w") => self.arrange = self.wallpaper.is_none(),
             Key::Character(c) if c.eq_ignore_ascii_case("m") => self.choose_mode(self.director.mode().next()),
             Key::Character(c) if c.eq_ignore_ascii_case("a") => self.choose_intensity(Intensity::Natural),
             Key::Character(c) => {
@@ -680,41 +663,46 @@ impl App {
         }
     }
 
+    /// Shows the keys, or hides them; as the wallpaper, the keys that work
+    /// from anywhere, on the display under the pointer.
     fn toggle_help(&mut self) {
-        if let Some(renderer) = &mut self.renderer {
-            renderer.help(if renderer.helping() { &[] } else { HELP });
+        let wallpaper = self.wallpaper.is_some();
+        let target = self.under_pointer();
+        if let Some((renderer, _)) = self.screen(target) {
+            let lines = if wallpaper { hotkey_help() } else { HELP.to_vec() };
+            renderer.help(if renderer.helping() { &[] } else { &lines });
         }
     }
 
-    /// To the previous or next scene, through a transition.
+    /// To the previous or next scene, through a transition: on the display
+    /// under the pointer, when Juglar is the wallpaper on several.
     fn step_scene(&mut self, back: bool) {
-        let Some(renderer) = &mut self.renderer else { return };
+        let still = self.still;
+        let target = self.under_pointer();
+        let Some((renderer, director)) = self.screen(target) else { return };
         let count = renderer.scene_names().len();
         let next = if back { renderer.scene() + count - 1 } else { renderer.scene() + 1 } % count;
         // With reduced motion, a slow fade through patches instead of an
         // edge sweeping across.
-        let transition = if self.still {
+        let transition = if still {
             Transition { style: Style::Seep, seconds: 3.0, per_beat: 0.0 }
         } else {
             Transition::asked()
         };
         renderer.begin_transition(next, transition);
-        self.director.chosen(next);
-        let kept = if self.director.holding() { ", kept" } else { "" };
+        director.chosen(next);
+        let kept = if director.holding() { ", kept" } else { "" };
         renderer.note("Scene", &format!("{}{kept}", title(renderer.scene_names()[next])));
         self.sync_tray();
     }
 
     /// Keeps the scene showing (no automatic changes), or lets go.
     fn toggle_keep(&mut self) {
-        let holding = !self.director.holding();
-        self.director.hold(holding);
-        if let Some(renderer) = &mut self.renderer {
-            let value = if holding {
-                format!("{}, kept", title(renderer.scene_names()[renderer.scene()]))
-            } else {
-                "changes with the music".to_owned()
-            };
+        let target = self.under_pointer();
+        if let Some((renderer, director)) = self.screen(target) {
+            let holding = !director.holding();
+            director.hold(holding);
+            let value = if holding { format!("{}, kept", App::scene_title(renderer)) } else { "changes with the music".to_owned() };
             renderer.note("Scene", &value);
         }
         self.sync_tray();
@@ -726,21 +714,24 @@ impl App {
             renderer.note("Mode", mode.name());
             self.renderer = Some(renderer);
         }
+        self.mode_everywhere(mode);
         self.sync_tray();
     }
 
     fn choose_intensity(&mut self, intensity: Intensity) {
         self.director.set_intensity(intensity, self.signals.intensity);
+        let name = INTENSITIES[intensity_index(intensity)];
         if let Some(renderer) = &mut self.renderer {
-            renderer.note("Intensity", INTENSITIES[intensity_index(intensity)]);
+            renderer.note("Intensity", name);
         }
+        self.intensity_everywhere(intensity, name);
         self.sync_tray();
     }
 
     /// Shows the current scene, mode and intensity in the tray's menu.
     fn sync_tray(&self) {
         if let (Some(tray), Some(renderer)) = (&self.tray, &self.renderer) {
-            tray.set_state(tray_state(&self.director, renderer));
+            tray.set_state(tray_state(&self.director, renderer, spread_names(&self.displays, self.spread)));
         }
     }
 
@@ -765,6 +756,11 @@ impl App {
             Some(renderer) => (renderer.scene(), renderer.in_transition() || self.still),
             None => (0, true),
         };
+        // The other displays decide from what was heard, before this
+        // director writes into it.
+        let heard = (!self.others.is_empty()).then(|| self.signals.clone());
+        let elsewhere: Vec<usize> = self.others.iter().map(|o| o.renderer.scene()).collect();
+        self.director.elsewhere(&elsewhere);
         let change = self.director.update(&mut self.signals, scene, busy);
         let analysis_time = work.elapsed();
 
@@ -791,6 +787,10 @@ impl App {
         let minimized = self.window.as_ref().and_then(|w| w.is_minimized()).unwrap_or(false);
         let work = Instant::now();
         let drawn = !minimized && !self.covered && renderer.render(&self.signals);
+        if let Some(heard) = &heard {
+            self.draw_others(heard);
+        }
+        let Some(renderer) = &mut self.renderer else { return };
         let draw_time = work.elapsed();
         self.pacer.frame_done(now, drawn);
         if drawn
@@ -809,7 +809,7 @@ impl App {
         if report.is_some()
             && let Some(tray) = &self.tray
         {
-            tray.set_state(tray_state(&self.director, renderer));
+            tray.set_state(tray_state(&self.director, renderer, spread_names(&self.displays, self.spread)));
         }
         if let Some(stats) = report {
             let intensity = match self.director.intensity() {
@@ -833,9 +833,10 @@ impl App {
             // Once a second: cheap enough to follow the OS setting live.
             self.still = reduced_motion();
             renderer.set_reduced_motion(self.still);
-            if let Some((_, display, _)) = &self.wallpaper {
-                self.covered = desktop_covered(*display);
+            for other in &mut self.others {
+                other.renderer.set_reduced_motion(self.still);
             }
+            self.watch = self.wallpaper.is_some();
             if let Some(window) = &self.window
                 && window.fullscreen().is_some()
                 && now - self.pointer_moved > POINTER_HIDES
@@ -908,7 +909,7 @@ impl Recorder {
 }
 
 /// What the tray's menu shows: the scene, the mode and the intensity.
-fn tray_state(director: &Director, renderer: &Renderer) -> TrayState {
+fn tray_state(director: &Director, renderer: &Renderer, (displays, display): (Vec<String>, usize)) -> TrayState {
     let mode = director.mode();
     TrayState {
         scene: title(renderer.scene_names()[renderer.scene()]),
@@ -917,7 +918,22 @@ fn tray_state(director: &Director, renderer: &Renderer) -> TrayState {
         mode: MODES.iter().position(|&m| m == mode).unwrap_or(0),
         intensities: INTENSITIES.iter().map(|i| title(i)).collect(),
         intensity: intensity_index(director.intensity()),
+        displays,
+        display,
     }
+}
+
+/// Juglar's windows: titled, with the logo from the icon build.rs puts in
+/// the program (resource 1).
+fn window_attributes() -> WindowAttributes {
+    let attributes = Window::default_attributes().with_title("Juglar");
+    #[cfg(windows)]
+    let attributes = {
+        use winit::platform::windows::{IconExtWindows, WindowAttributesExtWindows};
+        use winit::window::Icon;
+        attributes.with_window_icon(Icon::from_resource(1, None).ok()).with_taskbar_icon(Icon::from_resource(1, None).ok())
+    };
+    attributes
 }
 
 /// A name as a title: its first letter capitalized.

@@ -20,7 +20,7 @@ pub use win32::reduced_motion;
 /// controls it, and whether anything covers the desktop. Windows only for
 /// now.
 #[cfg(windows)]
-pub use win32::{ScreenRect, Tray, TrayChoice, TrayState, Wallpaper, desktop_covered};
+pub use win32::{HOTKEYS, ScreenRect, Tray, TrayChoice, TrayState, Wallpaper, desktop_covered, pointer};
 
 /// Where the messages go when the program has no console: whether they
 /// already lead somewhere, a console to show them in, or a log file; and a

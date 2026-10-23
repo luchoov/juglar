@@ -1,31 +1,38 @@
-//! An icon in the notification area, with a menu: the only way to reach
-//! Juglar while it is the wallpaper, since its window lies under the
-//! desktop icons and never gets the keyboard.
+//! An icon in the notification area, with a menu, and keys that work from
+//! anywhere (`HOTKEYS`): the ways to reach Juglar while it is the
+//! wallpaper, since its window lies under the desktop icons and never gets
+//! the keyboard.
 //!
 //! The icon talks to a hidden window of its own, created on the thread that
 //! runs the app's event loop, so its messages arrive there with everyone
-//! else's. Choices from the menu wait in a queue until the app asks.
+//! else's; so do the keys, registered to that window. Choices wait in a
+//! queue until the app asks.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
 
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, RegisterHotKey, UnregisterHotKey, VIRTUAL_KEY, VK_H, VK_I, VK_LEFT, VK_M, VK_RIGHT,
+    VK_K, VK_W,
+};
 use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CW_USEDEFAULT, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
     GetCursorPos, GetSystemMetrics, HICON, IDI_APPLICATION, IMAGE_ICON, LR_SHARED, LoadIconW, LoadImageW, MF_CHECKED, MF_DISABLED, MF_POPUP, MF_SEPARATOR, MF_STRING, MF_UNCHECKED, PostMessageW,
-    RegisterClassW, SM_CXSMICON, SM_CYSMICON, SetForegroundWindow, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, WM_APP, WM_LBUTTONUP, WM_NULL, WM_RBUTTONUP, WNDCLASSW, WS_EX_TOOLWINDOW, WS_OVERLAPPED,
+    RegisterClassW, SM_CXSMICON, SM_CYSMICON, SetForegroundWindow, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, WM_APP, WM_HOTKEY, WM_LBUTTONUP, WM_NULL, WM_RBUTTONUP, WNDCLASSW, WS_EX_TOOLWINDOW, WS_OVERLAPPED,
 };
 use windows::core::{PCWSTR, w};
 
 use crate::PlatformError;
 
-/// What the listener chose from the menu.
+/// What the listener chose from the menu, or with a key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TrayChoice {
+    PreviousScene,
     NextScene,
     /// Keep the scene showing, or let go.
     KeepScene,
@@ -33,6 +40,12 @@ pub enum TrayChoice {
     Mode(usize),
     /// One of `TrayState::intensities`, likewise.
     Intensity(usize),
+    /// One of `TrayState::displays`, likewise.
+    Displays(usize),
+    NextMode,
+    NextIntensity,
+    /// Show or hide the keys.
+    Help,
     /// Leave wallpaper mode for a window.
     Window,
     Quit,
@@ -49,7 +62,26 @@ pub struct TrayState {
     pub mode: usize,
     pub intensities: Vec<String>,
     pub intensity: usize,
+    /// How to use several displays; empty with only one.
+    pub displays: Vec<String>,
+    pub display: usize,
 }
+
+/// The keys that work from anywhere while the tray is there, with what
+/// each does. Ctrl+Alt with keys no common layout puts under AltGr (which
+/// Windows reports as Ctrl+Alt): no digits, no E or Q.
+pub const HOTKEYS: [(&str, TrayChoice); 7] = [
+    ("Ctrl+Alt+\u{2190}", TrayChoice::PreviousScene),
+    ("Ctrl+Alt+\u{2192}", TrayChoice::NextScene),
+    ("Ctrl+Alt+K", TrayChoice::KeepScene),
+    ("Ctrl+Alt+M", TrayChoice::NextMode),
+    ("Ctrl+Alt+I", TrayChoice::NextIntensity),
+    ("Ctrl+Alt+H", TrayChoice::Help),
+    ("Ctrl+Alt+W", TrayChoice::Window),
+];
+
+/// Each of `HOTKEYS`' virtual-key codes, in the same order.
+const HOTKEY_CODES: [VIRTUAL_KEY; 7] = [VK_LEFT, VK_RIGHT, VK_K, VK_M, VK_I, VK_H, VK_W];
 
 /// The icon's messages to its window.
 const ICON_MESSAGE: u32 = WM_APP + 1;
@@ -111,6 +143,12 @@ impl Tray {
                 return Err(PlatformError::new("adding the tray icon failed"));
             }
             icon.uFlags = Default::default();
+            // A key another program holds is left out; the menu still works.
+            for (n, (&code, (name, _))) in HOTKEY_CODES.iter().zip(&HOTKEYS).enumerate() {
+                if let Err(e) = RegisterHotKey(Some(window), n as i32 + 1, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, code.0.into()) {
+                    eprintln!("juglar: {name} is taken by another program ({e})");
+                }
+            }
             Ok(Self { window, icon })
         }
     }
@@ -128,8 +166,11 @@ impl Tray {
 
 impl Drop for Tray {
     fn drop(&mut self) {
-        // SAFETY: the icon and window were created by `new`.
+        // SAFETY: the icon, keys and window were created by `new`.
         unsafe {
+            for n in 0..HOTKEYS.len() {
+                let _ = UnregisterHotKey(Some(self.window), n as i32 + 1);
+            }
             let _ = Shell_NotifyIconW(NIM_DELETE, &self.icon);
             let _ = DestroyWindow(self.window);
         }
@@ -167,11 +208,18 @@ fn choice(item: usize) -> Option<TrayChoice> {
         5 => Some(TrayChoice::Quit),
         100..200 => Some(TrayChoice::Mode(item - 100)),
         200..300 => Some(TrayChoice::Intensity(item - 200)),
+        300..400 => Some(TrayChoice::Displays(item - 300)),
         _ => None,
     }
 }
 
 unsafe extern "system" fn window_proc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if message == WM_HOTKEY {
+        if let Some((_, choice)) = HOTKEYS.get(wparam.0.wrapping_sub(1)) {
+            CHOICES.with(|c| c.borrow_mut().push_back(*choice));
+        }
+        return LRESULT(0);
+    }
     if message == ICON_MESSAGE {
         let event = (lparam.0 & 0xffff) as u32;
         if event == WM_RBUTTONUP || event == WM_LBUTTONUP {
@@ -190,6 +238,7 @@ unsafe fn show_menu(window: HWND) {
     let scene = wide(&state.scene);
     let modes: Vec<Vec<u16>> = state.modes.iter().map(|m| wide(m)).collect();
     let intensities: Vec<Vec<u16>> = state.intensities.iter().map(|i| wide(i)).collect();
+    let displays: Vec<Vec<u16>> = state.displays.iter().map(|d| wide(d)).collect();
     let check = |on: bool| if on { MF_CHECKED } else { MF_UNCHECKED };
     // SAFETY: the menus are created, shown and destroyed here (a submenu
     // goes with its menu); strings are live, nul-terminated locals.
@@ -211,6 +260,14 @@ unsafe fn show_menu(window: HWND) {
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
             let _ = AppendMenuW(menu, MF_STRING | MF_POPUP, submenu.0 as usize, w!("Intensity"));
         }
+        if !displays.is_empty()
+            && let Ok(submenu) = CreatePopupMenu()
+        {
+            for (n, display) in displays.iter().enumerate() {
+                let _ = AppendMenuW(submenu, MF_STRING | check(n == state.display), 300 + n, PCWSTR(display.as_ptr()));
+            }
+            let _ = AppendMenuW(menu, MF_STRING | MF_POPUP, submenu.0 as usize, w!("Displays"));
+        }
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         let _ = AppendMenuW(menu, MF_STRING, 4, w!("Show in a window"));
         let _ = AppendMenuW(menu, MF_STRING, 5, w!("Quit Juglar"));
@@ -225,4 +282,11 @@ unsafe fn show_menu(window: HWND) {
             CHOICES.with(|c| c.borrow_mut().push_back(choice));
         }
     }
+}
+
+/// Where the mouse pointer is on the screen, in physical pixels.
+pub fn pointer() -> Option<(i32, i32)> {
+    let mut at = POINT::default();
+    // SAFETY: writes one POINT to a live local.
+    unsafe { GetCursorPos(&mut at) }.ok().map(|()| (at.x, at.y))
 }
