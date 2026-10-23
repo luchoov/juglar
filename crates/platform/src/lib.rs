@@ -22,6 +22,12 @@ pub use win32::reduced_motion;
 #[cfg(windows)]
 pub use win32::{ScreenRect, Tray, TrayChoice, TrayState, Wallpaper, desktop_covered};
 
+/// Where the messages go when the program has no console: whether they
+/// already lead somewhere, a console to show them in, or a log file; and a
+/// message box for the errors Juglar can't go on after.
+#[cfg(windows)]
+pub use win32::{alert, open_console, output_attached, send_output_to};
+
 /// Without a known OS preference, motion is allowed.
 #[cfg(not(windows))]
 pub fn reduced_motion() -> bool {

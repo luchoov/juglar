@@ -4,6 +4,13 @@
 //! `JUGLAR_FILE=song.wav`, from a WAV file played silently in step with the
 //! picture. `JUGLAR_RECORD=folder` (with a file or the demo) draws frames at
 //! a fixed rate as fast as it can and saves each one, for making videos.
+//!
+//! The release build is a Windows program, not a console one: starting it
+//! opens no console. Its messages go to a log file (see `route_output`),
+//! or to a console with `--console`.
+
+// The debug build keeps its console, for `cargo run`.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod wav;
 
@@ -42,6 +49,7 @@ const DOUBLE_CLICK: Duration = Duration::from_millis(400);
 const POINTER_HIDES: Duration = Duration::from_secs(2);
 
 fn main() {
+    route_output();
     let file = std::env::var("JUGLAR_FILE").ok();
     let source = match std::env::var("JUGLAR_DEMO") {
         _ if file.is_some() => {
@@ -52,10 +60,7 @@ fn main() {
                     println!("Playing {path} silently from {start} s.");
                     Source::File(Box::new(Playing::new(wav, start)))
                 }
-                Err(e) => {
-                    eprintln!("juglar: {e}");
-                    std::process::exit(1);
-                }
+                Err(e) => fatal(&e.to_string()),
             }
         }
         Ok(v) if v != "0" => {
@@ -65,10 +70,7 @@ fn main() {
         }
         _ => match Listening::start() {
             Ok(listening) => Source::Audio(Box::new(listening)),
-            Err(e) => {
-                eprintln!("juglar: could not capture system audio: {e}");
-                std::process::exit(1);
-            }
+            Err(e) => fatal(&format!("Could not capture system audio: {e}")),
         },
     };
 
@@ -261,6 +263,49 @@ impl Ear {
     }
 }
 
+/// Where the messages go when Juglar has no console of its own: to a
+/// console with `--console`, else into `%LOCALAPPDATA%\Juglar\juglar.log`,
+/// started over each time (the last run's is kept as `juglar.old.log`).
+/// Output already redirected, by a script for example, stays where it is.
+#[cfg(windows)]
+fn route_output() {
+    if juglar_platform::output_attached() {
+        return;
+    }
+    if std::env::args().any(|arg| arg == "--console") {
+        juglar_platform::open_console();
+        return;
+    }
+    let Some(folder) = std::env::var_os("LOCALAPPDATA").map(|dir| std::path::Path::new(&dir).join("Juglar")) else {
+        return;
+    };
+    let log = folder.join("juglar.log");
+    let _ = std::fs::create_dir_all(&folder);
+    let _ = std::fs::rename(&log, folder.join("juglar.old.log"));
+    if let Ok(file) = std::fs::File::create(&log) {
+        juglar_platform::send_output_to(file);
+        LOGGING.store(true, std::sync::atomic::Ordering::Relaxed);
+        println!("Juglar {}", env!("CARGO_PKG_VERSION"));
+    }
+}
+
+#[cfg(not(windows))]
+fn route_output() {}
+
+/// Whether the messages go only to the log file, where nobody watches.
+static LOGGING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Stops Juglar over an error it can't go on after, saying why: in the log,
+/// and in a message box when the log is the only other place it would go.
+fn fatal(why: &str) -> ! {
+    eprintln!("juglar: {why}");
+    #[cfg(windows)]
+    if LOGGING.load(std::sync::atomic::Ordering::Relaxed) {
+        juglar_platform::alert(why);
+    }
+    std::process::exit(1);
+}
+
 /// Whether to keep the picture still: the OS setting, unless
 /// `JUGLAR_REDUCED_MOTION` is set to 1 or 0 (until the settings file, M7).
 fn reduced_motion() -> bool {
@@ -349,11 +394,7 @@ impl ApplicationHandler for App {
         let size = window.inner_size();
         let renderer = match pollster::block_on(Renderer::new(window.clone(), size.width, size.height)) {
             Ok(renderer) => renderer,
-            Err(e) => {
-                eprintln!("juglar: could not start the GPU: {e}");
-                event_loop.exit();
-                return;
-            }
+            Err(e) => fatal(&format!("Could not start the GPU: {e}")),
         };
         println!("GPU: {}", renderer.adapter_name());
         self.window = Some(window);
