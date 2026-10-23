@@ -1,6 +1,11 @@
 //! Capture what the system is playing, turn it into `Signals`, and draw them
 //! in a window on the GPU. With `JUGLAR_DEMO=1` the signals come from a
-//! synthetic song instead, and nothing is captured.
+//! synthetic song instead, and nothing is captured; with
+//! `JUGLAR_FILE=song.wav`, from a WAV file played silently in step with the
+//! picture. `JUGLAR_RECORD=folder` (with a file or the demo) draws frames at
+//! a fixed rate as fast as it can and saves each one, for making videos.
+
+mod wav;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -37,7 +42,22 @@ const DOUBLE_CLICK: Duration = Duration::from_millis(400);
 const POINTER_HIDES: Duration = Duration::from_secs(2);
 
 fn main() {
+    let file = std::env::var("JUGLAR_FILE").ok();
     let source = match std::env::var("JUGLAR_DEMO") {
+        _ if file.is_some() => {
+            let path = file.unwrap_or_default();
+            let start = std::env::var("JUGLAR_FILE_START").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0);
+            match wav::read(&path) {
+                Ok(wav) => {
+                    println!("Playing {path} silently from {start} s.");
+                    Source::File(Box::new(Playing::new(wav, start)))
+                }
+                Err(e) => {
+                    eprintln!("juglar: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
         Ok(v) if v != "0" => {
             let start = std::env::var("JUGLAR_DEMO_START").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0);
             println!("Demo mode: a synthetic song, nothing is captured.");
@@ -79,6 +99,8 @@ fn main() {
         pointer_moved: Instant::now(),
         alignment: Alignment::default(),
         still: false,
+        recorder: Recorder::from_env(),
+        done: false,
     };
     if let Err(e) = event_loop.run_app(&mut app) {
         eprintln!("juglar: {e}");
@@ -91,6 +113,8 @@ enum Source {
     Audio(Box<Listening>),
     /// A synthetic song, for working on visuals in silence.
     Demo(Synthetic),
+    /// A WAV file, heard but not played.
+    File(Box<Playing>),
 }
 
 impl Source {
@@ -98,6 +122,7 @@ impl Source {
         match self {
             Source::Audio(listening) => listening.update(dt, out),
             Source::Demo(song) => song.next(dt, out),
+            Source::File(playing) => playing.update(dt, out),
         }
     }
 
@@ -105,10 +130,8 @@ impl Source {
     /// synthetic song's are known, not heard.
     fn hits(&self) -> Option<[u64; 4]> {
         match self {
-            Source::Audio(listening) => {
-                let [kick, snare, cymbals] = listening.analyzer.drum_hits();
-                Some([listening.analyzer.beats(), kick, snare, cymbals])
-            }
+            Source::Audio(listening) => Some(listening.ear.hits()),
+            Source::File(playing) => Some(playing.ear.hits()),
             Source::Demo(_) => None,
         }
     }
@@ -119,10 +142,55 @@ struct Listening {
     /// Kept alive for as long as the app runs; capture stops when dropped.
     _capture: SystemAudio,
     consumer: Consumer,
+    block: Vec<f32>,
+    ear: Ear,
+}
+
+/// A WAV file fed to the analysis as if it were playing.
+struct Playing {
+    samples: Vec<f32>,
+    sample_rate: f32,
+    /// Where in the file the next sample is, in samples.
+    position: f64,
+    ear: Ear,
+}
+
+impl Playing {
+    fn new(wav: wav::Wav, start: f32) -> Self {
+        Self {
+            sample_rate: wav.sample_rate as f32,
+            position: f64::from(start * wav.sample_rate as f32),
+            ear: Ear::new(wav.sample_rate),
+            samples: wav.samples,
+        }
+    }
+
+    /// Feeds the next `dt` seconds of the file; silence after its end.
+    fn update(&mut self, dt: f32, out: &mut Signals) {
+        let from = (self.position as usize).min(self.samples.len());
+        self.position += f64::from(dt * self.sample_rate);
+        let to = (self.position as usize).min(self.samples.len());
+        self.ear.hear(&self.samples[from..to], dt, out);
+    }
+}
+
+/// The analysis, from samples to `Signals`.
+struct Ear {
     analyzer: Analyzer,
     scope: Scope,
-    block: Vec<f32>,
     recent: Vec<f32>,
+}
+
+impl Ear {
+    fn new(sample_rate: u32) -> Self {
+        Self { analyzer: Analyzer::new(sample_rate), scope: Scope::new(sample_rate), recent: vec![0.0; FFT_SIZE] }
+    }
+
+    /// Beats, kicks, snares and cymbals heard since the start.
+    fn hits(&self) -> [u64; 4] {
+        let [kick, snare, cymbals] = self.analyzer.drum_hits();
+        [self.analyzer.beats(), kick, snare, cymbals]
+    }
 }
 
 impl Listening {
@@ -140,17 +208,22 @@ impl Listening {
         Ok(Self {
             _capture: capture,
             consumer,
-            analyzer: Analyzer::new(info.sample_rate),
-            scope: Scope::new(info.sample_rate),
             block: vec![0.0; info.sample_rate as usize],
-            recent: vec![0.0; FFT_SIZE],
+            ear: Ear::new(info.sample_rate),
         })
     }
 
     /// Drains the new audio and analyzes it.
     fn update(&mut self, dt: f32, out: &mut Signals) {
         let n = self.consumer.pop(&mut self.block);
-        self.analyzer.push(&self.block[..n]);
+        self.ear.hear(&self.block[..n], dt, out);
+    }
+}
+
+impl Ear {
+    /// Analyzes `samples`, the last `dt` seconds of sound, into `out`.
+    fn hear(&mut self, samples: &[f32], dt: f32, out: &mut Signals) {
+        self.analyzer.push(samples);
         let analysis = self.analyzer.analyze(dt);
         out.time += dt;
         out.dt = dt;
@@ -249,6 +322,9 @@ struct App {
     pointer_moved: Instant,
     /// Whether reduced motion is on, as last read (once a second).
     still: bool,
+    /// Saving frames (`JUGLAR_RECORD`), and whether it has saved them all.
+    recorder: Option<Recorder>,
+    done: bool,
 }
 
 impl ApplicationHandler for App {
@@ -288,6 +364,10 @@ impl ApplicationHandler for App {
                 None => eprintln!("juglar: no scene called {name:?}; there are {:?}", renderer.scene_names()),
             }
         }
+        // `JUGLAR_KEEP=1` keeps the first scene, as `Space` does.
+        if std::env::var("JUGLAR_KEEP").is_ok_and(|v| v != "0") {
+            self.director.hold(true);
+        }
         self.still = reduced_motion();
         renderer.set_reduced_motion(self.still);
         if self.still {
@@ -299,6 +379,9 @@ impl ApplicationHandler for App {
             Ok("relax") => self.set_mode(Mode::Relax, &mut renderer),
             Ok("lively") | Err(_) => {}
             Ok(other) => eprintln!("juglar: no mode called {other:?}; there are lively, focus and relax"),
+        }
+        if self.recorder.is_some() {
+            renderer.enable_capture();
         }
         self.renderer = Some(renderer);
         self.last_frame = Instant::now();
@@ -369,8 +452,16 @@ impl ApplicationHandler for App {
                 TrayChoice::Quit => event_loop.exit(),
             }
         }
+        if self.done {
+            event_loop.exit();
+            return;
+        }
         let Some(window) = &self.window else { return };
-        if Instant::now() >= self.pacer.next {
+        // Recording draws the next frame as soon as the last is saved.
+        if self.recorder.is_some() {
+            window.request_redraw();
+            event_loop.set_control_flow(ControlFlow::Poll);
+        } else if Instant::now() >= self.pacer.next {
             window.request_redraw();
             event_loop.set_control_flow(ControlFlow::Wait);
         } else {
@@ -520,8 +611,11 @@ impl App {
 
     fn frame(&mut self) {
         let now = Instant::now();
-        let dt = (now - self.last_frame).as_secs_f32();
+        let mut dt = (now - self.last_frame).as_secs_f32();
         self.last_frame = now;
+        if let Some(recorder) = &self.recorder {
+            dt = recorder.dt();
+        }
 
         // Signals keep updating even when nothing can be drawn, so the ring
         // buffer keeps draining and the envelopes stay current.
@@ -564,6 +658,12 @@ impl App {
         let drawn = !minimized && !self.covered && renderer.render(&self.signals);
         let draw_time = work.elapsed();
         self.pacer.frame_done(now, drawn);
+        if drawn
+            && let Some(recorder) = &mut self.recorder
+            && let Some(frame) = renderer.take_capture()
+        {
+            self.done = recorder.save(&frame);
+        }
         if let Some(ms) = renderer.take_gpu_ms() {
             self.stats.gpu_ms.push(ms);
         }
@@ -622,6 +722,48 @@ impl App {
                 window.set_title(&title);
             }
         }
+    }
+}
+
+/// Saves frames for `JUGLAR_RECORD`: a fixed rate (`JUGLAR_RECORD_FPS`, 30
+/// by default) for `JUGLAR_RECORD_SECONDS` (10), as numbered PPM images.
+struct Recorder {
+    folder: std::path::PathBuf,
+    fps: f32,
+    frames: u32,
+    saved: u32,
+}
+
+impl Recorder {
+    fn from_env() -> Option<Self> {
+        let folder = std::env::var("JUGLAR_RECORD").ok()?;
+        let number = |name: &str, default: f32| std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default);
+        let fps = number("JUGLAR_RECORD_FPS", 30.0).max(1.0);
+        let frames = (number("JUGLAR_RECORD_SECONDS", 10.0) * fps).round() as u32;
+        std::fs::create_dir_all(&folder).ok()?;
+        println!("Recording {frames} frames at {fps} fps into {folder}.");
+        Some(Self { folder: folder.into(), fps, frames, saved: 0 })
+    }
+
+    fn dt(&self) -> f32 {
+        1.0 / self.fps
+    }
+
+    /// Saves one frame; returns whether that was the last.
+    fn save(&mut self, frame: &juglar_render::Capture) -> bool {
+        use std::io::Write;
+        self.saved += 1;
+        let path = self.folder.join(format!("{:05}.ppm", self.saved));
+        let header = format!("P6\n{} {}\n255\n", frame.width, frame.height);
+        let written = std::fs::File::create(&path).and_then(|mut file| {
+            file.write_all(header.as_bytes())?;
+            file.write_all(&frame.rgb)
+        });
+        if let Err(e) = written {
+            eprintln!("juglar: {}: {e}", path.display());
+            return true;
+        }
+        self.saved >= self.frames
     }
 }
 

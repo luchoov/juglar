@@ -66,6 +66,14 @@ struct Frame {
     cymbals_history: array<vec4f, 32>,
     percussive_history: array<vec4f, 32>,
     harmonic_history: array<vec4f, 32>,
+
+    // The scene's screen effects (`Fx` in `scene/mod.rs`, applied in
+    // `composite.wgsl`): [0] = shake x, shake y, chromatic split, invert;
+    // [1] = flash, glitch, glitch seed, relief.
+    fx: array<vec4f, 2>,
+    // The heavy side of the music: x = chaos, y = impact, z = hit,
+    // w = loudness.
+    heavy: vec4f,
 }
 
 @group(0) @binding(0) var<uniform> frame: Frame;

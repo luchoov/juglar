@@ -20,7 +20,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::Signals;
 
-use super::{Character, Look, Palette, Scene, smooth3};
+use super::{Fx, Character, Look, Palette, Scene, smooth3};
 
 /// Lime, magenta, blue and mint, all the way around. Red stays under 73%.
 const PALETTE: Palette = Palette {
@@ -92,6 +92,7 @@ impl Scene for Oil {
             bloom: 0.4,
             waveform: s.waveform,
             spectrum: s.spectrum,
+            fx: Fx::NONE,
         }
     }
 }

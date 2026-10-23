@@ -29,7 +29,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
-use super::{Character, Look, Palette, Scene, smooth3};
+use super::{Fx, Character, Look, Palette, Scene, smooth3};
 
 /// Leaf green, rose, magenta, violet, blue and teal, all the way around.
 /// Chosen among looping palettes for a narrow range of brightness (linear
@@ -118,6 +118,7 @@ impl Scene for Julia {
             bloom: 0.5,
             waveform,
             spectrum: s.spectrum,
+            fx: Fx::NONE,
         }
     }
 }

@@ -25,7 +25,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::{SPECTRUM_BANDS, Signals, WAVEFORM_POINTS};
 
-use super::{Character, Look, Palette, Scene, smooth3};
+use super::{Fx, Character, Look, Palette, Scene, smooth3};
 
 /// Rose, orchid, violet, blue, aqua, green, lime and old gold, all the way
 /// around. Red stays under 70%.
@@ -122,6 +122,7 @@ impl Scene for Melt {
             bloom: 0.45,
             waveform,
             spectrum,
+            fx: Fx::NONE,
         }
     }
 }

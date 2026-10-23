@@ -22,7 +22,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::{SPECTRUM_BANDS, Signals};
 
-use super::{Character, Look, Palette, Scene, smooth3};
+use super::{Fx, Character, Look, Palette, Scene, smooth3};
 
 /// Peach gold, pink, orchid, violet, blue, teal, green and lemon, all the
 /// way around. Red stays under 59%.
@@ -105,6 +105,7 @@ impl Scene for Corona {
             bloom: 0.7,
             waveform: s.waveform,
             spectrum,
+            fx: Fx::NONE,
         }
     }
 }

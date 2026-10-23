@@ -9,6 +9,8 @@
 //    with a soft shoulder maps any amount of ink into 0..1, so dense paint
 //    glows (and turns toward white) instead of clipping into flat patches.
 // 3. Bloom: the glow computed by the chain in `bloom.rs` is added.
+// 3b. Effects (`Fx` in `scene/mod.rs`): the picture jolted, cut into
+//    shifted slices, its colors split, lit as a surface, flashed, inverted.
 // 4. Out to the present step (`present.wgsl`), in linear light, which
 //    dithers and encodes it for the screen.
 //
@@ -38,7 +40,25 @@ fn shade(position: vec2f, size: vec2f) -> vec3f {
     let hue = srgb_to_linear(palette(select(clamp(t, 0.0, 1.0), fract(t), frame.palette_wrap > 0.5)));
     // Each channel saturates on its own: faint ink shows the palette's
     // color, dense ink runs into white, like an overexposed photograph.
-    return 1.0 - exp(-hue * ink * frame.exposure);
+    let light = 1.0 - exp(-hue * ink * frame.exposure);
+    let relief = frame.fx[1].w;
+    if relief <= 0.0 {
+        return light;
+    }
+    // Relief: the ink's slope, from its neighbors in the feedback image,
+    // is a surface lit from the upper left. Thick ink becomes ridges with
+    // a dark side and a glint, like metal cooling in a mold.
+    let texel = 1.5 / vec2f(textureDimensions(feedback));
+    let left = textureSampleLevel(feedback, smooth_sampler, uv - vec2f(texel.x, 0.0), 0.0).r;
+    let right = textureSampleLevel(feedback, smooth_sampler, uv + vec2f(texel.x, 0.0), 0.0).r;
+    let up = textureSampleLevel(feedback, smooth_sampler, uv - vec2f(0.0, texel.y), 0.0).r;
+    let down = textureSampleLevel(feedback, smooth_sampler, uv + vec2f(0.0, texel.y), 0.0).r;
+    let normal = normalize(vec3f(left - right, up - down, 0.35));
+    let sun = normalize(vec3f(-0.55, -0.6, 0.6));
+    let diffuse = max(dot(normal, sun), 0.0);
+    let glint = pow(max(reflect(-sun, normal).z, 0.0), 18.0);
+    let lit = light * (0.25 + 1.3 * diffuse) + glint * (0.4 + 0.6 * light) * min(stored.x, 1.0);
+    return mix(light, lit, relief);
 }
 
 // The start of the bloom chain (`bloom.rs`), at a quarter of the window's
@@ -68,10 +88,45 @@ fn enlarge(image: texture_2d<f32>, uv: vec2f) -> vec3f {
     return 0.25 * c;
 }
 
+// Where the picture at `position` comes from once it is jolted and cut
+// into slices.
+fn displaced(position: vec2f) -> vec2f {
+    let unit = min(frame.resolution.x, frame.resolution.y);
+    var at = position - frame.fx[0].xy * unit;
+    let glitch = frame.fx[1].y;
+    if glitch > 0.0 {
+        // Slices of a few heights, each shifted sideways or not, a new
+        // pattern with every seed.
+        let seed = i32(frame.fx[1].z);
+        let rows = 7.0 + 23.0 * grid_random(vec2i(seed, 3));
+        let slice = i32(floor(at.y / frame.resolution.y * rows));
+        let chosen = grid_random(vec2i(slice, seed));
+        if chosen < glitch {
+            let shift = grid_random(vec2i(seed, slice + 101)) - 0.5;
+            at.x += shift * glitch * 0.6 * frame.resolution.x;
+        }
+    }
+    return at;
+}
+
+// The scene's light at a pixel with its colors split: red pulled outward
+// from the middle and blue inward, more toward the edges.
+fn split(position: vec2f) -> vec3f {
+    let at = displaced(position);
+    let chroma = frame.fx[0].z;
+    if chroma <= 0.0 {
+        return shade(at, frame.resolution);
+    }
+    let unit = min(frame.resolution.x, frame.resolution.y);
+    let outward = (at - 0.5 * frame.resolution) / unit;
+    let d = outward * chroma * unit * 2.0;
+    return vec3f(shade(at + d, frame.resolution).r, shade(at, frame.resolution).g, shade(at - d, frame.resolution).b);
+}
+
 // The finished picture at a pixel, before it is dithered for the screen.
 fn composite(position: vec2f) -> vec3f {
-    let uv = position / frame.resolution;
-    let light = shade(position, frame.resolution);
+    let uv = displaced(position) / frame.resolution;
+    let light = split(position);
     // The three blurs' average, as much as the scene asks for. Combined
     // like light through two slides ("screen"), so the glow brightens
     // without ever passing white.
@@ -80,7 +135,11 @@ fn composite(position: vec2f) -> vec3f {
     let lit = 1.0 - (1.0 - light) * (1.0 - glow);
     // A faint vignette keeps the eye in the middle.
     let edge = length(uv - 0.5) * 1.4;
-    let c = clamp(BACKGROUND * (1.0 - 0.5 * edge * edge) + lit, vec3f(0.0), vec3f(1.0));
+    var c = clamp(BACKGROUND * (1.0 - 0.5 * edge * edge) + lit, vec3f(0.0), vec3f(1.0));
+    // A flash: light over everything, as through a screen.
+    c = 1.0 - (1.0 - c) * (1.0 - frame.fx[1].x);
+    // The negative, as much as asked.
+    c = mix(c, 1.0 - c, frame.fx[0].w);
     return calm_look(c);
 }
 

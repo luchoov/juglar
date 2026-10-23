@@ -11,14 +11,20 @@
 
 mod corona;
 mod crystal;
+mod furnace;
+mod hammer;
 mod harmonograph;
 mod julia;
 mod kaleido;
 mod lenses;
+mod maelstrom;
 mod melt;
 mod oil;
 mod orbits;
 mod plasma;
+pub(crate) mod react;
+mod shrapnel;
+mod static_;
 mod tide;
 mod vortex;
 
@@ -43,6 +49,11 @@ pub(crate) trait Scene {
 /// Every scene, in the order the arrow keys go through them.
 pub(crate) fn all() -> Vec<Box<dyn Scene>> {
     vec![
+        Box::new(shrapnel::Shrapnel::new()),
+        Box::new(furnace::Furnace::new()),
+        Box::new(static_::Static::new()),
+        Box::new(maelstrom::Maelstrom::new()),
+        Box::new(hammer::Hammer::new()),
         Box::new(Tide::new()),
         Box::new(orbits::Orbits::new()),
         Box::new(kaleido::Kaleido::new()),
@@ -119,6 +130,43 @@ pub(crate) struct Look {
     /// slots with numbers of its own (Harmonograph: its figure).
     pub waveform: [f32; WAVEFORM_POINTS],
     pub spectrum: [f32; SPECTRUM_BANDS],
+    /// Effects on the finished picture.
+    pub fx: Fx,
+}
+
+/// Effects on the finished picture, applied in `composite.wgsl` after the
+/// palette: what MilkDrop's composite shaders do to make a hit land. All
+/// zero is the picture as it is.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Fx {
+    /// The whole picture jolted this far, in units of the window's short
+    /// side.
+    pub shake: [f32; 2],
+    /// Red and blue pulled apart from green, outward from the middle, this
+    /// far at the edges (in units of the short side): a lens torn by a hit.
+    pub chroma: f32,
+    /// How far the colors are turned to their negative, 0..1.
+    pub invert: f32,
+    /// Light added over everything, 0..1.
+    pub flash: f32,
+    /// How much of the picture is cut into horizontal slices shifted
+    /// sideways, 0..1, and which slices (any number; a new one is a new
+    /// pattern of slices).
+    pub glitch: f32,
+    pub glitch_seed: f32,
+    /// How much the ink is lit as a surface, from the side, with a glint:
+    /// molten metal instead of light. 0..1.
+    pub relief: f32,
+}
+
+impl Fx {
+    /// None at all.
+    pub const NONE: Fx = Fx { shake: [0.0; 2], chroma: 0.0, invert: 0.0, flash: 0.0, glitch: 0.0, glitch_seed: 0.0, relief: 0.0 };
+
+    /// As `Frame::fx` in `common.wgsl` reads it.
+    pub fn packed(&self) -> [[f32; 4]; 2] {
+        [[self.shake[0], self.shake[1], self.chroma, self.invert], [self.flash, self.glitch, self.glitch_seed, self.relief]]
+    }
 }
 
 #[cfg(test)]

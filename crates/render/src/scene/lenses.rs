@@ -22,7 +22,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::Signals;
 
-use super::{Character, Look, Palette, Scene, smooth3};
+use super::{Fx, Character, Look, Palette, Scene, smooth3};
 
 /// Teal, sky blue, violet, magenta and lime, all the way around. Red stays
 /// under 72%.
@@ -94,6 +94,7 @@ impl Scene for Lenses {
             bloom: 0.35,
             waveform: s.waveform,
             spectrum: s.spectrum,
+            fx: Fx::NONE,
         }
     }
 }

@@ -21,7 +21,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::Signals;
 
-use super::{Character, Look, Palette, Scene, smooth3};
+use super::{Fx, Character, Look, Palette, Scene, smooth3};
 
 /// Hot pink, lavender, aqua, teal and plum, all the way around. Red stays
 /// under 72%.
@@ -90,6 +90,7 @@ impl Scene for Plasma {
             bloom: 0.3,
             waveform: s.waveform,
             spectrum: s.spectrum,
+            fx: Fx::NONE,
         }
     }
 }

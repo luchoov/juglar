@@ -24,7 +24,7 @@ use std::f32::consts::TAU;
 
 use juglar_signals::{Signals, WAVEFORM_POINTS};
 
-use super::{Character, Look, Palette, Scene, smooth3};
+use super::{Fx, Character, Look, Palette, Scene, smooth3};
 
 /// Green, teal, sky blue, mint and olive gold, all the way around.
 const PALETTE: Palette = Palette {
@@ -149,6 +149,7 @@ impl Scene for Harmonograph {
             bloom: 0.6,
             waveform: curve,
             spectrum: s.spectrum,
+            fx: Fx::NONE,
         }
     }
 }

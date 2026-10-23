@@ -104,12 +104,22 @@ struct Uniforms {
     cymbals_history: [[f32; 4]; HISTORY / 4],
     percussive_history: [[f32; 4]; HISTORY / 4],
     harmonic_history: [[f32; 4]; HISTORY / 4],
+    /// The scene's screen effects, and chaos, impact, hit and loudness.
+    fx: [[f32; 4]; 2],
+    heavy: [f32; 4],
 }
 
 /// Frames of history the analysis view shows: about two seconds.
 const HISTORY: usize = 128;
 /// Seconds a calm mode takes to fade in or out.
 const CALM_FADE: f32 = 3.0;
+
+/// A frame read back from the screen, 8-bit RGB, rows top to bottom.
+pub struct Capture {
+    pub width: u32,
+    pub height: u32,
+    pub rgb: Vec<u8>,
+}
 
 #[derive(Debug)]
 pub struct RenderError(String);
@@ -222,6 +232,9 @@ pub struct Renderer {
     encode_srgb: bool,
     timer: Option<GpuTimer>,
     adapter: wgpu::AdapterInfo,
+    /// Whether each frame is read back (`enable_capture`), and the last.
+    capturing: bool,
+    captured: Option<Capture>,
 }
 
 impl Renderer {
@@ -406,7 +419,23 @@ impl Renderer {
             encode_srgb: !format.is_srgb(),
             timer,
             adapter: adapter.get_info(),
+            capturing: false,
+            captured: None,
         })
+    }
+
+    /// Reads every frame back from the screen from now on, for recording
+    /// (`take_capture`). It waits for the GPU each frame: only for making
+    /// videos, never while running live.
+    pub fn enable_capture(&mut self) {
+        self.capturing = true;
+        self.config.usage |= wgpu::TextureUsages::COPY_SRC;
+        self.surface.configure(&self.device, &self.config);
+    }
+
+    /// The last frame drawn, if capturing.
+    pub fn take_capture(&mut self) -> Option<Capture> {
+        self.captured.take()
     }
 
     /// The GPU in use and the graphics API spoken to it, e.g. "Intel UHD 620 (Dx12)".
@@ -665,12 +694,64 @@ impl Renderer {
         if timed && let Some(timer) = &self.timer {
             timer.resolve(&mut encoder);
         }
+        let readback = self.capturing.then(|| self.copy_out(&mut encoder, &frame.texture));
         self.queue.submit([encoder.finish()]);
         if timed && let Some(timer) = &mut self.timer {
             timer.after_submit();
         }
         self.queue.present(frame);
+        if let Some((buffer, row)) = readback {
+            self.captured = self.read_back(&buffer, row);
+        }
         true
+    }
+
+    /// Records a copy of the screen into a buffer that can be read; returns
+    /// it and its bytes per row.
+    fn copy_out(&self, encoder: &mut wgpu::CommandEncoder, screen: &wgpu::Texture) -> (wgpu::Buffer, u32) {
+        let (width, height) = (self.config.width, self.config.height);
+        let row = (width * 4).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("capture"),
+            size: u64::from(row * height),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        encoder.copy_texture_to_buffer(
+            screen.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row), rows_per_image: Some(height) },
+            },
+            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        );
+        (buffer, row)
+    }
+
+    /// Waits for the copy and turns it into RGB.
+    fn read_back(&self, buffer: &wgpu::Buffer, row: u32) -> Option<Capture> {
+        let (width, height) = (self.config.width, self.config.height);
+        let slice = buffer.slice(..);
+        let (send, receive) = mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = send.send(result);
+        });
+        self.device.poll(wgpu::PollType::wait_indefinitely()).ok()?;
+        receive.recv().ok()?.ok()?;
+        let bgr = matches!(self.config.format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
+        let data = slice.get_mapped_range().ok()?;
+        let mut rgb = Vec::with_capacity((width * height * 3) as usize);
+        for y in 0..height {
+            let line = &data[(y * row) as usize..(y * row + width * 4) as usize];
+            for pixel in line.chunks_exact(4) {
+                if bgr {
+                    rgb.extend_from_slice(&[pixel[2], pixel[1], pixel[0]]);
+                } else {
+                    rgb.extend_from_slice(&pixel[..3]);
+                }
+            }
+        }
+        Some(Capture { width, height, rgb })
     }
 
     fn uniforms(&self, s: &Signals, look: &Look, reveal: [f32; 4]) -> Uniforms {
@@ -716,6 +797,8 @@ impl Renderer {
             cymbals_history: bytemuck::cast(self.history_of(4)),
             percussive_history: bytemuck::cast(self.history_of(5)),
             harmonic_history: bytemuck::cast(self.history_of(6)),
+            fx: look.fx.packed(),
+            heavy: [s.chaos, s.impact, s.hit, s.loudness],
         }
     }
 
@@ -920,6 +1003,8 @@ mod tests {
         assert_eq!(std::mem::offset_of!(Uniforms, layers), 2416);
         assert_eq!(std::mem::offset_of!(Uniforms, kick_history), 2432);
         assert_eq!(std::mem::offset_of!(Uniforms, harmonic_history), 2432 + 4 * 32 * 16);
-        assert_eq!(size_of::<Uniforms>(), 2432 + 5 * 32 * 16);
+        assert_eq!(std::mem::offset_of!(Uniforms, fx), 2432 + 5 * 32 * 16);
+        assert_eq!(std::mem::offset_of!(Uniforms, heavy), 2432 + 5 * 32 * 16 + 32);
+        assert_eq!(size_of::<Uniforms>(), 2432 + 5 * 32 * 16 + 48);
     }
 }
