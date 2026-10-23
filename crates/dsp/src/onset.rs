@@ -29,11 +29,11 @@
 //! Confirming a peak needs the next hop, so onsets are reported 10.7 ms
 //! late, and a region can't fire again within 100 ms.
 //!
-//! **Beat.** `beat` is
-//! 1 at every onset in the low or middle region (kicks and snares, what you
-//! tap your foot to) and falls back to 0 with a time constant of 0.15 s.
-//! High-region onsets (hi-hats, often four per beat) are counted but don't
-//! make beats.
+//! **Beat.** `beat` is 1 at every onset in the low or middle region (kicks
+//! and snares, what you tap your foot to) and falls back to 0 with a time
+//! constant of 0.15 s. High-region onsets (hi-hats, often four per beat) are
+//! counted but don't make beats. The tempo is counted from the same flux
+//! (`tempo`).
 //!
 //! **Novelty.** The same band levels, averaged over the last half second and
 //! over the last four seconds. While the music keeps its character, the two

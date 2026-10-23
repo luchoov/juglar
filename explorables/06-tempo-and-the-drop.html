@@ -1,0 +1,830 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tempo and the Drop</title>
+<meta name="description" content="An interactive explanation of how Juglar counts the beat (autocorrelation of the spectral flux, a ring of phase bins), hears a build-up (tension) and catches the drop on its first kick, and what its director does with all of it.">
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #09090b; --surface: #0f0f12; --line: #1c1c21; --line-strong: #2a2a31;
+    --fg: #d4d4d8; --strong: #f4f4f5; --muted: #71717a;
+    --accent: #e4e4e7; --raw: #3a3a42;
+    --bass: #5b7fa6; --mid: #5f9488; --treble: #a39a78;
+    --code-bg: #0c0c0f;
+    --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.75 var(--mono); -webkit-font-smoothing: antialiased; }
+  main { max-width: 720px; margin: 0 auto; padding: 72px 16px 112px; }
+  header .meta { color: var(--muted); margin: 0 0 20px; }
+  h1 { font-size: 28px; line-height: 1.2; font-weight: 600; color: var(--strong); margin: 0 0 20px; letter-spacing: -0.02em; }
+  h2 { font-size: 16px; line-height: 1.4; font-weight: 600; color: var(--strong); margin: 72px 0 14px; }
+  h2 .num { color: var(--muted); font-weight: 400; margin-right: 14px; }
+  p { margin: 0 0 16px; }
+  ul { padding-left: 20px; }
+  li { margin-bottom: 8px; }
+  .lede { color: var(--muted); }
+  b, strong { color: var(--strong); font-weight: 500; }
+  em { font-style: normal; color: var(--strong); }
+  code { font: inherit; color: var(--strong); }
+  a { color: var(--strong); text-underline-offset: 3px; text-decoration-color: var(--line-strong); }
+  a:hover { text-decoration-color: var(--strong); }
+  figure { margin: 28px 0; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 2px; }
+  canvas { display: block; width: 100%; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 24px; margin-bottom: 16px; font-size: 12px; }
+  .control label { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 2px; }
+  .control label output { color: var(--fg); font-variant-numeric: tabular-nums; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 16px; background: transparent; margin: 0; }
+  input[type=range]::-webkit-slider-runnable-track { height: 1px; background: var(--line-strong); }
+  input[type=range]::-moz-range-track { height: 1px; background: var(--line-strong); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 9px; margin-top: -4px; background: var(--strong); border: 0; border-radius: 0; }
+  input[type=range]::-moz-range-thumb { width: 9px; height: 9px; background: var(--strong); border: 0; border-radius: 0; }
+  input[type=range]:focus-visible { outline: 1px solid var(--muted); outline-offset: 2px; }
+  input[type=checkbox] { accent-color: var(--strong); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; font-size: 12px; margin-bottom: 16px; color: var(--muted); }
+  .row label { display: flex; gap: 8px; align-items: center; }
+  select, button { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 2px; padding: 3px 10px; }
+  button { cursor: pointer; }
+  button:hover, select:hover { border-color: var(--muted); }
+  .readout { display: flex; flex-wrap: wrap; gap: 6px 24px; font-size: 12px; margin-top: 12px; color: var(--muted); min-height: 1.6em; }
+  .readout b { font-variant-numeric: tabular-nums; }
+  .pair { display: grid; grid-template-columns: 200px 1fr; gap: 16px; align-items: center; }
+  figcaption { font-size: 12px; line-height: 1.6; color: var(--muted); margin-top: 12px; }
+  details { margin: 16px 0; border: 1px solid var(--line); background: var(--code-bg); }
+  summary { cursor: pointer; padding: 10px 14px; font-size: 12px; color: var(--muted); }
+  summary:hover { color: var(--fg); }
+  pre { margin: 0; padding: 4px 16px 16px; overflow-x: auto; font: 12px/1.6 var(--mono); color: var(--fg); }
+  .src { font-size: 12px; color: var(--muted); padding: 0 16px 12px; margin: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 16px 0; }
+  th, td { text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 400; }
+  footer { margin-top: 88px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  @media (max-width: 520px) { h1 { font-size: 22px; } body { font-size: 13px; } .pair { grid-template-columns: 1fr; } .pair canvas#ring { max-width: 220px; margin: 0 auto; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <p class="meta">juglar / explorables / 06</p>
+  <h1>Tempo and the drop</h1>
+  <p class="lede">Explorable 04 found <em>that</em> a drum was hit. A musician also knows <em>when the next hit comes</em>, keeps counting through a bar the drums leave out, and feels a build-up pulling toward its drop. This page is about how Juglar does the same, and what its director does with it. It mirrors <code>crates/dsp/src/tempo.rs</code>, the tempo and the beat's phase, and <code>crates/director/src/feel.rs</code> and <code>schedule.rs</code>, the tension and the drop. The theory is in note 11.</p>
+</header>
+
+<h2><span class="num">01</span>Counting along: the autocorrelation</h2>
+<p>Below are sixteen seconds of drums, synthesized on this page; <b>Listen</b> plays them. Every 10.7 ms Juglar measures the spectral flux, how much energy just appeared (explorable 04). Minus its average over the last second, the flux is a train of bumps, one per hit. Now slide a copy of that train along itself: at a lag of one beat, bumps land on bumps; at half a beat, a kick lands on nothing. Multiplying the train with its slid copy and averaging, for every lag, gives the <b>autocorrelation</b>. Its peaks are the beat and its multiples.</p>
+<figure>
+  <div class="controls">
+    <div class="control"><label>Drums</label><select id="style">
+      <option value="rock" selected>rock: kick, snare, hi-hats</option>
+      <option value="house">four on the floor, with bass</option>
+      <option value="breaks">breakbeat</option>
+      <option value="fill">rock, every third bar with hi-hats only</option>
+    </select></div>
+    <div class="control"><label>Tempo <output id="bpm-out"></output></label><input type="range" id="bpm" min="70" max="180" value="100"></div>
+  </div>
+  <div class="row">
+    <button id="listen" type="button">Listen</button>
+    <label><input type="checkbox" id="opt-spread" checked> Spread each bump over three hops</label>
+    <label><input type="checkbox" id="opt-comb" checked> Add half the value at twice the lag</label>
+    <label><input type="checkbox" id="opt-prior" checked> Weight toward 120 per minute</label>
+  </div>
+  <canvas id="acf" height="300" aria-label="The flux bumps of the last six seconds, and the autocorrelation scored by tempo"></canvas>
+  <div class="readout" id="acf-readout"></div>
+  <figcaption>Top: the bumps over the last six seconds of the clip, with ticks where the hits really are. Bottom: each tempo from 60 to 190 per minute, scored by the autocorrelation at its lag (white) and weighted toward 120 (gray, dashed); the tempo picked is marked, and the tempo played is the dashed line under it. The score is shown as it stands at the end of the clip.</figcaption>
+</figure>
+<p>Three details make it count right. Switch each off and see what breaks:</p>
+<ul>
+  <li><b>Spread each bump over three hops.</b> A beat rarely lasts a whole number of hops: at 150 per minute it is 37.5. A bump one hop wide then lines up with the next one only every other beat, and twice the period wins. Set the tempo to 150 and turn it off.</li>
+  <li><b>Add half the value at twice the lag.</b> A real beat lines up again one beat later; a lag that only catches the hi-hats between beats doesn't. This pushes the score toward the beat rather than its subdivisions.</li>
+  <li><b>Weight toward 120.</b> Every tempo has a double and a half that line up too. Most music people tap along to sits within an octave of 120 per minute, so the weight picks among the peaks. It only picks: the peak it picks is then placed by the unweighted score, or a broad peak leans toward 120. On a minute of real metal, before that fix, the tempo crept from 134 to 118.</li>
+</ul>
+<p>Try the breakbeat: at 174 it reads 87, half. That is the octave many listeners tap for that style too; nothing in the sound says which is right.</p>
+<details>
+  <summary>Optional, for the curious: picking the period (<code>crates/dsp/src/tempo.rs</code>)</summary>
+<pre>fn estimate(&amp;mut self) {
+    let power = self.correlation[0];
+    if power &lt;= 1e-9 {
+        self.confidence = 0.0;
+        return;
+    }
+    let c = &amp;self.correlation;
+    let comb = |l: usize| c[l] + 0.5 * c.get(2 * l).copied().unwrap_or(0.0);
+    // The prior picks among the peaks...
+    let Some(picked) = (self.shortest..=self.longest).max_by(|&amp;a, &amp;b| {
+        (comb(a) * self.prior[a]).total_cmp(&amp;(comb(b) * self.prior[b]))
+    }) else {
+        return;
+    };
+    // ...but doesn't move the one it picked: weighted, a broad peak
+    // leans toward 120 per minute, and over a minute of real music the
+    // tempo crept from 134 to 118.
+    let best = (picked.saturating_sub(2).max(self.shortest)..=(picked + 2).min(self.longest))
+        .max_by(|&amp;a, &amp;b| comb(a).total_cmp(&amp;comb(b)))
+        .unwrap_or(picked);
+    // Between hops: the peak of a parabola through the best lag and
+    // its neighbors.
+    let (left, middle, right) = (comb(best - 1), comb(best), comb(best + 1));
+    let curve = left - 2.0 * middle + right;
+    let shift = if curve &lt; 0.0 { (0.5 * (left - right) / curve).clamp(-0.5, 0.5) } else { 0.0 };
+    let found = best as f32 + shift;
+    self.confidence = (c[best] / power).clamp(0.0, 1.0);
+
+    if self.period == 0.0 || (found / self.period - 1.0).abs() &lt; SAME_PERIOD {
+        self.period = if self.period == 0.0 { found } else { self.period + (found - self.period) * REFINE };
+        self.challenger = None;
+        return;
+    }
+    // A different period: it must keep winning.
+    self.challenger = match self.challenger {
+        Some((period, held)) if (found / period - 1.0).abs() &lt; SAME_PERIOD =&gt; Some((found, held + ESTIMATE_SECONDS)),
+        _ =&gt; Some((found, 0.0)),
+    };
+    if let Some((period, held)) = self.challenger
+        &amp;&amp; held &gt;= SWITCH_SECONDS
+    {
+        // Keep the counter's position in the beat, so the phase doesn't
+        // jump more than the new period makes it.
+        self.period = period;
+        self.challenger = None;
+    }
+}</pre>
+  <p class="src">The JavaScript on this page runs the same steps with the same constants.</p>
+</details>
+
+<h2><span class="num">02</span>Where the beat falls</h2>
+<p>The period says how often; the beat also has a <b>phase</b>, where it falls. Juglar runs a counter at the period, going once round a circle per beat. Each hop's flux is added into one of 48 bins around the circle, wherever the counter is, and older additions fade over four seconds. Wherever in the beat the music hits, a bump grows in the ring, and that is where the beat is. The ring's center of mass (of the squared bins, so the beat outweighs the hi-hats between beats) says where; <code>beat_phase</code> is 0 there and rises to 1 just before the next beat.</p>
+<figure>
+  <div class="row">
+    <button id="play" type="button">Play</button>
+    <button id="listen-ring" type="button">Play with sound</button>
+    <span id="clock"></span>
+  </div>
+  <div class="pair">
+    <canvas id="ring" aria-label="The ring of phase bins, the counter and where the beat is"></canvas>
+    <canvas id="timeline" height="160" aria-label="The last four seconds: hits, detected beats and counted beats"></canvas>
+  </div>
+  <figcaption>Left: the ring. Bars are the 48 bins; the thin hand is the counter; the short mark outside is where the beat is. Right, over the last four seconds: the hits in the clip (kicks and snares tall, hi-hats short), the beats the detector found, and the beats the count puts down (each time the phase wraps).</figcaption>
+</figure>
+<p>Choose <b>rock, every third bar with hi-hats only</b> above and play: through the bar with no kick and no snare, the detector finds nothing, and the count carries on, on time. That is what lets Juglar land a change on a beat the music leaves out, or that the detector misses in a dense mix. Played through the speakers and captured like any music, a 100 per minute rock pattern and a 128 per minute four on the floor were counted at their tempo every second after the first few, with every detected beat within a tenth of a beat of the count.</p>
+
+<h2><span class="num">03</span>A build-up: tension</h2>
+<p>Dance music builds tension before a <b>drop</b>: for eight or sixteen bars a riser climbs, hi-hats get louder, a snare roll speeds up, and the kick and the bass line are held back. Then everything comes in at once. Here are thirty seconds of it at 128 per minute: four bars of groove, eight of build-up, four of drop.</p>
+<figure>
+  <div class="row">
+    <button id="listen-build" type="button">Listen</button>
+    <label>Kick in the build-up <select id="opt-kick"><option value="0" selected>none</option><option value="0.3">soft, every other beat</option><option value="0.7">as hard as the drop's</option></select></label>
+    <label><input type="checkbox" id="opt-deep" checked> Deep bass only, under 120 Hz</label>
+  </div>
+  <canvas id="tension" height="360" aria-label="Treble, deep bass, tension and novelty over the build-up and drop"></canvas>
+  <div class="readout" id="tension-readout"></div>
+  <figcaption>Over the thirty seconds, with the build-up shaded: the treble followed over one second (white) and six (gray); the deep bass (or, with the box unticked, the analysis' <code>bass</code> level) the same way; the <b>tension</b>, with the 0.4 mark above which it counts as a build-up; and the analysis' novelty (explorable 04), with its 0.5 mark. The dashed line is the drop.</figcaption>
+</figure>
+<p>Tension is the treble outgrowing the deep bass: the treble's one-second average above its six-second average, less however much the deep bass's does the same, scaled so that 0.06 is full. It rises over about two seconds and lets go in a third of one, when the bass comes in.</p>
+<p>Untick <b>deep bass only</b> to use the analysis' <code>bass</code> level instead, everything up to 250 Hz, where a snare's body is: the snare roll speeding up then counts as bass coming in. Here the tension lets go when the roll speeds up, about seven seconds before the drop, just as it did in that first version played through the speakers. And look at the novelty: it crosses its mark during the build-up and stays high, so at the drop it has nothing left to jump with. The drop can't be one of novelty's moments; it needs its own.</p>
+<details>
+  <summary>Optional, for the curious: tension and punch (<code>crates/director/src/feel.rs</code>)</summary>
+<pre>let deep = s.spectrum[..DEEP_BANDS].iter().sum::&lt;f32&gt;() / DEEP_BANDS as f32;
+let [deep_fast, deep_slow] = &amp;mut self.deep;
+follow(deep_fast, deep, BUILD_FAST);
+follow(deep_slow, deep, BUILD_SLOW);
+let middle = s.spectrum[MIDDLE_BANDS].iter().sum::&lt;f32&gt;() / MIDDLE_BANDS.len() as f32;
+follow(&amp;mut self.middle, middle, BUILD_SLOW);
+self.feel.punch = (deep - self.deep[1] - 0.5 * (middle - self.middle).max(0.0)).clamp(-1.0, 1.0);
+let building = (self.treble[0] - self.treble[1]) - (self.deep[0] - self.deep[1]).max(0.0);
+let target = if self.feel.sounding { (building / BUILD_FULL).clamp(0.0, 1.0) } else { 0.0 };
+let seconds = if target &gt; self.feel.tension { TENSION_RISE } else { TENSION_FALL };
+follow(&amp;mut self.feel.tension, target, seconds);</pre>
+</details>
+
+<h2><span class="num">04</span>The drop, on its first kick</h2>
+<p>The drop is the deep bass hitting hard while the music is building up, or just as it lets go. <b>Punch</b> is how much harder the deep bass hits now than over the last six seconds. A snare has deep bass too (it is noise), but it jumps as much in the middle; a kick barely touches the middle. So half of the middle's jump is taken off. And since some build-ups keep a kick, the drop must also hit harder than 1.25 times the build-up's hardest hit from half a second to four seconds before.</p>
+<figure>
+  <div class="row">
+    <label><input type="checkbox" id="opt-middle" checked> Take off half the middle's jump</label>
+    <label><input type="checkbox" id="opt-over" checked> Hit harder than the build-up's own hits</label>
+  </div>
+  <canvas id="punch" height="170" aria-label="Punch and the threshold it must cross, with drops found"></canvas>
+  <div class="readout" id="punch-readout"></div>
+  <figcaption>Punch (white) and what it must cross to be the drop (gray: 0.3, or more after hits in the build-up). Marks below are where a drop is found: while the tension is above 0.4, or within 1.5 s after. The dashed line is the real drop. The other options above (kick, deep bass) apply here too.</figcaption>
+</figure>
+<p>With no kick in the build-up there is one drop, on the first kick of the real one: the snare roll's hits reach 0.13 here, the drop's first kick 0.66 (played through the speakers, 0.13 and 0.62). Untick <b>take off the middle's jump</b> and the snare roll's hits rise to 0.18: still under 0.3, but less margin. Choose a <b>soft</b> kick in the build-up and untick <b>hit harder than the build-up's own hits</b>: each of its kicks is a drop. Tick it again and only the real drop is.</p>
+<p>Now choose a kick <b>as hard as the drop's</b>. The drop doesn't hit harder than the build-up did, and no drop is found: the change then waits for one of the ordinary moments after the tension lets go, and comes half a second to a beat late, as before tension existed. Even the soft kick is close: the analysis levels the spectrum to its loudest band, so with nothing else in the low end a quiet kick looks almost as big as a loud one (0.41 in the build-up against 0.49 at the drop). Build-ups that keep their kick are the rule's weak spot.</p>
+
+<h2><span class="num">05</span>What the director does with it</h2>
+<p>All of this feeds the <b>director</b> (<code>crates/director</code>), which decides how lively the picture is and when, to what and how it changes scene. It waits for a <b>moment</b>: the analysis' novelty jumping, the feel of the music (pulse, brightness, swell) shifting against six seconds earlier, or a drop. Each scene shows at least 30 s and at most 100 s; a drop may come after 15. A change lands on a beat, detected or counted. Then it listens for half a second to tell what kind of moment it was, except for a drop, which the build-up already announced. So a drop's change lands on its first beat; before tension, it came half a second to a beat late.</p>
+<table>
+  <tr><th>Moment</th><th>Transition</th></tr>
+  <tr><td>a drop the build-up announced</td><td>bloom from the middle, 1.5 s</td></tr>
+  <tr><td>the music grew suddenly</td><td>bloom, 2.5 s, pushed on by beats</td></tr>
+  <tr><td>it thinned out</td><td>iris, the old scene closing, 4 s</td></tr>
+  <tr><td>it changed otherwise, or nothing happened for 100 s</td><td>spiral, 3 s</td></tr>
+  <tr><td>anything, in quiet music</td><td>seep through soft patches, 6 s</td></tr>
+</table>
+<p>During a build-up, the director changes nothing: other moments are part of it, and a change due by time waits for the drop, at most 30 s more. The new scene is the one whose character (how lively it looks, how much it moves with beats) is closest to the music's, avoiding the last four shown. In the calm modes, focus and relax, scenes stay for minutes and every change is a slow seep.</p>
+<details>
+  <summary>Optional, for the curious: the drop as a moment (<code>crates/director/src/schedule.rs</code>)</summary>
+<pre>// Compared with the build-up's punches from half a second ago and
+// earlier: the last two slots may hold this same kick's attack.
+let before = self.punches[2..].iter().copied().fold(0.0, f32::max);
+let needed = DROP_PUNCH.max(DROP_OVER_BUILD * before);
+let punched = feel.punch &gt; needed &amp;&amp; self.last_punch &lt;= needed;
+self.last_punch = feel.punch;
+self.punch_slot += dt;
+if self.punch_slot &gt;= PUNCH_SLOT {
+    self.punch_slot = 0.0;
+    self.punches.rotate_right(1);
+    self.punches[0] = 0.0;
+}
+self.punches[0] = self.punches[0].max(feel.punch);
+if punched &amp;&amp; self.since_tense &lt;= DROP_WINDOW &amp;&amp; feel.sounding {
+    // The build-up already said what this is.
+    self.remembered = Some((Moment::Drop, 0.0));
+    self.listening = None;
+} else if (jumped || shifted) &amp;&amp; feel.sounding &amp;&amp; self.listening.is_none() &amp;&amp; !building {
+    self.listening = Some((self.steady, 0.0));
+}</pre>
+</details>
+<p>Not done yet: bars and downbeats (a drop usually lands on the first beat of a bar, eight or sixteen bars after the build-up starts), and recognizing that a section repeats. On real music the tempo was only checked against chance and for steadiness, and the drop only on synthesized build-ups: the music at hand while it was built had none.</p>
+
+<footer>
+  Part of <b>Juglar</b>, a music visualizer that listens like a musician. The JavaScript here mirrors <code>crates/dsp/src/onset.rs</code> and <code>tempo.rs</code>, the analyzer's spectrum, and <code>crates/director/src/feel.rs</code> and <code>schedule.rs</code>; the theory is in <code>docs/theory/11-tempo-and-the-director.md</code>. Previous: <a href="05-warps-and-fractals.html">05, warps and fractals</a>.
+</footer>
+</main>
+
+<script>
+"use strict";
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const TAU = 2 * Math.PI;
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const $ = (id) => document.getElementById(id);
+
+function setup(canvas, aspect) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas._h = canvas._h || canvas.height;
+  const w = canvas.clientWidth, h = aspect ? Math.round(w * aspect) : canvas._h;
+  canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); canvas.style.height = h + "px";
+  const ctx = canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+function label(ctx, text, x, y, align = "left", color = css("--muted")) {
+  ctx.fillStyle = color; ctx.font = "10px " + css("--mono"); ctx.textAlign = align; ctx.fillText(text, x, y);
+}
+function trace(ctx, values, x0, y0, w, h, lo, hi, color, width = 1, dash = []) {
+  ctx.strokeStyle = color; ctx.lineWidth = width; ctx.setLineDash(dash); ctx.beginPath();
+  for (let i = 0; i < values.length; i++) {
+    const x = x0 + (i / (values.length - 1)) * w, y = y0 + h - clamp((values[i] - lo) / (hi - lo), 0, 1) * h;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+}
+function hline(ctx, x0, w, y, color, dash = [3, 3]) {
+  ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash(dash); ctx.beginPath(); ctx.moveTo(x0, y + 0.5); ctx.lineTo(x0 + w, y + 0.5); ctx.stroke(); ctx.setLineDash([]);
+}
+function vline(ctx, x, y0, h, color, dash = [3, 3]) {
+  ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash(dash); ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, y0); ctx.lineTo(Math.round(x) + 0.5, y0 + h); ctx.stroke(); ctx.setLineDash([]);
+}
+// Seeded noise in -1..1 (xorshift32), so every redraw hears the same clip.
+function noiseSource(seed) {
+  let s = seed >>> 0 || 1;
+  return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 2147483648 - 1; };
+}
+
+// ---------- An FFT (radix 2, in place), as crates/dsp/src/fft.rs ----------
+function makeFft(n) {
+  const levels = Math.log2(n), rev = new Uint32Array(n), cos = new Float64Array(n / 2), sin = new Float64Array(n / 2);
+  for (let i = 0; i < n; i++) { let r = 0; for (let b = 0; b < levels; b++) r |= ((i >> b) & 1) << (levels - 1 - b); rev[i] = r; }
+  for (let i = 0; i < n / 2; i++) { cos[i] = Math.cos(TAU * i / n); sin[i] = -Math.sin(TAU * i / n); }
+  return (re, im) => {
+    for (let i = 0; i < n; i++) { const j = rev[i]; if (j > i) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; } }
+    for (let size = 2; size <= n; size *= 2) {
+      const half = size / 2, step = n / size;
+      for (let start = 0; start < n; start += size) for (let k = 0; k < half; k++) {
+        const c = cos[k * step], s = sin[k * step], a = start + k, b = a + half;
+        const tr = re[b] * c - im[b] * s, ti = re[b] * s + im[b] * c;
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+      }
+    }
+  };
+}
+function hann(n) { const w = new Float64Array(n); for (let i = 0; i < n; i++) w[i] = 0.5 - 0.5 * Math.cos(TAU * i / n); return w; }
+
+// ---------- The onset detector, as onset.rs (see explorable 04) ----------
+const RATE = 48000, SIZE = 1024, HOP = SIZE / 2, HOP_SECONDS = HOP / RATE;
+const REGION_BANDS = [[[40, 250], 4], [[250, 4000], 12], [[4000, 16000], 8]];
+const MIN_BINS = 4, RANGE_DB = 45, SILENCE_DB = -100, PEAK_FALL_DB_PER_S = 3, NOISE_DB = 6;
+const THRESHOLD_SECONDS = 1, THRESHOLD_SPREAD = 3, NOISE_RISE = [0.56, 0.83], THRESHOLD_FLOOR = 4.8, REFRACTORY = 0.1;
+const NOVELTY_SHORT = 0.5, NOVELTY_LONG = 4, NOVELTY_DB = [2.5, 6], NOVELTY_RANGE_DB = 30;
+const BEAT_REGIONS = [true, true, false];
+// How much each region's flux counts toward the tempo (onset.rs).
+const TEMPO_WEIGHTS = [1, 1, 0.5];
+const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+function hzToBins(low, high, size) {
+  const binHz = RATE / size, nyquist = size / 2;
+  const start = clamp(Math.round(low / binHz), 1, nyquist - 1);
+  return { start, end: clamp(Math.round(high / binHz), start + 1, nyquist) };
+}
+function logBands([low, high], count, size) {
+  return Array.from({ length: count }, (_, i) => hzToBins(low * Math.pow(high / low, i / count), low * Math.pow(high / low, (i + 1) / count), size));
+}
+function merged(bands) {
+  const out = [];
+  for (const band of bands) {
+    const last = out[out.length - 1];
+    if (last && last.end - last.start < MIN_BINS) last.end = Math.max(last.end, band.end); else out.push({ ...band });
+  }
+  if (out.length > 1 && out[out.length - 1].end - out[out.length - 1].start < MIN_BINS) { const last = out.pop(); out[out.length - 1].end = last.end; }
+  return out;
+}
+
+// Per hop: the tempo's flux (regions weighted), novelty, and the beats found.
+function detect(samples) {
+  const window = hann(SIZE);
+  let sumSq = 0; for (const w of window) sumSq += w * w;
+  const powerScale = 2 / (SIZE * sumSq), fft = makeFft(SIZE);
+  const bands = [], regions = [];
+  for (const [hz, count] of REGION_BANDS) {
+    const first = bands.length; bands.push(...merged(logBands(hz, count, SIZE))); const end = bands.length;
+    regions.push({ first, end, past: new Float64Array(Math.round(THRESHOLD_SECONDS / HOP_SECONDS)), write: 0, recent: [0, 0, 0],
+      floor: NOISE_RISE[0] + THRESHOLD_FLOOR * NOISE_RISE[1] / Math.sqrt(end - first), since: null });
+  }
+  const n = bands.length, scales = bands.map((b) => Math.sqrt(b.end - b.start) / NOISE_DB);
+  const previous = [new Float64Array(n).fill(SILENCE_DB), new Float64Array(n).fill(SILENCE_DB)];
+  const short = new Float64Array(n).fill(SILENCE_DB), long = new Float64Array(n).fill(SILENCE_DB), rises = new Float64Array(n);
+  const re = new Float64Array(SIZE), im = new Float64Array(SIZE);
+  const out = { strength: [], novelty: [], beats: [] };
+  let peak = SILENCE_DB, sinceBeat = null;
+  const kShort = 1 - Math.exp(-HOP_SECONDS / NOVELTY_SHORT), kLong = 1 - Math.exp(-HOP_SECONDS / NOVELTY_LONG);
+  const refractory = REFRACTORY - HOP_SECONDS;
+  for (let hop = 0; (hop + 1) * HOP <= samples.length; hop++) {
+    const start = (hop - 1) * HOP;
+    for (let i = 0; i < SIZE; i++) { re[i] = (start + i < 0 ? 0 : samples[start + i]) * window[i]; im[i] = 0; }
+    fft(re, im);
+    for (let b = 0; b < n; b++) {
+      let power = 0;
+      for (let k = bands[b].start; k < bands[b].end; k++) power += re[k] * re[k] + im[k] * im[k];
+      rises[b] = 10 * Math.log10(Math.max(power * powerScale, 1e-12));
+    }
+    const loudest = Math.max(SILENCE_DB, ...rises);
+    const waking = peak <= SILENCE_DB && loudest > SILENCE_DB;
+    peak = Math.max(loudest, peak - PEAK_FALL_DB_PER_S * HOP_SECONDS);
+    const floor = Math.max(peak - RANGE_DB, SILENCE_DB), audible = Math.max(peak - NOVELTY_RANGE_DB, SILENCE_DB);
+    let difference = 0;
+    for (let b = 0; b < n; b++) {
+      const level = Math.max(rises[b], floor);
+      rises[b] = Math.max(level - previous[1][b], 0) * scales[b];
+      previous[1][b] = previous[0][b]; previous[0][b] = level;
+      if (waking) { short[b] = level; long[b] = level; }
+      short[b] += (level - short[b]) * kShort; long[b] += (level - long[b]) * kLong;
+      difference += (Math.max(short[b], audible) - Math.max(long[b], audible)) ** 2;
+    }
+    out.novelty.push(smoothstep(NOVELTY_DB[0], NOVELTY_DB[1], Math.sqrt(difference / n)));
+    let beat = false, strength = 0;
+    for (const [r, region] of regions.entries()) {
+      let flux = 0;
+      for (let b = region.first; b < region.end; b++) flux += rises[b];
+      flux /= Math.max(region.end - region.first, 1);
+      strength += TEMPO_WEIGHTS[r] * flux;
+      const past = region.past, len = past.length;
+      let mean = 0; for (const f of past) mean += f; mean /= len;
+      let dev = 0; for (const f of past) dev += Math.abs(f - mean); dev /= len;
+      const threshold = Math.max(mean + THRESHOLD_SPREAD * dev, region.floor);
+      past[region.write] = flux; region.write = (region.write + 1) % len;
+      region.recent = [region.recent[1], region.recent[2], flux];
+      if (region.since !== null) region.since += HOP_SECONDS;
+      const [before, candidate, after] = region.recent;
+      if (candidate > before && candidate >= after && candidate > threshold && (region.since === null || region.since >= refractory)) {
+        region.since = HOP_SECONDS; beat ||= BEAT_REGIONS[r];
+      }
+    }
+    out.strength.push(strength);
+    if (sinceBeat !== null) sinceBeat += HOP_SECONDS;
+    if (beat && (sinceBeat === null || sinceBeat >= refractory)) { sinceBeat = HOP_SECONDS; out.beats.push(hop * HOP_SECONDS); }
+  }
+  return out;
+}
+
+// ---------- The tempo: same steps and constants as tempo.rs ----------
+const SLOWEST_BPM = 60, FASTEST_BPM = 190, LIKELIEST_BPM = 120, SPREAD_OCTAVES = 1;
+const MEMORY_SECONDS = 6, MEAN_SECONDS = 1, ESTIMATE_SECONDS = 0.25, SAME_PERIOD = 0.05, SWITCH_SECONDS = 2, REFINE = 0.3;
+const PHASE_BINS = 48, PHASE_SECONDS = 4, CONFIDENT = 0.15;
+
+function makeTempo(opt) {
+  const lagOf = (bpm) => 60 / bpm / HOP_SECONDS;
+  const longest = Math.ceil(lagOf(SLOWEST_BPM)), shortest = Math.floor(lagOf(FASTEST_BPM)), n = 2 * longest + 1;
+  const prior = new Float64Array(n);
+  for (let l = 1; l < n; l++) { const octaves = Math.log2(60 / (l * HOP_SECONDS) / LIKELIEST_BPM) / SPREAD_OCTAVES; prior[l] = Math.exp(-0.5 * octaves * octaves); }
+  const past = new Float64Array(n), corr = new Float64Array(n), ring = new Float64Array(PHASE_BINS);
+  let write = 0, bumps = [0, 0], mean = 0, since = 0, period = 0, challenger = null, confidence = 0, counter = 0, offset = 0;
+  const follow = (seconds) => 1 - Math.exp(-HOP_SECONDS / seconds);
+  const comb = (l) => corr[l] + (opt.comb ? 0.5 * (2 * l < n ? corr[2 * l] : 0) : 0);
+  const weight = (l) => opt.prior ? prior[l] : 1;
+  function estimate() {
+    const power = corr[0];
+    if (power <= 1e-9) { confidence = 0; return; }
+    // The prior picks among the peaks, but doesn't move the one it picked.
+    let picked = shortest;
+    for (let l = shortest; l <= longest; l++) if (comb(l) * weight(l) >= comb(picked) * weight(picked)) picked = l;
+    let best = Math.max(picked - 2, shortest);
+    for (let l = best; l <= Math.min(picked + 2, longest); l++) if (comb(l) >= comb(best)) best = l;
+    const left = comb(best - 1), middle = comb(best), right = comb(best + 1);
+    const curve = left - 2 * middle + right;
+    const shift = curve < 0 ? clamp(0.5 * (left - right) / curve, -0.5, 0.5) : 0;
+    const found = best + shift;
+    confidence = clamp(corr[best] / power, 0, 1);
+    if (period === 0 || Math.abs(found / period - 1) < SAME_PERIOD) {
+      period = period === 0 ? found : period + (found - period) * REFINE; challenger = null; return;
+    }
+    challenger = challenger && Math.abs(found / challenger[0] - 1) < SAME_PERIOD ? [found, challenger[1] + ESTIMATE_SECONDS] : [found, 0];
+    if (challenger[1] >= SWITCH_SECONDS) { period = challenger[0]; challenger = null; }
+  }
+  function hop(flux) {
+    mean += (flux - mean) * follow(MEAN_SECONDS);
+    const bump = Math.max(flux - mean, 0);
+    const spread = opt.spread ? 0.25 * bump + 0.5 * bumps[0] + 0.25 * bumps[1] : bump;
+    bumps = [bump, bumps[0]];
+    past[write] = spread;
+    const memory = follow(MEMORY_SECONDS);
+    for (let l = 0; l < n; l++) corr[l] += (spread * past[(write + n - l) % n] - corr[l]) * memory;
+    write = (write + 1) % n;
+    since += HOP_SECONDS;
+    if (since >= ESTIMATE_SECONDS) { since = 0; estimate(); }
+    if (period > 0) {
+      counter = (counter + 1 / period) % 1;
+      const fade = Math.exp(-HOP_SECONDS / PHASE_SECONDS);
+      for (let i = 0; i < PHASE_BINS; i++) ring[i] *= fade;
+      ring[Math.floor(counter * PHASE_BINS) % PHASE_BINS] += bump;
+      let x = 0, y = 0;
+      for (let i = 0; i < PHASE_BINS; i++) { const a = TAU * (i + 0.5) / PHASE_BINS; x += ring[i] * ring[i] * Math.cos(a); y += ring[i] * ring[i] * Math.sin(a); }
+      if (x !== 0 || y !== 0) offset = ((Math.atan2(y, x) / TAU) % 1 + 1) % 1;
+    }
+    return bump;
+  }
+  const bpm = () => period > 0 && confidence >= CONFIDENT ? 60 / (period * HOP_SECONDS) : 0;
+  const phase = () => bpm() > 0 ? ((counter - offset) % 1 + 1) % 1 : 0;
+  return { hop, bpm, phase, confidence: () => confidence, counter: () => counter, offset: () => offset, ring, prior, shortest, longest, comb, weight, lagOf };
+}
+
+// ---------- Drums, synthesized ----------
+// Hi-hats: noise differenced three times (only highs remain). Snares: noise
+// and a 190 Hz tone. Kicks: a tone falling from 120 to 50 Hz. Claps: noise.
+function render(seconds, events, extra) {
+  const out = new Float32Array(Math.round(seconds * RATE)), noise = noiseSource(7);
+  if (extra) extra(out, noise);
+  for (const { kind, t, gain = 1 } of events) {
+    const start = Math.round(t * RATE);
+    let a = 0, b = 0, c = 0, phase = 0;
+    for (let k = 0; k < RATE * 0.3 && start + k < out.length; k++) {
+      const u = k / RATE;
+      if (kind === "kick") { phase += TAU * (50 + 70 * Math.exp(-u / 0.03)) / RATE; out[start + k] += gain * 0.8 * Math.sin(phase) * Math.exp(-u / 0.12); }
+      else if (kind === "snare") out[start + k] += gain * (0.35 * noise() + 0.25 * Math.sin(TAU * 190 * u)) * Math.exp(-u / 0.06);
+      else if (kind === "clap") out[start + k] += gain * 0.3 * noise() * Math.exp(-u / 0.04);
+      else if (kind === "bass") out[start + k] += gain * 0.3 * Math.sin(TAU * 55 * u) * Math.exp(-u / 0.15);
+      else { const x = noise(), d1 = x - a, d2 = d1 - b, d3 = d2 - c; a = x; b = d1; c = d2; out[start + k] += gain * 0.08 * d3 * Math.exp(-u / 0.012); }
+    }
+  }
+  let peak = 0; for (const s of out) peak = Math.max(peak, Math.abs(s));
+  for (let i = 0; i < out.length; i++) out[i] *= 0.8 / Math.max(peak, 1e-6);
+  return out;
+}
+
+const LOOP_SECONDS = 16;
+function loopEvents(style, bpm) {
+  const beat = 60 / bpm, events = [];
+  for (let bar = 0; bar * 4 * beat < LOOP_SECONDS; bar++) {
+    const t0 = 0.25 + bar * 4 * beat, at = (k) => t0 + k * beat;
+    const silent = style === "fill" && bar % 3 === 2;
+    if (style === "house") {
+      for (let k = 0; k < 4; k++) { events.push({ kind: "kick", t: at(k) }, { kind: "hat", t: at(k + 0.5), gain: 1.5 }, { kind: "bass", t: at(k + 0.5) }); }
+      events.push({ kind: "clap", t: at(1) }, { kind: "clap", t: at(3) });
+    } else {
+      const kicks = style === "breaks" ? [0, 2.5] : [0, 2];
+      if (!silent) for (const k of kicks) events.push({ kind: "kick", t: at(k) });
+      if (!silent) for (const k of [1, 3]) events.push({ kind: "snare", t: at(k) });
+      for (let k = 0; k < 8; k++) events.push({ kind: "hat", t: at(k / 2) });
+    }
+  }
+  return events.filter((e) => e.t < LOOP_SECONDS - 0.3);
+}
+
+// ---------- 01 and 02: the loop, its tempo and its phase ----------
+let loop = null;
+function options() { return { spread: $("opt-spread").checked, comb: $("opt-comb").checked, prior: $("opt-prior").checked }; }
+function updateLoop() {
+  const style = $("style").value, bpm = +$("bpm").value;
+  $("bpm-out").textContent = bpm + " per minute";
+  const events = loopEvents(style, bpm), samples = render(LOOP_SECONDS, events);
+  loop = { style, bpm, events, samples, found: detect(samples) };
+  updateTempo();
+}
+function updateTempo() {
+  const tempo = makeTempo(options()), hops = loop.found.strength.length;
+  const bumps = new Float64Array(hops), phase = new Float64Array(hops), bpm = new Float64Array(hops);
+  const counter = new Float64Array(hops), offset = new Float64Array(hops), rings = new Float32Array(hops * PHASE_BINS);
+  for (let h = 0; h < hops; h++) {
+    bumps[h] = tempo.hop(loop.found.strength[h]);
+    phase[h] = tempo.phase(); bpm[h] = tempo.bpm(); counter[h] = tempo.counter(); offset[h] = tempo.offset();
+    rings.set(tempo.ring, h * PHASE_BINS);
+  }
+  // Counted beats: where the phase wraps.
+  const counted = [];
+  for (let h = 1; h < hops; h++) if (bpm[h] > 0 && phase[h] < phase[h - 1] - 0.5) counted.push(h * HOP_SECONDS);
+  loop.tempo = tempo; loop.track = { bumps, phase, bpm, counter, offset, rings, counted };
+  drawAcf(); drawRing();
+}
+
+function drawAcf() {
+  const { ctx, w, h } = setup($("acf"));
+  const { tempo, track, events } = loop, hops = track.bumps.length;
+  // Top: the last six seconds of bumps.
+  const show = Math.round(6 / HOP_SECONDS), first = hops - show, top = 14, th = 90;
+  label(ctx, "flux above its mean, last 6 s", 0, 10);
+  let max = 1e-6; for (let i = first; i < hops; i++) max = Math.max(max, track.bumps[i]);
+  ctx.fillStyle = css("--fg");
+  for (let i = first; i < hops; i++) { const x = (i - first) / show * w, y = th * track.bumps[i] / max; ctx.fillRect(x, top + th - y, Math.max(1, w / show), y); }
+  for (const e of events) {
+    const t = e.t - first * HOP_SECONDS;
+    if (t < 0) continue;
+    const big = e.kind === "kick" || e.kind === "snare";
+    ctx.fillStyle = big ? css("--muted") : css("--raw");
+    ctx.fillRect(t / 6 * w, top + th + 4, 1, big ? 8 : 4);
+  }
+  // Bottom: score by tempo.
+  const y0 = top + th + 34, bh = h - y0 - 18;
+  const xOf = (bpm) => (Math.log(bpm / SLOWEST_BPM) / Math.log(FASTEST_BPM / SLOWEST_BPM)) * w;
+  const lags = []; for (let l = tempo.shortest; l <= tempo.longest; l++) lags.push(l);
+  let top1 = 1e-9; for (const l of lags) top1 = Math.max(top1, tempo.comb(l));
+  const line = (value, color, dash = []) => {
+    ctx.strokeStyle = color; ctx.setLineDash(dash); ctx.beginPath();
+    lags.forEach((l, i) => { const x = xOf(60 / (l * HOP_SECONDS)), y = y0 + bh - clamp(value(l), 0, 1) * bh; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke(); ctx.setLineDash([]);
+  };
+  line((l) => tempo.prior[l], css("--muted"), [3, 3]);
+  line((l) => tempo.comb(l) / top1, css("--strong"));
+  for (const bpm of [60, 80, 100, 120, 150, 190]) { const x = xOf(bpm); label(ctx, String(bpm), clamp(x, 8, w - 8), h - 4, "center"); ctx.fillStyle = css("--line-strong"); ctx.fillRect(x, y0 + bh, 1, 4); }
+  label(ctx, "score by tempo (per minute)", 0, y0 - 6);
+  const found = track.bpm[hops - 1];
+  if (found > 0) { const x = xOf(found); vline(ctx, x, y0, bh, css("--strong"), []); label(ctx, found.toFixed(1), clamp(x + 4, 0, w - 30), y0 + 10, "left", css("--strong")); }
+  vline(ctx, xOf(loop.bpm), y0, bh, css("--muted"));
+  const conf = tempo.confidence();
+  const read = [`played: <b>${loop.bpm}</b> per minute`, `found: <b>${found > 0 ? found.toFixed(1) : "unknown"}</b>`, `confidence: <b>${conf.toFixed(2)}</b> (below 0.15 the tempo is unknown)`];
+  $("acf-readout").innerHTML = read.map((r) => `<span>${r}</span>`).join("");
+}
+
+// The ring and timeline at time `now` (seconds into the loop).
+let now = LOOP_SECONDS - 0.01;
+function drawRing() {
+  const ringCanvas = $("ring");
+  const { ctx, w, h } = setup(ringCanvas, 1);
+  const { track } = loop, hop = clamp(Math.floor(now / HOP_SECONDS), 0, track.bumps.length - 1);
+  const cx = w / 2, cy = h / 2, r = Math.min(w, h) * 0.3;
+  let max = 1e-9; for (let i = 0; i < PHASE_BINS; i++) max = Math.max(max, track.rings[hop * PHASE_BINS + i]);
+  ctx.strokeStyle = css("--line-strong"); ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.stroke();
+  // Angles start at the top and go clockwise.
+  const at = (turn, radius) => [cx + radius * Math.sin(TAU * turn), cy - radius * Math.cos(TAU * turn)];
+  ctx.strokeStyle = css("--fg"); ctx.lineWidth = 2;
+  for (let i = 0; i < PHASE_BINS; i++) {
+    const v = track.rings[hop * PHASE_BINS + i] / max, turn = (i + 0.5) / PHASE_BINS;
+    const [x1, y1] = at(turn, r), [x2, y2] = at(turn, r - v * r * 0.8);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  }
+  ctx.lineWidth = 1;
+  if (track.bpm[hop] > 0) {
+    const [hx, hy] = at(track.counter[hop], r * 1.1);
+    ctx.strokeStyle = css("--muted"); ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(hx, hy); ctx.stroke();
+    const [ax, ay] = at(track.offset[hop], r * 1.08), [bx, by] = at(track.offset[hop], r * 1.25);
+    ctx.strokeStyle = css("--strong"); ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.lineWidth = 1;
+    label(ctx, "beat", bx, by + (by > cy ? 12 : -4), "center", css("--strong"));
+  }
+  label(ctx, track.bpm[hop] > 0 ? `${track.bpm[hop].toFixed(0)} per minute` : "counting...", cx, h - 4, "center");
+  drawTimeline(hop);
+  $("clock").textContent = `${now.toFixed(1)} s of ${LOOP_SECONDS}`;
+}
+function drawTimeline(hop) {
+  const { ctx, w, h } = setup($("timeline"));
+  const end = now, span = 4, start = end - span, xOf = (t) => (t - start) / span * w;
+  const rows = [["hits", 30], ["detected beats", 78], ["counted beats", 126]];
+  for (const [name, y] of rows) { label(ctx, name, 0, y - 18); hline(ctx, 0, w, y, css("--line"), []); }
+  for (const e of loop.events) if (e.t > start && e.t <= end) {
+    const big = e.kind === "kick" || e.kind === "snare" || e.kind === "clap";
+    ctx.fillStyle = big ? css("--fg") : css("--raw"); ctx.fillRect(xOf(e.t), 30 - (big ? 12 : 6), 1.5, big ? 12 : 6);
+  }
+  ctx.fillStyle = css("--fg");
+  for (const t of loop.found.beats) if (t > start && t <= end) ctx.fillRect(xOf(t), 66, 1.5, 12);
+  ctx.fillStyle = css("--strong");
+  for (const t of loop.track.counted) if (t > start && t <= end) ctx.fillRect(xOf(t) - 1, 112, 3, 14);
+  label(ctx, `${Math.max(start, 0).toFixed(1)} s`, 0, h - 2); label(ctx, `${end.toFixed(1)} s`, w, h - 2, "right");
+}
+
+let playing = false, lastFrame = 0, visible = true, audio = null, playingSource = null;
+function stopSound() { if (playingSource) { try { playingSource.stop(); } catch (e) { /* already stopped */ } playingSource = null; } }
+function play(samples, from = 0, gainValue = 0.5) {
+  audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+  stopSound();
+  const buffer = audio.createBuffer(1, samples.length, RATE); buffer.copyToChannel(samples, 0);
+  const source = audio.createBufferSource(); source.buffer = buffer;
+  const gain = audio.createGain(); gain.gain.value = gainValue; source.connect(gain).connect(audio.destination);
+  source.start(0, from); playingSource = source;
+}
+function setPlaying(on, sound = false) {
+  playing = on; $("play").textContent = on ? "Pause" : "Play";
+  if (!on) stopSound();
+  if (on) { if (now >= LOOP_SECONDS - 0.05) now = 0; if (sound) play(loop.samples, now); lastFrame = performance.now(); requestAnimationFrame(frame); }
+}
+function frame(t) {
+  if (!playing) return;
+  if (visible) {
+    now += (t - lastFrame) / 1000;
+    if (now >= LOOP_SECONDS) { now = LOOP_SECONDS - 0.01; drawRing(); setPlaying(false); return; }
+    drawRing();
+  }
+  lastFrame = t;
+  requestAnimationFrame(frame);
+}
+$("play").addEventListener("click", () => setPlaying(!playing));
+$("listen-ring").addEventListener("click", () => setPlaying(true, true));
+$("listen").addEventListener("click", () => play(loop.samples));
+new IntersectionObserver((entries) => { visible = entries[0].isIntersecting; }).observe($("ring"));
+$("style").addEventListener("change", () => {
+  const defaults = { rock: 100, house: 128, breaks: 174, fill: 100 };
+  $("bpm").value = Math.min(defaults[$("style").value], 180); setPlaying(false); now = LOOP_SECONDS - 0.01; updateLoop();
+});
+$("bpm").addEventListener("input", () => { setPlaying(false); now = LOOP_SECONDS - 0.01; updateLoop(); });
+for (const id of ["opt-spread", "opt-comb", "opt-prior"]) $(id).addEventListener("input", updateTempo);
+
+// ---------- 03 and 04: a build-up and its drop ----------
+const BUILD_BPM = 128, BEAT = 60 / BUILD_BPM, BAR = 4 * BEAT;
+const GROOVE_END = 4 * BAR, DROP = GROOVE_END + 8 * BAR, BUILD_SECONDS = DROP + 4 * BAR + 0.5;
+// `kick`: the build-up's kick, every other beat, at this level (0: none).
+function buildEvents(kick) {
+  const events = [];
+  const groove = (t0, t1, gain) => {
+    for (let t = t0; t < t1 - 1e-6; t += BAR) for (let k = 0; k < 4; k++) {
+      events.push({ kind: "kick", t: t + k * BEAT, gain }, { kind: "hat", t: t + (k + 0.5) * BEAT, gain: 1.5 * gain }, { kind: "bass", t: t + (k + 0.5) * BEAT, gain });
+      if (k % 2) events.push({ kind: "clap", t: t + k * BEAT, gain });
+    }
+  };
+  groove(0, GROOVE_END, 0.8);
+  for (let bar = 0; bar < 8; bar++) {
+    const t = GROOVE_END + bar * BAR, g = 0.5 + 0.1 * bar;
+    for (let k = 0; k < 8; k++) events.push({ kind: "hat", t: t + k * BEAT / 2, gain: g * (1 + 0.4 * bar) });
+    const step = bar < 4 ? BEAT : bar < 6 ? BEAT / 2 : BEAT / 4;
+    for (let k = 0; k < Math.round(BAR / step); k++) events.push({ kind: "snare", t: t + k * step, gain: 0.3 + 0.08 * bar });
+    if (kick) for (const k of [0, 2]) events.push({ kind: "kick", t: t + k * BEAT, gain: kick });
+  }
+  groove(DROP, DROP + 4 * BAR, 1);
+  return events;
+}
+// A riser: high-passed noise growing over the build-up.
+function riser(out, noise) {
+  let a = 0, b = 0;
+  for (let i = Math.round(GROOVE_END * RATE); i < Math.round(DROP * RATE); i++) {
+    const p = (i / RATE - GROOVE_END) / (DROP - GROOVE_END), x = noise(), d1 = x - a, d2 = d1 - b; a = x; b = d1;
+    out[i] += 0.08 * d2 * p * p;
+  }
+}
+
+// The analyzer's treble, energy and 32-band spectrum, as analyzer.rs and
+// smoothing.rs, at 60 frames per second.
+const FPS = 60, FFT_SIZE = 2048, GAIN_RANGE_DB = 30, GAIN_SILENCE_DB = -60, GAIN_FALL = 3, BAND_SPREAD_DB = 18;
+function analyzeFrames(samples) {
+  const window = hann(FFT_SIZE);
+  let sumSq = 0; for (const w of window) sumSq += w * w;
+  const powerScale = 2 / (FFT_SIZE * sumSq), fft = makeFft(FFT_SIZE);
+  const re = new Float64Array(FFT_SIZE), im = new Float64Array(FFT_SIZE);
+  const gain = () => ({ peak: GAIN_SILENCE_DB });
+  const update = (g, db, dt, floor = GAIN_SILENCE_DB) => {
+    floor = Math.max(floor, GAIN_SILENCE_DB);
+    g.peak = db > g.peak ? db : Math.max(g.peak - GAIN_FALL * dt, floor);
+    g.peak = Math.max(g.peak, floor);
+    return clamp((db - (g.peak - GAIN_RANGE_DB)) / GAIN_RANGE_DB, 0, 1);
+  };
+  const envelope = (attack, release) => ({ value: 0, attack, release });
+  const follow = (e, x, dt) => { const tau = x > e.value ? e.attack : e.release; e.value += (x - e.value) * (1 - Math.exp(-dt / tau)); return e.value; };
+  const energyBins = hzToBins(20, 16000, FFT_SIZE), trebleBins = hzToBins(4000, 16000, FFT_SIZE), bassBins = hzToBins(20, 250, FFT_SIZE);
+  const bands = logBands([30, 16000], 32, FFT_SIZE);
+  const energyGain = gain(), trebleGain = gain(), bassGain = gain(), spectrumGain = gain();
+  const energyEnv = envelope(0.03, 0.4), trebleEnv = envelope(0.01, 0.2), bassEnv = envelope(0.015, 0.25), bandEnv = bands.map(() => envelope(0.01, 0.15));
+  const frames = [], dt = 1 / FPS;
+  const levelDb = (b) => { let p = 0; for (let k = b.start; k < b.end; k++) p += re[k] * re[k] + im[k] * im[k]; const a = Math.sqrt(p * powerScale); return a > 0 ? Math.max(20 * Math.log10(a), -120) : -120; };
+  for (let f = 0; (f + 1) / FPS <= samples.length / RATE; f++) {
+    const end = Math.round((f + 1) * RATE / FPS);
+    for (let i = 0; i < FFT_SIZE; i++) { const j = end - FFT_SIZE + i; re[i] = (j < 0 ? 0 : samples[j]) * window[i]; im[i] = 0; }
+    fft(re, im);
+    const energy = follow(energyEnv, update(energyGain, levelDb(energyBins), dt), dt);
+    const treble = follow(trebleEnv, update(trebleGain, levelDb(trebleBins), dt, energyGain.peak - BAND_SPREAD_DB), dt);
+    const bass = follow(bassEnv, update(bassGain, levelDb(bassBins), dt, energyGain.peak - BAND_SPREAD_DB), dt);
+    const levels = bands.map(levelDb), loudest = Math.max(...levels);
+    update(spectrumGain, loudest, dt);
+    const spectrum = levels.map((db, i) => follow(bandEnv[i], clamp((db - (spectrumGain.peak - GAIN_RANGE_DB)) / GAIN_RANGE_DB, 0, 1), dt));
+    frames.push({ t: (f + 1) / FPS, energy, treble, bass, spectrum });
+  }
+  return frames;
+}
+
+// Tension and punch, as feel.rs; the drop, as schedule.rs.
+const BUILD_FAST = 1, BUILD_SLOW = 6, BUILD_FULL = 0.06, DEEP_BANDS = 7, MIDDLE = [11, 25];
+const TENSION_RISE = 2, TENSION_FALL = 0.3, TENSE = 0.4, DROP_WINDOW = 1.5, DROP_PUNCH = 0.3, DROP_OVER_BUILD = 1.25, PUNCH_SLOT = 0.25, PUNCH_SLOTS = 16;
+function listen(frames, opt) {
+  const dt = 1 / FPS, k = (s) => 1 - Math.exp(-dt / s);
+  let trebleFast = 0, trebleSlow = 0, deepFast = 0, deepSlow = 0, middleSlow = 0, tension = 0, quiet = 0;
+  let sinceTense = Infinity, lastPunch = 0, slot = 0;
+  const punches = new Float64Array(PUNCH_SLOTS);
+  const out = { trebleFast: [], trebleSlow: [], deepFast: [], deepSlow: [], tension: [], punch: [], needed: [], drops: [] };
+  const mean = (a, from, to) => { let s = 0; for (let i = from; i < to; i++) s += a[i]; return s / (to - from); };
+  for (const fr of frames) {
+    trebleFast += (fr.treble - trebleFast) * k(BUILD_FAST); trebleSlow += (fr.treble - trebleSlow) * k(BUILD_SLOW);
+    const deep = opt.deep ? mean(fr.spectrum, 0, DEEP_BANDS) : fr.bass;
+    deepFast += (deep - deepFast) * k(BUILD_FAST); deepSlow += (deep - deepSlow) * k(BUILD_SLOW);
+    const middle = mean(fr.spectrum, MIDDLE[0], MIDDLE[1]);
+    middleSlow += (middle - middleSlow) * k(BUILD_SLOW);
+    const punch = clamp(deep - deepSlow - (opt.middle ? 0.5 * Math.max(middle - middleSlow, 0) : 0), -1, 1);
+    quiet = fr.energy < 0.02 ? quiet + dt : 0;
+    const building = (trebleFast - trebleSlow) - Math.max(deepFast - deepSlow, 0);
+    const target = quiet < 1 ? clamp(building / BUILD_FULL, 0, 1) : 0;
+    tension += (target - tension) * k(target > tension ? TENSION_RISE : TENSION_FALL);
+    // The schedule's side: is this the drop?
+    sinceTense = tension > TENSE ? 0 : sinceTense + dt;
+    let before = 0; for (let i = 2; i < PUNCH_SLOTS; i++) before = Math.max(before, punches[i]);
+    const needed = Math.max(DROP_PUNCH, opt.over ? DROP_OVER_BUILD * before : 0);
+    if (punch > needed && lastPunch <= needed && sinceTense <= DROP_WINDOW && quiet < 1) out.drops.push(fr.t);
+    lastPunch = punch;
+    slot += dt;
+    if (slot >= PUNCH_SLOT) { slot = 0; punches.copyWithin(1, 0, PUNCH_SLOTS - 1); punches[0] = 0; }
+    punches[0] = Math.max(punches[0], punch);
+    out.trebleFast.push(trebleFast); out.trebleSlow.push(trebleSlow); out.deepFast.push(deepFast); out.deepSlow.push(deepSlow);
+    out.tension.push(tension); out.punch.push(punch); out.needed.push(needed);
+  }
+  return out;
+}
+
+let build = null;
+function updateBuild() {
+  const kick = +$("opt-kick").value;
+  if (!build || build.kick !== kick) {
+    const samples = render(BUILD_SECONDS, buildEvents(kick), riser);
+    build = { kick, samples, frames: analyzeFrames(samples), novelty: detect(samples).novelty };
+  }
+  build.heard = listen(build.frames, { deep: $("opt-deep").checked, middle: $("opt-middle").checked, over: $("opt-over").checked });
+  drawTension(); drawPunch();
+}
+function shadeBuild(ctx, w, y0, h) {
+  const xOf = (t) => t / BUILD_SECONDS * w;
+  ctx.fillStyle = css("--line"); ctx.fillRect(xOf(GROOVE_END), y0, xOf(DROP) - xOf(GROOVE_END), h);
+  vline(ctx, xOf(DROP), y0, h, css("--strong"));
+}
+function drawTension() {
+  const { ctx, w, h } = setup($("tension"));
+  const hd = build.heard, strips = 4, gap = 22, sh = (h - gap * strips) / strips;
+  const names = ["treble, 1 s and 6 s", $("opt-deep").checked ? "deep bass (under 120 Hz), 1 s and 6 s" : "bass level (under 250 Hz), 1 s and 6 s", "tension", "novelty"];
+  for (let s = 0; s < strips; s++) {
+    const y0 = gap * (s + 1) + sh * s - 6;
+    shadeBuild(ctx, w, y0, sh); label(ctx, names[s], 0, y0 - 4);
+  }
+  const y = (s) => gap * (s + 1) + sh * s - 6;
+  const both = (a, b, s) => { let hi = 1e-6; for (const v of a) hi = Math.max(hi, v); for (const v of b) hi = Math.max(hi, v); trace(ctx, b, 0, y(s), w, sh, 0, hi * 1.1, css("--muted")); trace(ctx, a, 0, y(s), w, sh, 0, hi * 1.1, css("--fg")); };
+  both(hd.trebleFast, hd.trebleSlow, 0);
+  both(hd.deepFast, hd.deepSlow, 1);
+  hline(ctx, 0, w, y(2) + sh - TENSE * sh, css("--muted")); trace(ctx, hd.tension, 0, y(2), w, sh, 0, 1, css("--strong"), 1.5);
+  hline(ctx, 0, w, y(3) + sh - 0.5 * sh, css("--muted")); trace(ctx, build.novelty, 0, y(3), w, sh, 0, 1, css("--fg"));
+  // When the tension counts as a build-up.
+  let from = null, spans = [];
+  hd.tension.forEach((v, i) => { const t = (i + 1) / FPS; if (v > TENSE && from === null) from = t; if (v <= TENSE && from !== null) { spans.push([from, t]); from = null; } });
+  if (from !== null) spans.push([from, BUILD_SECONDS]);
+  const read = [`build-up from <b>${GROOVE_END.toFixed(1)}</b> to <b>${DROP.toFixed(1)}</b> s`, `tension above 0.4: ${spans.length ? spans.map(([a, b]) => `<b>${a.toFixed(1)}</b>–<b>${b.toFixed(1)}</b> s`).join(", ") : "<b>never</b>"}`];
+  $("tension-readout").innerHTML = read.map((r) => `<span>${r}</span>`).join("");
+}
+function drawPunch() {
+  const { ctx, w, h } = setup($("punch"));
+  const hd = build.heard, y0 = 16, ph = h - 44;
+  shadeBuild(ctx, w, y0, ph);
+  label(ctx, "punch, and what it must cross", 0, 10);
+  trace(ctx, hd.needed, 0, y0, w, ph, -0.2, 0.8, css("--muted"));
+  trace(ctx, hd.punch, 0, y0, w, ph, -0.2, 0.8, css("--fg"));
+  ctx.fillStyle = css("--strong");
+  for (const t of hd.drops) { const x = t / BUILD_SECONDS * w; ctx.fillRect(x - 1, y0 + ph + 6, 3, 12); }
+  label(ctx, "drops found", w, h - 2, "right");
+  const real = hd.drops.filter((t) => Math.abs(t - DROP) < 0.15), wrong = hd.drops.length - real.length;
+  let inBuild = 0, atDrop = 0;
+  hd.punch.forEach((p, i) => { const t = (i + 1) / FPS; if (t > GROOVE_END + 0.5 && t < DROP - 0.05) inBuild = Math.max(inBuild, p); if (t >= DROP - 0.05 && t < DROP + 0.5) atDrop = Math.max(atDrop, p); });
+  const read = [`hardest hit in the build-up: <b>${inBuild.toFixed(2)}</b>, at the drop: <b>${atDrop.toFixed(2)}</b>`, `real drop at <b>${DROP.toFixed(2)}</b> s`, `found: ${hd.drops.length ? hd.drops.map((t) => `<b>${t.toFixed(2)}</b>`).join(", ") : "<b>none</b>"}`, `on the real drop: <b>${real.length ? "yes" : "no"}</b>`, `false: <b>${wrong}</b>`];
+  $("punch-readout").innerHTML = read.map((r) => `<span>${r}</span>`).join("");
+}
+$("listen-build").addEventListener("click", () => { if (build) play(build.samples); });
+for (const id of ["opt-kick", "opt-deep", "opt-middle", "opt-over"]) $(id).addEventListener("input", updateBuild);
+
+function drawAll() { if (loop) { drawAcf(); drawRing(); } if (build) { drawTension(); drawPunch(); } }
+let resizeTimer = 0;
+addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(drawAll, 100); });
+updateLoop();
+updateBuild();
+</script>
+</body>
+</html>

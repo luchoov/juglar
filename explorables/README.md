@@ -14,8 +14,9 @@ Each page is a single self-contained HTML file with no dependencies: open it in 
 | 03 | [Feedback and color](03-feedback-and-color.html) | The feedback loop running live (Tide on the synthetic song), painting twice, backward warping, float storage, cosine palettes and the red check, tone mapping, dithering |
 | 04 | [Beats and flashes](04-beats-and-flashes.html) | Loudness versus onsets (with audio), spectral flux in three regions, adaptive thresholds and beats, novelty at a drop, what counts as a flash, the flash limiter on a strobe and on a picture, the red guard |
 | 05 | [Warps and fractals](05-warps-and-fractals.html) | Five scenes' warps side by side with arrows showing where paint comes from, a Julia set computed by the loop one step per frame (checked against the usual way), a snowflake of mirrored copies, why bands of color don't strobe |
+| 06 | [Tempo and the drop](06-tempo-and-the-drop.html) | The autocorrelation that finds the tempo (with each detail switchable), the ring of phase bins counting through a bar with no drums, a build-up's tension, the drop caught on its first kick, and what the director does with them |
 
-Planned (see `docs/vision.md`): chroma wheel and key detection, harmonic/percussive separation, the self-similarity matrix filling in as a song plays, beat prediction and the build-up tension curve, procedural composition.
+Planned (see `docs/vision.md`): chroma wheel and key detection, harmonic/percussive separation, the self-similarity matrix filling in as a song plays, procedural composition.
 
 ## Conventions
 

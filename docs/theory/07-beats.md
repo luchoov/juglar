@@ -33,9 +33,9 @@ The band levels are measured relative to the loudest band, ignoring anything mor
 
 ## 4. Beats
 
-Juglar doesn't track the tempo yet; that comes with Milestone 5.5, together with predicting where the next beat lands. For now a **beat** is an onset in the low or middle region: kicks and snares, what you tap your foot to. Hi-hats, often four to a beat, are found as onsets in the high region but don't make beats. A kick that shows up in both the low and middle regions is one beat, not two.
+A **beat** is an onset in the low or middle region: kicks and snares, what you tap your foot to. Hi-hats, often four to a beat, are found as onsets in the high region but don't make beats. A kick that shows up in both the low and middle regions is one beat, not two.
 
-`beat` goes to 1 at a beat and falls back toward 0 with a time constant of 0.15 s, the same shape the synthetic song (D20) gives it.
+`beat` goes to 1 at a beat and falls back toward 0 with a time constant of 0.15 s, the same shape the synthetic song (D20) gives it. It only says a beat was heard; the tempo, and where the next beat will fall, are counted from the same flux (note 11).
 
 ## 5. Novelty
 

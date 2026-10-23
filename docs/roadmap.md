@@ -70,7 +70,7 @@ Open: the stripe limit holds by design only (the flash limit is measured since M
 - **Scene sketches (asked for during 5b): done.** Five new hand-made scenes beside *Tide*, deliberately different: *Orbits*, *Kaleido* (psychedelic), *Oil* (liquid light show), *Plasma*, *Harmonograph*, switched with the arrow keys. Looping palettes, a `warp` hook for folds and currents. None triggers the limiter with music. Decision D31, note `10-scenes.md`.
 - **5b, flash limiter: done.** Every frame passes through a GPU limiter before the screen: 8×8-pixel cells (at 1080 rows), at most four transitions of 0.1 in any second per cell, holding back only the cells that would break it, plus a guard against saturated red. Checked by unit tests and by GPU tests with adversarial strobes read back from the screen. Its first finding made Tide's ring calmer (D30). GPU 0.163 ms per frame at 960×540 (from 0.096), 0.529 ms maximized; CPU 6.75–6.79% of a core (from 6.05%). Decisions D29–D30, note `09-photosensitivity.md`. Not checked by an independent flash analyzer.
 
-Open: beats were never judged by ear, only by tests on synthetic signals and by statistics on three recordings; they need listening across genres. The isolated black pixels in screenshots (5c) must be looked for by eye on the monitor, since frames read back from the GPU don't have them. The analysis view (`Tab`) still has the limiter holding about 1% of the screen. The five scene sketches are untuned: drawn once and checked against the limiter, not refined; *Harmonograph* made the limiter hold up to 0.2% with a later playlist and needs retuning. None of the six newer scenes has been looked at on a screen, only in screenshots: how they move, and whether they are as striking as intended, is still to be judged by eye. The check for fine flicker (D34) still counts a few cells over the limit in *Kaleido*, *Harmonograph*, *Julia* and *Vortex*, most likely the capture's timing, not proved.
+Open: beats were never judged by ear, only by tests on synthetic signals and by statistics on three recordings; they need listening across genres. The isolated black pixels in screenshots (5c) must be looked for by eye on the monitor, since frames read back from the GPU don't have them. The analysis view (`Tab`) still has the limiter holding about 1% of the screen. The five scene sketches are untuned: drawn once and checked against the limiter, not refined. *Harmonograph* made the limiter hold up to 0.2% with a later playlist; retuned since (longer trails, a slower change of ratio), it held nothing with real music, a breakbeat and the synthetic song. None of the six newer scenes has been looked at on a screen, only in screenshots: how they move, and whether they are as striking as intended, is still to be judged by eye. The check for fine flicker (D34) still counts a few cells over the limit in *Kaleido*, *Harmonograph*, *Julia* and *Vortex*, most likely the capture's timing, not proved.
 
 ## M5.5 — Listening like a musician
 
@@ -85,6 +85,8 @@ The core innovation (see `docs/vision.md`). Built before the generator so it is 
 
 **Done when:** on a pop song with a repeated chorus, the second chorus is recognized as a recurrence of the first within a few bars, and a drop is announced by rising tension before it lands.
 
+**Status: started.** Tempo and beat phase are done (D43, `crates/dsp/src/tempo.rs`): an autocorrelation of the spectral flux and a ring of phase bins. Played through the speakers, drum patterns at 100 and 128 per minute were read exactly, with every detected beat within a tenth of a beat of the count; a breakbeat at 174 read 87, its half. Build-up tension and the drop are done in the director (D44): synthesized build-ups were caught on the drop's first kick, but no real music with build-ups has been tried, and a build-up that keeps its kick hides its drop. Note `11-tempo-and-the-director.md`, explorable `06-tempo-and-the-drop.html`. Not started: chroma, key and chords; harmonic/percussive separation; self-similarity, sections and recurrence; bars and downbeats; the per-song seed.
+
 ## M6 — The generator
 
 - Building blocks, composition rules, WGSL emission, background pipeline compilation.
@@ -93,12 +95,29 @@ The core innovation (see `docs/vision.md`). Built before the generator so it is 
 
 **Done when:** an hour of music never shows an ugly scene and never stutters on a transition.
 
+**Status: the director is done; the generator is not started.** Ahead of the generator, the parts around it were built for the twelve hand-made scenes:
+
+- **Transitions** (D38): the new scene's loop takes over the old picture, in four shapes: bloom, iris, seep and spiral.
+- **Background pipeline compilation** (D39): the first frame comes in 1.65–1.9 s instead of 4.0–4.1.
+- **Intensity modes**: natural (`A`, the default, D37) and fixed (`1`/`2`/`3`).
+- **Automatic scene changes** (D40): at the music's turns, on the beat, to the scene whose character suits it, the transition chosen by the kind of moment.
+- **Focus and relax modes** (D41).
+
+All of this lives in the OS-free `crates/director`. Over 8 minutes of real music with automatic changes, the limiter held nothing and the GPU averaged 0.27 ms per frame. Still open: scene choice was tuned on metal only, and the wildest scenes never came up with real music. Nothing has been judged by eye on a screen. Theory: note 11 covers what was planned as `11-intensity.md`.
+
 ## M7 — Living on the desktop
 
 - Borderless / fullscreen / mini modes, fading HUD with own glyph rendering, tray icon.
 - Now-playing overlay (GSMTC).
 - Pause on silence, hidden window or fullscreen game; lower frame rate while a game runs (M3 showed that CPU cost follows the frame rate, not the picture).
 - Live wallpaper mode; screensaver build.
+
+**Status: started.**
+
+- **Done:** borderless fullscreen (D36: `F11`, `Alt`+`Enter`, double click, `--fullscreen`).
+- **Done:** wallpaper mode on Windows (D42: `W`, `--wallpaper`), behind the desktop icons on both the 24H2 desktop and the earlier one. A tray icon has the controls, and nothing is drawn while a fullscreen program or a maximized window covers the desktop. Measured: 0 fps and 0.42% of a core while covered; 72 fps and 1.66% with the desktop shown (synthetic song).
+- **Not tested:** several displays, and Windows before 24H2.
+- **Not started:** the HUD, the now-playing overlay, mini mode, pausing on silence, the screensaver build.
 
 ## M8 — Evolution and the web
 
