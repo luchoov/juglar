@@ -369,3 +369,10 @@ Every important decision in Juglar, in plain language: what was decided, why, wh
 **Why:** v1 is the first release; without an icon the program, its window and its tray icon showed Windows' generic one. A neon waveform in a colored ring was tried first and turned down as a generic app's look; so were textured metal-band marks: the developer wanted bardo's quiet style.
 **Considered:** a crate for resources (`winres`, `embed-resource`: a dependency for one file); drawing the icon at run time from the PNG (the program file would still show the generic icon).
 **Cost:** building with an icon needs the Windows SDK, which the MSVC toolchain installs; without it, `build.rs` warns and the program gets the generic icon.
+
+### D56 — No console window; messages go to a log file
+
+**Decided:** the release build is a Windows program (`windows_subsystem = "windows"`), so starting it opens no console. Since Rust's standard output asks Windows for its handle on every write, `route_output` points standard output and error at `%LOCALAPPDATA%\Juglar\juglar.log` at start (the last run's log is kept as `juglar.old.log`), and every `println!` and `eprintln!`, the platform crate's included, lands there. `--console` attaches to the console Juglar was started from, or opens one. Output a script already redirected stays where it was, so the recording and tuning scripts work unchanged. An error Juglar can't go on after (no audio capture, no GPU, an unreadable WAV) also shows in a message box when the log is the only other place it would go. The debug build keeps its console.
+**Why:** a console opening behind the picture is the first thing a user sees of v1, and it reads as an unfinished program; but the messages are what a bug report needs.
+**Considered:** a logging crate (`log` with a file backend: a dependency and a rewrite of every message, for what redirecting the handles already does); keeping the console in release and hiding it right after start (it still flashes).
+**Cost:** started from a terminal without `--console`, the release build returns the prompt at once and prints nothing there.

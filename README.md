@@ -91,7 +91,7 @@ Play anything. Juglar changes scene by itself when the music turns a corner (an 
 | `W` | wallpaper mode: Juglar draws behind the desktop icons; the tray icon has the controls |
 | `Esc` | leave fullscreen; from a window, close |
 
-`juglar --fullscreen` starts in fullscreen; `juglar --wallpaper`, as the wallpaper.
+`juglar --fullscreen` starts in fullscreen; `juglar --wallpaper`, as the wallpaper. Juglar opens no console: its messages go to `%LOCALAPPDATA%\Juglar\juglar.log`, and `juglar --console` shows them in a console instead.
 
 **Focus** and **relax** are for when the music matters more than the picture: slow, muted, dim, scenes held for minutes and changed by a slow seep. They are style options and claim nothing about attention or stress ([why](docs/research/focus-and-relaxation.md)).
 
