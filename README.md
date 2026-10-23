@@ -76,7 +76,7 @@ Ten made for loud music, and twelve older, calmer ones for everything else; the 
 
 ## Running it
 
-**Download:** get the zip from the [latest release](https://github.com/luchoov/juglar/releases/latest), unzip it and run `juglar.exe`. Windows 10 or 11, a GPU with DirectX 12 or Vulkan. Nothing to install, no setup: Juglar listens to whatever the speakers play. Windows may warn that the program is unrecognized, since it is not signed: *More info*, then *Run anyway*.
+**Download:** from the [latest release](https://github.com/luchoov/juglar/releases/latest), the installer (`juglar-…-setup.exe`: Start menu shortcuts, an uninstaller, and a box to start Juglar with Windows as the wallpaper; no administrator rights) or the zip (unzip it and run `juglar.exe`, nothing installed). Windows 10 or 11, a GPU with DirectX 12 or Vulkan. Juglar listens to whatever the speakers play. Windows may warn that the program is unrecognized, since it is not signed ([why](docs/decisions.md#d60--an-installer-beside-the-zip-for-the-current-user-unsigned)): *More info*, then *Run anyway*.
 
 **From source:** with [Rust](https://rustup.rs) installed,
 
